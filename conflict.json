@@ -1,0 +1,57 @@
+[
+  {
+    "path": "src\\app\\clients\\page-OsoPCGaming.tsx",
+    "size": 27493,
+    "modified": "2026-03-03T09:39:03.939Z"
+  },
+  {
+    "path": "src\\app\\globals-OsoPCGaming.css",
+    "size": 4698,
+    "modified": "2026-03-01T22:34:52.651Z"
+  },
+  {
+    "path": "src\\app\\invoices\\page-OsoPCGaming-2.tsx",
+    "size": 19924,
+    "modified": "2026-03-02T09:11:35.745Z"
+  },
+  {
+    "path": "src\\app\\invoices\\page-OsoPCGaming.tsx",
+    "size": 8755,
+    "modified": "2026-01-30T20:35:06.000Z"
+  },
+  {
+    "path": "src\\app\\layout-OsoPCGaming.tsx",
+    "size": 1345,
+    "modified": "2026-03-01T22:36:00.937Z"
+  },
+  {
+    "path": "src\\app\\month-end\\page-OsoPCGaming.tsx",
+    "size": 13978,
+    "modified": "2026-03-04T22:46:29.072Z"
+  },
+  {
+    "path": "src\\app\\page-OsoPCGaming.tsx",
+    "size": 3094,
+    "modified": "2026-03-03T09:40:58.269Z"
+  },
+  {
+    "path": "src\\components\\features\\Feed-OsoPCGaming.tsx",
+    "size": 13644,
+    "modified": "2026-03-04T22:24:14.182Z"
+  },
+  {
+    "path": "src\\components\\features\\QuickEntry-OsoPCGaming.tsx",
+    "size": 15399,
+    "modified": "2026-03-04T23:26:17.337Z"
+  },
+  {
+    "path": "src\\lib\\invoice-generator-OsoPCGaming.ts",
+    "size": 15123,
+    "modified": "2026-03-01T23:48:26.914Z"
+  },
+  {
+    "path": "src\\types\\index-OsoPCGaming.ts",
+    "size": 1816,
+    "modified": "2026-03-03T09:37:46.908Z"
+  }
+]

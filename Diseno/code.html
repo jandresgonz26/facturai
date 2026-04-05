@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MicroBill Dashboard - Cleaned Executive Variant</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#0D9488",
+                        "primary-dark": "#0F766E",
+                        secondary: "#0EA5E9",
+                        accent: "#10B981",
+                        "background-warm": "#FDFBF7",
+                        "background-dark": "#0F172A",
+                        "sidebar-dark": "#111827",
+                        "header-dark": "#1F2937",
+                        "surface-light": "#FFFFFF",
+                        "surface-dark": "#1E293B",
+                        "border-light": "#E5E7EB",
+                        "border-dark": "#334155",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        'xl': "0.75rem",
+                        '2xl': "1rem",
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02)',
+                        'card': '0 10px 15px -3px rgba(0, 0, 0, 0.03), 0 4px 6px -2px rgba(0, 0, 0, 0.01)',
+                        'prominent': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        'glow': '0 0 15px rgba(13, 148, 136, 0.3)',
+                    }
+                },
+            },
+        };
+    </script>
+<style>
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        .sidebar-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 24px;
+            width: 4px;
+            background-color: #2DD4BF;
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
+        }
+        .timeline-line::before {
+            content: '';
+            position: absolute;
+            top: 2rem;
+            bottom: -2rem;
+            left: 1.25rem;
+            width: 2px;
+            background-color: #E5E7EB;
+            z-index: 0;
+        }
+        .dark .timeline-line::before {
+            background-color: #334155;
+        }
+        .timeline-item:last-child .timeline-line::before {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-background-warm dark:bg-background-dark text-gray-800 dark:text-gray-100 font-body transition-colors duration-300 min-h-screen flex overflow-hidden">
+<aside class="w-20 lg:w-64 bg-sidebar-dark text-white border-r border-gray-800 flex flex-col items-center lg:items-stretch py-6 z-30 h-screen fixed left-0 top-0 transition-all duration-300 shadow-xl">
+<div class="flex items-center justify-center lg:justify-start lg:px-6 mb-10">
+<div class="relative w-8 h-8 flex-shrink-0">
+<svg class="w-full h-full drop-shadow-[0_0_10px_rgba(45,212,191,0.5)]" viewBox="0 0 100 100">
+<path d="M10 50 L90 10 L80 90 Z" fill="#38BDF8" opacity="1"></path>
+<path d="M10 50 L80 90 L50 95 Z" fill="#2DD4BF" opacity="1"></path>
+</svg>
+</div>
+<span class="hidden lg:block font-bold text-xl tracking-tight text-white ml-3">MicroBill <span class="text-xs font-normal text-gray-400 block -mt-1">Executive</span></span>
+</div>
+<nav class="flex-1 w-full px-3 space-y-1">
+<a class="sidebar-link active relative flex items-center gap-4 px-4 py-3 text-white bg-gray-800 rounded-lg transition-all group border border-gray-700/50" href="#">
+<span class="material-symbols-rounded text-2xl text-teal-400">dashboard</span>
+<span class="hidden lg:block text-sm font-medium">Dashboard</span>
+</a>
+<a class="sidebar-link relative flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all group" href="#">
+<span class="material-symbols-rounded text-2xl font-light">group</span>
+<span class="hidden lg:block text-sm font-medium">Clientes</span>
+</a>
+<a class="sidebar-link relative flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all group" href="#">
+<span class="material-symbols-rounded text-2xl font-light">receipt_long</span>
+<span class="hidden lg:block text-sm font-medium">Facturación</span>
+</a>
+<a class="sidebar-link relative flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all group" href="#">
+<span class="material-symbols-rounded text-2xl font-light">analytics</span>
+<span class="hidden lg:block text-sm font-medium">Reportes</span>
+</a>
+<a class="sidebar-link relative flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all group" href="#">
+<span class="material-symbols-rounded text-2xl font-light">settings</span>
+<span class="hidden lg:block text-sm font-medium">Ajustes</span>
+</a>
+</nav>
+<div class="px-3 w-full mt-auto space-y-4">
+<div class="pt-4 border-t border-gray-800">
+<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+<div class="h-9 w-9 rounded-full bg-gradient-to-tr from-teal-500 to-sky-500 p-[2px] flex-shrink-0 shadow-lg shadow-teal-900/50">
+<img alt="Profile" class="h-full w-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuChf1Ep-Kw8xmyUPxLxC4kOZVDHijPQvnNPO1lwembxXzg1rrEd6hCR1gzO0THqo_V620ox1Za6-7WY4LgaRoiUzev2TMp5Wu_rXb-KvqAYoAFhH57JYkuoOYwhaa7dFd27m0rhvmSSFSuhgu3yFZRU6_UgQNqT3JffD4MfjuFCk-vAUFkRGsB2-eMCx0qdBvUVKBssFvCnFaiNTpCfVGaaO04wl4JOZhrYzAHY0yH8JnVrkmpwi7DzcP2rCNsdrAkgpxuXVeWBPZyx"/>
+</div>
+<div class="hidden lg:block overflow-hidden">
+<p class="text-sm font-medium text-white truncate">Jamtech Admin</p>
+<p class="text-xs text-gray-400 truncate">Executive View</p>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<div class="flex-1 flex flex-col ml-20 lg:ml-64 transition-all duration-300 h-screen overflow-hidden bg-[#F8FAFC] dark:bg-background-dark">
+<header class="sticky top-0 z-20 bg-header-dark shadow-md px-8 py-4 flex items-center justify-between gap-4 border-b border-gray-700">
+<div class="flex-1 max-w-xl">
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-rounded text-gray-500 group-focus-within:text-teal-400 transition-colors">search</span>
+</div>
+<input class="block w-full pl-10 pr-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 shadow-inner transition-all text-sm" placeholder="Buscar transacción, cliente..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<button class="relative p-2 text-gray-400 hover:text-white transition-colors focus:outline-none">
+<span class="material-symbols-rounded">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-header-dark"></span>
+</button>
+<div class="h-8 w-px bg-gray-700 hidden sm:block"></div>
+<div class="flex items-center gap-3 cursor-pointer group">
+<div class="text-right hidden sm:block">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-white transition-colors">Admin Jamtech</p>
+<p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Gerencia</p>
+</div>
+<div class="h-8 w-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center overflow-hidden">
+<img alt="Profile" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuChf1Ep-Kw8xmyUPxLxC4kOZVDHijPQvnNPO1lwembxXzg1rrEd6hCR1gzO0THqo_V620ox1Za6-7WY4LgaRoiUzev2TMp5Wu_rXb-KvqAYoAFhH57JYkuoOYwhaa7dFd27m0rhvmSSFSuhgu3yFZRU6_UgQNqT3JffD4MfjuFCk-vAUFkRGsB2-eMCx0qdBvUVKBssFvCnFaiNTpCfVGaaO04wl4JOZhrYzAHY0yH8JnVrkmpwi7DzcP2rCNsdrAkgpxuXVeWBPZyx"/>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-1 overflow-y-auto px-6 py-8">
+<div class="max-w-[1600px] mx-auto">
+<div class="flex flex-col xl:flex-row gap-8">
+<div class="flex-1 space-y-8">
+<div class="flex justify-between items-end">
+<div>
+<h1 class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight font-display">Resumen Ejecutivo</h1>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Vista general de rendimiento y facturación.</p>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm">
+<span class="material-symbols-rounded align-bottom text-lg mr-1">calendar_today</span>
+                                    Este Mes
+                                </button>
+</div>
+</div>
+<section aria-labelledby="add-activity-title" class="relative z-10">
+<div class="bg-white dark:bg-surface-dark rounded-xl shadow-prominent border border-gray-100 dark:border-gray-700 overflow-hidden">
+<div class="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
+<div class="flex items-center gap-3">
+<div class="p-1.5 bg-teal-500/20 rounded text-teal-400">
+<span class="material-symbols-rounded text-xl">add_task</span>
+</div>
+<h2 class="text-base font-semibold text-white" id="add-activity-title">Registro Rápido</h2>
+</div>
+<span class="text-xs text-gray-400 font-mono">ID: #NEW-2409</span>
+</div>
+<div class="p-6">
+<form class="flex flex-col gap-5">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+<div class="md:col-span-8 space-y-1">
+<label class="text-xs font-semibold text-gray-500 uppercase tracking-wider" for="description">Descripción</label>
+<input class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-2 px-3 shadow-sm transition-all" id="description" name="description" placeholder="Detalle de la actividad..." type="text"/>
+</div>
+<div class="md:col-span-4 space-y-1">
+<label class="text-xs font-semibold text-gray-500 uppercase tracking-wider" for="amount">Monto</label>
+<div class="relative rounded-md shadow-sm">
+<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+<span class="text-gray-500 sm:text-sm">$</span>
+</div>
+<input class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-2 pl-7 px-3 text-right font-mono" id="amount" name="amount" placeholder="0.00" type="number"/>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+<div class="md:col-span-5 space-y-1">
+<label class="text-xs font-semibold text-gray-500 uppercase tracking-wider" for="client">Cliente</label>
+<select class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-2 px-3 shadow-sm" id="client" name="client">
+<option>Seleccionar cliente...</option>
+<option>Total Envíos USA</option>
+<option>Executive Taxi</option>
+<option>ASIRI Marketing</option>
+</select>
+</div>
+<div class="md:col-span-4 space-y-1">
+<label class="text-xs font-semibold text-gray-500 uppercase tracking-wider" for="category">Categoría</label>
+<select class="block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:border-teal-500 focus:ring-teal-500 sm:text-sm py-2 px-3 shadow-sm" id="category" name="category">
+<option>General</option>
+<option>Desarrollo</option>
+<option>Soporte</option>
+</select>
+</div>
+<div class="md:col-span-3">
+<button class="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all transform hover:-translate-y-0.5" type="submit">
+                                                    Registrar
+                                                </button>
+</div>
+</div>
+</form>
+</div>
+</div>
+</section>
+<section aria-labelledby="recent-activity-title" class="space-y-6 pt-2">
+<div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+<h2 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2" id="recent-activity-title">
+<span class="material-symbols-rounded text-teal-600">history_edu</span>
+                                    Auditoría de Actividad
+                                </h2>
+<a class="text-xs font-semibold uppercase tracking-wider text-teal-600 hover:text-teal-700 dark:text-teal-400 transition-colors" href="#">Ver Completo</a>
+</div>
+<div class="relative">
+<div class="mb-8 relative timeline-item">
+<div class="sticky top-0 z-10 bg-[#F8FAFC] dark:bg-background-dark py-2 mb-4 w-full border-b border-gray-100 dark:border-gray-800">
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-12">Hoy, 24 Octubre</h3>
+</div>
+<div class="space-y-6 relative timeline-line">
+<article class="relative pl-12 group cursor-pointer">
+<div class="absolute left-0 top-1 w-10 h-10 rounded-full bg-white dark:bg-surface-dark border-2 border-teal-100 dark:border-teal-900 flex items-center justify-center z-10 shadow-sm group-hover:border-teal-500 transition-colors">
+<span class="material-symbols-rounded text-teal-600 text-lg">description</span>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 rounded">14:30</span>
+<h4 class="text-sm font-semibold text-gray-900 dark:text-white">Total Envíos USA</h4>
+</div>
+<p class="text-sm text-gray-600 dark:text-gray-300">Generación de Reporte PDF mensual</p>
+</div>
+<div class="text-right">
+<span class="block text-sm font-bold text-gray-900 dark:text-white font-mono">$150.00</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-100 dark:border-green-800">COBRADO</span>
+</div>
+</div>
+</article>
+<article class="relative pl-12 group cursor-pointer">
+<div class="absolute left-0 top-1 w-10 h-10 rounded-full bg-white dark:bg-surface-dark border-2 border-indigo-100 dark:border-indigo-900 flex items-center justify-center z-10 shadow-sm group-hover:border-indigo-500 transition-colors">
+<span class="material-symbols-rounded text-indigo-600 text-lg">build</span>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 rounded">11:15</span>
+<h4 class="text-sm font-semibold text-gray-900 dark:text-white">Executive Taxi</h4>
+</div>
+<p class="text-sm text-gray-600 dark:text-gray-300">Mantenimiento correctivo servidor</p>
+</div>
+<div class="text-right">
+<span class="block text-sm font-bold text-gray-900 dark:text-white font-mono">$45.00</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-100 dark:border-amber-800">PENDIENTE</span>
+</div>
+</div>
+</article>
+</div>
+</div>
+<div class="mb-8 relative timeline-item">
+<div class="sticky top-0 z-10 bg-[#F8FAFC] dark:bg-background-dark py-2 mb-4 w-full border-b border-gray-100 dark:border-gray-800">
+<h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-12">Ayer, 23 Octubre</h3>
+</div>
+<div class="space-y-6 relative timeline-line">
+<article class="relative pl-12 group cursor-pointer">
+<div class="absolute left-0 top-1 w-10 h-10 rounded-full bg-white dark:bg-surface-dark border-2 border-orange-100 dark:border-orange-900 flex items-center justify-center z-10 shadow-sm group-hover:border-orange-500 transition-colors">
+<span class="material-symbols-rounded text-orange-600 text-lg">campaign</span>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 rounded">09:30</span>
+<h4 class="text-sm font-semibold text-gray-900 dark:text-white">ASIRI Marketing</h4>
+</div>
+<p class="text-sm text-gray-600 dark:text-gray-300">Campaña ADS Febrero - Configuración</p>
+</div>
+<div class="text-right">
+<span class="block text-sm font-bold text-gray-900 dark:text-white font-mono">$200.00</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-100 dark:border-green-800">COBRADO</span>
+</div>
+</div>
+</article>
+</div>
+</div>
+</div>
+</section>
+</div>
+<aside class="w-full xl:w-80 flex flex-col gap-6">
+<div class="bg-white dark:bg-surface-dark p-6 rounded-xl shadow-soft border border-gray-100 dark:border-gray-700">
+<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Ingresos Mes Actual</h3>
+<div class="flex items-baseline gap-2">
+<span class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">$4,250</span>
+<span class="text-sm font-medium text-emerald-500 flex items-center">
+<span class="material-symbols-rounded text-base">trending_up</span>
+                                    12%
+                                </span>
+</div>
+<div class="mt-4 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+<div class="h-full bg-teal-500 w-3/4 rounded-full"></div>
+</div>
+<p class="mt-2 text-xs text-gray-500 text-right">Meta: $5,500</p>
+</div>
+<div class="bg-white dark:bg-surface-dark p-6 rounded-xl shadow-soft border border-gray-100 dark:border-gray-700">
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pendientes de Pago</h3>
+<span class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">3</span>
+</div>
+<ul class="space-y-4">
+<li class="flex items-center justify-between text-sm">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-amber-400"></div>
+<span class="text-gray-700 dark:text-gray-300">Executive Taxi</span>
+</div>
+<span class="font-mono text-gray-900 dark:text-white font-medium">$45.00</span>
+</li>
+<li class="flex items-center justify-between text-sm">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-red-400"></div>
+<span class="text-gray-700 dark:text-gray-300">Jamtech Corp</span>
+</div>
+<span class="font-mono text-gray-900 dark:text-white font-medium">$120.00</span>
+</li>
+<li class="flex items-center justify-between text-sm">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-amber-400"></div>
+<span class="text-gray-700 dark:text-gray-300">Total Envíos USA</span>
+</div>
+<span class="font-mono text-gray-900 dark:text-white font-medium">$65.00</span>
+</li>
+</ul>
+<button class="w-full mt-6 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors">
+                                Enviar Recordatorios
+                            </button>
+</div>
+</aside>
+</div>
+</div>
+<footer class="mt-12 border-t border-gray-200 dark:border-gray-700 pt-6">
+<div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+<p class="text-xs text-gray-400">© 2024 Jamtech Corp. Executive Dashboard v2.1</p>
+<div class="flex space-x-4 text-xs text-gray-400">
+<a class="hover:text-teal-600 transition-colors" href="#">Privacidad</a>
+<a class="hover:text-teal-600 transition-colors" href="#">Términos</a>
+<a class="hover:text-teal-600 transition-colors" href="#">Soporte</a>
+</div>
+</div>
+</footer>
+</main>
+</div>
+
+</body></html>
