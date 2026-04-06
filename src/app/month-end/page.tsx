@@ -41,10 +41,16 @@ export default function MonthEndPage() {
             return
         }
 
+        // Include recurring services from sub-clients
+        const subClientIds = clients
+            .filter(c => c.parent_client_id === selectedClientId)
+            .map(c => c.id)
+        const allIds = [selectedClientId, ...subClientIds]
+
         const { count, error } = await supabase
             .from('recurring_services')
             .select('*', { count: 'exact', head: true })
-            .eq('client_id', selectedClientId)
+            .in('client_id', allIds)
             .eq('is_active', true)
 
         if (error) {
@@ -74,7 +80,12 @@ export default function MonthEndPage() {
             .order('created_at', { ascending: false })
 
         if (selectedClientId !== 'all') {
-            query = query.eq('client_id', selectedClientId)
+            // Include logs from sub-clients whose parent_client_id matches the selected client
+            const subClientIds = clients
+                .filter(c => c.parent_client_id === selectedClientId)
+                .map(c => c.id)
+            const allIds = [selectedClientId, ...subClientIds]
+            query = query.in('client_id', allIds)
         }
 
         const { data, error } = await query
