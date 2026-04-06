@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Log } from '@/types'
+import { Log, Client, ServiceCategory } from '@/types'
 import { toast } from 'sonner'
 import { Pagination } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/button'
+import { getEurToUsdRate } from '@/lib/currency'
 import {
     Dialog,
     DialogContent,
@@ -70,6 +71,20 @@ export function Feed({
     const [logToDelete, setLogToDelete] = useState<string | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
 
+    // State for edit dialog
+    const [logToEdit, setLogToEdit] = useState<Log | null>(null)
+    const [editDescription, setEditDescription] = useState('')
+    const [editValue, setEditValue] = useState('')
+    const [editEurValue, setEditEurValue] = useState('')
+    const [editHours, setEditHours] = useState('')
+    const [editClientId, setEditClientId] = useState('')
+    const [editCategoryId, setEditCategoryId] = useState('')
+    const [editDate, setEditDate] = useState('')
+    const [isSaving, setIsSaving] = useState(false)
+    const [editClients, setEditClients] = useState<Client[]>([])
+    const [editCategories, setEditCategories] = useState<ServiceCategory[]>([])
+    const [editRate, setEditRate] = useState<number>(1.08)
+
     useEffect(() => {
         fetchLogs()
     }, [refreshTrigger])
@@ -122,6 +137,109 @@ export function Feed({
             onActivityChanged?.()
         }
     }
+
+    const openEditDialog = async (log: Log, e?: React.MouseEvent) => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        // Load clients, categories, and rate in parallel
+        const [clientsRes, categoriesRes, rate] = await Promise.all([
+            supabase.from('clients').select('*').order('name'),
+            supabase.from('service_categories').select('*').order('name'),
+            getEurToUsdRate(),
+        ])
+        setEditClients(clientsRes.data || [])
+        setEditCategories(categoriesRes.data || [])
+        setEditRate(rate)
+
+        const client = (clientsRes.data || []).find(c => c.id === log.client_id)
+        const isEur = client?.preferred_input_currency === 'EUR'
+
+        setLogToEdit(log)
+        setEditDescription(log.description)
+        setEditClientId(log.client_id)
+        setEditCategoryId(log.category_id || '')
+        setEditHours(log.hours ? String(log.hours) : '')
+        setEditDate(log.created_at.split('T')[0])
+
+        if (isEur && log.original_amount) {
+            setEditEurValue(String(log.original_amount))
+            setEditValue(log.value ? String(log.value) : '')
+        } else {
+            setEditValue(log.value ? String(log.value) : '')
+            setEditEurValue('')
+        }
+    }
+
+    const handleEditEurChange = (val: string) => {
+        setEditEurValue(val)
+        if (val && !isNaN(parseFloat(val))) {
+            setEditValue((parseFloat(val) * editRate).toFixed(2))
+        } else {
+            setEditValue('')
+        }
+    }
+
+    const handleEditClientChange = (id: string) => {
+        const oldClient = editClients.find(c => c.id === editClientId)
+        const newClient = editClients.find(c => c.id === id)
+        const oldCurrency = oldClient?.preferred_input_currency || 'USD'
+        const newCurrency = newClient?.preferred_input_currency || 'USD'
+
+        if (oldCurrency !== newCurrency && editValue) {
+            if (newCurrency === 'EUR') {
+                setEditEurValue(editValue)
+                setEditValue((parseFloat(editValue) * editRate).toFixed(2))
+            } else {
+                setEditValue(editEurValue || editValue)
+                setEditEurValue('')
+            }
+        }
+        setEditClientId(id)
+    }
+
+    const executeEdit = async () => {
+        if (!logToEdit || !editDescription || !editClientId) {
+            toast.error('Descripción y cliente son obligatorios')
+            return
+        }
+
+        setIsSaving(true)
+        const client = editClients.find(c => c.id === editClientId)
+        const isEur = client?.preferred_input_currency === 'EUR'
+
+        const { error } = await supabase
+            .from('logs')
+            .update({
+                description: editDescription,
+                client_id: editClientId,
+                value: editValue ? parseFloat(editValue) : null,
+                original_amount: isEur ? parseFloat(editEurValue) : (editValue ? parseFloat(editValue) : null),
+                currency: client?.preferred_input_currency || 'USD',
+                category_id: editCategoryId || null,
+                hours: editHours ? parseFloat(editHours) : null,
+                created_at: editDate ? `${editDate}T12:00:00Z` : logToEdit.created_at,
+            })
+            .eq('id', logToEdit.id)
+
+        setIsSaving(false)
+
+        if (error) {
+            console.error('Edit error:', error)
+            toast.error('Error al actualizar registro')
+        } else {
+            toast.success('Registro actualizado')
+            setLogToEdit(null)
+            fetchLogs()
+            onActivityChanged?.()
+        }
+    }
+
+    const editSelectedClient = editClients.find(c => c.id === editClientId)
+    const isEditEurClient = editSelectedClient?.preferred_input_currency === 'EUR'
+    const isEditHourBagClient = editSelectedClient?.billing_modality === 'hour_bag'
 
     if (loading) {
         return <div className="text-center py-10 text-gray-400">Cargando actividad...</div>
@@ -223,6 +341,16 @@ export function Feed({
                                                         {log.status === 'billed' ? 'COBRADO' : log.status === 'packaged' ? 'EMPAQUETADO' : 'PENDIENTE'}
                                                     </span>
                                                 </div>
+                                                {log.status === 'pending' && (
+                                                    <button
+                                                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-blue-100 dark:hover:border-blue-900/50 transition-all shadow-sm"
+                                                        onClick={(e) => openEditDialog(log, e)}
+                                                        title="Editar"
+                                                        type="button"
+                                                    >
+                                                        <span className="material-symbols-rounded text-lg">edit</span>
+                                                    </button>
+                                                )}
                                                 <button
                                                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg border border-gray-100 dark:border-gray-800 hover:border-red-100 dark:hover:border-red-900/50 transition-all shadow-sm"
                                                     onClick={(e) => confirmDelete(log.id, e)}
@@ -266,6 +394,114 @@ export function Feed({
                         </Button>
                         <Button variant="destructive" onClick={executeDelete} disabled={isDeleting}>
                             {isDeleting ? 'Eliminando...' : 'Eliminar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!logToEdit} onOpenChange={(open) => !open && setLogToEdit(null)}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle>Editar Registro</DialogTitle>
+                        <DialogDescription>
+                            Modifica los datos de esta actividad pendiente.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-4 py-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Descripción</label>
+                            <input
+                                className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-sm py-2 px-3"
+                                type="text"
+                                value={editDescription}
+                                onChange={(e) => setEditDescription(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha</label>
+                                <input
+                                    className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-sm py-2 px-3 font-mono"
+                                    type="date"
+                                    value={editDate}
+                                    onChange={(e) => setEditDate(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    {isEditEurClient ? 'Monto (EUR)' : 'Monto'}
+                                </label>
+                                <div className="relative">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <span className="text-gray-500 text-sm">{isEditEurClient ? '€' : '$'}</span>
+                                    </div>
+                                    <input
+                                        className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-sm py-2 pl-7 px-3 text-right font-mono"
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={isEditEurClient ? editEurValue : editValue}
+                                        onChange={(e) => isEditEurClient ? handleEditEurChange(e.target.value) : setEditValue(e.target.value)}
+                                    />
+                                </div>
+                                {isEditEurClient && editValue && (
+                                    <p className="text-[10px] text-teal-600 font-mono mt-1">
+                                        ≈ ${editValue} USD (tasa: {editRate.toFixed(4)})
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        {isEditHourBagClient && (
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-purple-500 uppercase tracking-wider flex items-center gap-1">
+                                    <span className="material-symbols-rounded text-sm">schedule</span>
+                                    Horas
+                                </label>
+                                <input
+                                    className="block w-full rounded-lg border border-purple-300 dark:border-purple-600 bg-purple-50/50 dark:bg-purple-900/20 text-gray-900 dark:text-white placeholder-gray-400 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-sm py-2 px-3 text-right font-mono"
+                                    type="number"
+                                    step="0.25"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={editHours}
+                                    onChange={(e) => setEditHours(e.target.value)}
+                                />
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</label>
+                                <select
+                                    className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-sm py-2 px-3"
+                                    value={editClientId}
+                                    onChange={(e) => handleEditClientChange(e.target.value)}
+                                >
+                                    <option value="">Seleccionar...</option>
+                                    {editClients.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Categoría</label>
+                                <select
+                                    className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-sm py-2 px-3"
+                                    value={editCategoryId}
+                                    onChange={(e) => setEditCategoryId(e.target.value)}
+                                >
+                                    {editCategories.map((cat) => (
+                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setLogToEdit(null)} disabled={isSaving}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={executeEdit} disabled={isSaving} className="bg-teal-600 hover:bg-teal-700 text-white">
+                            {isSaving ? 'Guardando...' : 'Guardar Cambios'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
