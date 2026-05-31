@@ -193,7 +193,12 @@ export function QuoteForm({
             onSaved?.()
         } catch (err) {
             console.error(err)
-            toast.error(isEditing ? 'Error al actualizar la cotización' : 'Error al crear la cotización')
+            const detail =
+                (err as { message?: string })?.message ||
+                (typeof err === 'string' ? err : 'Error desconocido')
+            toast.error(
+                `${isEditing ? 'Error al actualizar la cotización' : 'Error al crear la cotización'}: ${detail}`
+            )
         } finally {
             setLoading(false)
         }
