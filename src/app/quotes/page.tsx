@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Quote } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2 } from 'lucide-react'
+import { Download, Trash2, Pencil } from 'lucide-react'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
 import { formatDate } from '@/lib/date-utils'
 import { toast } from 'sonner'
@@ -27,10 +27,23 @@ export default function QuotesPage() {
     const itemsPerPage = 6
     const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null)
 
     useEffect(() => {
         fetchQuotes()
     }, [])
+
+    const startEdit = (quote: Quote) => {
+        setQuoteToEdit(quote)
+        if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+    }
+
+    const handleSaved = () => {
+        setQuoteToEdit(null)
+        fetchQuotes()
+    }
 
     const fetchQuotes = async () => {
         setLoading(true)
@@ -122,7 +135,11 @@ export default function QuotesPage() {
         <div className="max-w-4xl mx-auto space-y-8">
             <div>
                 <h1 className="text-2xl font-bold mb-6">Cotizaciones</h1>
-                <QuoteForm onCreated={fetchQuotes} />
+                <QuoteForm
+                    onSaved={handleSaved}
+                    quoteToEdit={quoteToEdit}
+                    onCancelEdit={() => setQuoteToEdit(null)}
+                />
             </div>
 
             <div>
@@ -139,6 +156,15 @@ export default function QuotesPage() {
                                             <span className="font-bold text-lg">#{quote.quote_number}</span>
                                             <span className="text-muted-foreground">
                                                 • {formatDate(quote.issue_date)}
+                                            </span>
+                                            <span
+                                                className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                                                    quote.template === 'asiri'
+                                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                                                        : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+                                                }`}
+                                            >
+                                                {quote.template === 'asiri' ? 'Asiri' : 'JAMTech'}
                                             </span>
                                         </div>
                                         <div className="font-medium text-primary">{quote.client_name}</div>
@@ -172,6 +198,15 @@ export default function QuotesPage() {
                                                 title="Descargar PDF"
                                             >
                                                 <Download className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-900/20"
+                                                onClick={() => startEdit(quote)}
+                                                title="Editar cotización"
+                                            >
+                                                <Pencil className="w-4 h-4" />
                                             </Button>
                                             <Button
                                                 variant="outline"

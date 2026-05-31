@@ -1,12 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { QuoteItem } from '@/types'
+import { QuoteItem, Quote } from '@/types'
 
 type QuoteType = 'amount' | 'hours'
 type QuoteTemplate = 'jamtech' | 'asiri'
+
+// Empresas disponibles. La empresa elegida define el formato visual del PDF.
+const COMPANIES: { name: string; template: QuoteTemplate }[] = [
+    { name: 'JAM Tech, C.A.', template: 'jamtech' },
+    { name: 'Asiri Marketing', template: 'asiri' },
+]
+
+const templateForCompany = (companyName: string): QuoteTemplate =>
+    COMPANIES.find((c) => c.name === companyName)?.template || 'jamtech'
 
 type EditableItem = {
     service: string
@@ -39,11 +48,20 @@ const generateQuoteNumber = async (): Promise<string> => {
     return `COT-${String(next).padStart(4, '0')}`
 }
 
-export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
+export function QuoteForm({
+    onSaved,
+    quoteToEdit,
+    onCancelEdit,
+}: {
+    onSaved?: () => void
+    quoteToEdit?: Quote | null
+    onCancelEdit?: () => void
+}) {
+    const isEditing = !!quoteToEdit
+
     const [clientName, setClientName] = useState('')
-    const [companyName, setCompanyName] = useState('')
+    const [companyName, setCompanyName] = useState(COMPANIES[0].name)
     const [quoteType, setQuoteType] = useState<QuoteType>('amount')
-    const [template, setTemplate] = useState<QuoteTemplate>('jamtech')
     const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD')
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
     const [items, setItems] = useState<EditableItem[]>([emptyItem()])
@@ -51,6 +69,36 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
 
     const isHours = quoteType === 'hours'
     const symbol = currency === 'EUR' ? '€' : '$'
+    const template = templateForCompany(companyName)
+
+    // Load the quote being edited into the form
+    useEffect(() => {
+        if (!quoteToEdit) return
+        setClientName(quoteToEdit.client_name || '')
+        // Use the saved company if it matches a known one; otherwise default by template
+        const matched = COMPANIES.find((c) => c.name === quoteToEdit.company_name)
+        if (matched) {
+            setCompanyName(matched.name)
+        } else {
+            setCompanyName(
+                (COMPANIES.find((c) => c.template === quoteToEdit.template) || COMPANIES[0]).name
+            )
+        }
+        setQuoteType(quoteToEdit.quote_type)
+        setCurrency(quoteToEdit.currency)
+        setDate(quoteToEdit.issue_date)
+        setItems(
+            quoteToEdit.items && quoteToEdit.items.length > 0
+                ? quoteToEdit.items.map((it) => ({
+                      service: it.service || '',
+                      description: it.description || '',
+                      quantity: String(it.quantity ?? 1),
+                      unit_price: it.unit_price ? String(it.unit_price) : '',
+                      hours: it.hours ? String(it.hours) : '',
+                  }))
+                : [emptyItem()]
+        )
+    }, [quoteToEdit])
 
     const updateItem = (index: number, field: keyof EditableItem, value: string) => {
         setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)))
@@ -59,7 +107,7 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
     const addItem = () => setItems((prev) => [...prev, emptyItem()])
 
     const removeItem = (index: number) => {
-        setItems((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)))
+        setItems((prev) => (prev.length === 1 ? prev : prev.filter((_item, i) => i !== index)))
     }
 
     const totalAmount = items.reduce((sum, it) => {
@@ -72,9 +120,8 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
 
     const resetForm = () => {
         setClientName('')
-        setCompanyName('')
+        setCompanyName(COMPANIES[0].name)
         setQuoteType('amount')
-        setTemplate('jamtech')
         setCurrency('USD')
         setDate(new Date().toISOString().split('T')[0])
         setItems([emptyItem()])
@@ -111,31 +158,42 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
             return
         }
 
+        const payload = {
+            client_name: clientName.trim(),
+            company_name: companyName,
+            quote_type: quoteType,
+            template,
+            currency,
+            items: validItems,
+            total_amount: isHours ? 0 : parseFloat(totalAmount.toFixed(2)),
+            total_hours: isHours ? parseFloat(totalHours.toFixed(2)) : 0,
+            issue_date: date,
+        }
+
         setLoading(true)
         try {
-            const quoteNumber = await generateQuoteNumber()
-            const { error } = await supabase.from('quotes').insert({
-                quote_number: quoteNumber,
-                client_name: clientName.trim(),
-                company_name: companyName.trim() || null,
-                quote_type: quoteType,
-                template,
-                currency,
-                items: validItems,
-                total_amount: isHours ? 0 : parseFloat(totalAmount.toFixed(2)),
-                total_hours: isHours ? parseFloat(totalHours.toFixed(2)) : 0,
-                issue_date: date,
-                created_at: new Date().toISOString(),
-            })
-
-            if (error) throw error
-
-            toast.success(`Cotización ${quoteNumber} creada`)
-            resetForm()
-            onCreated?.()
+            if (isEditing && quoteToEdit) {
+                const { error } = await supabase
+                    .from('quotes')
+                    .update(payload)
+                    .eq('id', quoteToEdit.id)
+                if (error) throw error
+                toast.success(`Cotización ${quoteToEdit.quote_number} actualizada`)
+            } else {
+                const quoteNumber = await generateQuoteNumber()
+                const { error } = await supabase.from('quotes').insert({
+                    ...payload,
+                    quote_number: quoteNumber,
+                    created_at: new Date().toISOString(),
+                })
+                if (error) throw error
+                toast.success(`Cotización ${quoteNumber} creada`)
+                resetForm()
+            }
+            onSaved?.()
         } catch (err) {
             console.error(err)
-            toast.error('Error al crear la cotización')
+            toast.error(isEditing ? 'Error al actualizar la cotización' : 'Error al crear la cotización')
         } finally {
             setLoading(false)
         }
@@ -156,9 +214,19 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                             <span className="material-symbols-rounded text-xl">request_quote</span>
                         </div>
                         <h2 className="text-base font-semibold text-white" id="add-quote-title">
-                            Nueva Cotización
+                            {isEditing ? `Editar Cotización #${quoteToEdit?.quote_number}` : 'Nueva Cotización'}
                         </h2>
                     </div>
+                    {isEditing && (
+                        <button
+                            type="button"
+                            onClick={() => onCancelEdit?.()}
+                            className="text-xs text-gray-300 hover:text-white flex items-center gap-1"
+                        >
+                            <span className="material-symbols-rounded text-base">close</span>
+                            Cancelar edición
+                        </button>
+                    )}
                 </div>
 
                 {/* Form */}
@@ -195,37 +263,6 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                             </div>
                         </div>
 
-                        {/* Template / visual format selector */}
-                        <div className="space-y-1">
-                            <label className={labelCls}>Formato visual</label>
-                            <div className="grid grid-cols-2 gap-2 max-w-md">
-                                <button
-                                    type="button"
-                                    onClick={() => setTemplate('jamtech')}
-                                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-semibold transition-all ${
-                                        template === 'jamtech'
-                                            ? 'border-sky-600 bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
-                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
-                                    }`}
-                                >
-                                    <span className="material-symbols-rounded text-base">corporate_fare</span>
-                                    JAMTech
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setTemplate('asiri')}
-                                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-semibold transition-all ${
-                                        template === 'asiri'
-                                            ? 'border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300'
-                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
-                                    }`}
-                                >
-                                    <span className="material-symbols-rounded text-base">palette</span>
-                                    Asiri
-                                </button>
-                            </div>
-                        </div>
-
                         {/* Row 1: Client + Company */}
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
                             <div className="md:col-span-6 space-y-1">
@@ -245,14 +282,28 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                                 <label className={labelCls} htmlFor="quote-company">
                                     Tu Empresa
                                 </label>
-                                <input
+                                <select
                                     className={inputCls}
                                     id="quote-company"
-                                    placeholder="Nombre de tu empresa..."
-                                    type="text"
                                     value={companyName}
                                     onChange={(e) => setCompanyName(e.target.value)}
-                                />
+                                >
+                                    {COMPANIES.map((c) => (
+                                        <option key={c.name} value={c.name}>
+                                            {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    Define el formato visual del PDF:{' '}
+                                    <span
+                                        className={
+                                            template === 'asiri' ? 'text-purple-500 font-semibold' : 'text-sky-500 font-semibold'
+                                        }
+                                    >
+                                        {template === 'asiri' ? 'Asiri (morado)' : 'JAMTech (azul)'}
+                                    </span>
+                                </p>
                             </div>
                         </div>
 
@@ -307,7 +358,7 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                                     key={index}
                                     className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end border border-gray-100 dark:border-gray-700 rounded-lg p-3 bg-gray-50/50 dark:bg-gray-800/30"
                                 >
-                                    <div className={`${isHours ? 'md:col-span-3' : 'md:col-span-3'} space-y-1`}>
+                                    <div className="md:col-span-3 space-y-1">
                                         <label className={subLabelCls}>Servicio</label>
                                         <input
                                             className={inputCls}
@@ -404,13 +455,28 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                                     </span>
                                 )}
                             </div>
-                            <button
-                                className="w-full md:w-auto flex justify-center items-center py-2 px-6 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
-                                type="submit"
-                                disabled={loading}
-                            >
-                                {loading ? 'Guardando...' : 'Guardar Cotización'}
-                            </button>
+                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                {isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onCancelEdit?.()}
+                                        className="flex-1 md:flex-none py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
+                                <button
+                                    className="flex-1 md:flex-none flex justify-center items-center py-2 px-6 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+                                    type="submit"
+                                    disabled={loading}
+                                >
+                                    {loading
+                                        ? 'Guardando...'
+                                        : isEditing
+                                        ? 'Guardar Cambios'
+                                        : 'Guardar Cotización'}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
