@@ -8,6 +8,7 @@ create table if not exists public.quotes (
     quote_number  text not null,                       -- Ej: COT-0001
     client_name   text not null,                       -- Nombre del cliente (texto libre)
     company_name  text,                                -- Nombre de tu empresa (texto libre)
+    doc_title     text,                                -- Título del documento en el PDF (ej: COTIZACIÓN, CONTROL DE HORAS)
     quote_type    text not null default 'amount',      -- 'amount' (con importe) | 'hours' (solo horas)
     template      text not null default 'jamtech',     -- 'jamtech' (azul, con header) | 'asiri' (morado)
     currency      text not null default 'USD',         -- 'USD' | 'EUR'
@@ -18,9 +19,11 @@ create table if not exists public.quotes (
     created_at    timestamptz not null default now()
 );
 
--- Si la tabla ya existía sin la columna 'template', añadirla (idempotente)
+-- Si la tabla ya existía sin estas columnas, añadirlas (idempotente)
 alter table public.quotes
     add column if not exists template text not null default 'jamtech';
+alter table public.quotes
+    add column if not exists doc_title text;
 
 -- Habilitar Row Level Security (igual que el resto de tablas del proyecto)
 alter table public.quotes enable row level security;

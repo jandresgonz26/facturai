@@ -61,6 +61,7 @@ export function QuoteForm({
 
     const [clientName, setClientName] = useState('')
     const [companyName, setCompanyName] = useState(COMPANIES[0].name)
+    const [docTitle, setDocTitle] = useState('COTIZACIÓN')
     const [quoteType, setQuoteType] = useState<QuoteType>('amount')
     const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD')
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -75,6 +76,7 @@ export function QuoteForm({
     useEffect(() => {
         if (!quoteToEdit) return
         setClientName(quoteToEdit.client_name || '')
+        setDocTitle(quoteToEdit.doc_title || 'COTIZACIÓN')
         // Use the saved company if it matches a known one; otherwise default by template
         const matched = COMPANIES.find((c) => c.name === quoteToEdit.company_name)
         if (matched) {
@@ -121,6 +123,7 @@ export function QuoteForm({
     const resetForm = () => {
         setClientName('')
         setCompanyName(COMPANIES[0].name)
+        setDocTitle('COTIZACIÓN')
         setQuoteType('amount')
         setCurrency('USD')
         setDate(new Date().toISOString().split('T')[0])
@@ -161,6 +164,7 @@ export function QuoteForm({
         const payload = {
             client_name: clientName.trim(),
             company_name: companyName,
+            doc_title: docTitle.trim() || 'COTIZACIÓN',
             quote_type: quoteType,
             template,
             currency,
@@ -266,6 +270,25 @@ export function QuoteForm({
                                     Solo horas
                                 </button>
                             </div>
+                        </div>
+
+                        {/* Document title */}
+                        <div className="space-y-1">
+                            <label className={labelCls} htmlFor="quote-doc-title">
+                                Título del documento
+                            </label>
+                            <input
+                                className={inputCls}
+                                id="quote-doc-title"
+                                placeholder="COTIZACIÓN"
+                                type="text"
+                                value={docTitle}
+                                onChange={(e) => setDocTitle(e.target.value)}
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">
+                                Es el texto grande que aparece arriba en el PDF (ej.: COTIZACIÓN, CONTROL DE HORAS,
+                                PRESUPUESTO).
+                            </p>
                         </div>
 
                         {/* Row 1: Client + Company */}

@@ -11,7 +11,12 @@ const formatDate = (dateString: string) => {
 
 const buildFileName = (quote: Quote, formattedDate: string) => {
     const clientName = (quote.client_name || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_')
-    return `Cotizacion_${quote.quote_number}_${clientName}_${formattedDate.replace(/\//g, '-')}.pdf`
+    const titlePart = (quote.doc_title || 'Cotizacion')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '') // strip accents
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+    return `${titlePart}_${quote.quote_number}_${clientName}_${formattedDate.replace(/\//g, '-')}.pdf`
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -26,6 +31,7 @@ const renderJamtechTemplate = async (quote: Quote, settings: CompanySettings | n
     const isHours = quote.quote_type === 'hours'
     const currencySymbol = quote.currency === 'EUR' ? '€' : '$'
     const formattedDate = formatDate(quote.issue_date)
+    const docTitle = (quote.doc_title || 'COTIZACIÓN').toUpperCase()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -56,16 +62,16 @@ const renderJamtechTemplate = async (quote: Quote, settings: CompanySettings | n
 
     let y = headerHeight + 12
 
-    // ── COTIZACIÓN Title ──
+    // ── Document Title ──
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(32)
     doc.setTextColor(47, 84, 150) // Corporate Blue
-    doc.text('COTIZACIÓN', margin, y)
+    doc.text(docTitle, margin, y)
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
     doc.setTextColor(0, 0, 0)
-    doc.text(`Cotización No.: ${quote.quote_number}`, pageWidth - margin, y - 8, { align: 'right' })
+    doc.text(`No.: ${quote.quote_number}`, pageWidth - margin, y - 8, { align: 'right' })
     doc.text(`Fecha: ${formattedDate}`, pageWidth - margin, y - 3, { align: 'right' })
 
     y += 12
@@ -192,6 +198,7 @@ const renderAsiriTemplate = (quote: Quote) => {
     const isHours = quote.quote_type === 'hours'
     const currencySymbol = quote.currency === 'EUR' ? '€' : '$'
     const companyName = quote.company_name || 'ASIRI MARKETING SL'
+    const docTitle = (quote.doc_title || 'COTIZACIÓN').toUpperCase()
 
     const doc = new jsPDF('p', 'mm', 'a4')
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -203,7 +210,7 @@ const renderAsiriTemplate = (quote: Quote) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(28)
     doc.setTextColor(88, 28, 135) // Purple-800
-    doc.text('COTIZACIÓN', margin, y)
+    doc.text(docTitle, margin, y)
 
     // ── Date & company (right side) ──
     doc.setFont('helvetica', 'normal')

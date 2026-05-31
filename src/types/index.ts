@@ -75,6 +75,7 @@ export interface Quote {
     quote_number: string
     client_name: string
     company_name?: string | null
+    doc_title?: string | null
     quote_type: 'amount' | 'hours'
     template: 'jamtech' | 'asiri'
     currency: 'USD' | 'EUR'
