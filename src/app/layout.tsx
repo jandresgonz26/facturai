@@ -28,9 +28,9 @@ export default function RootLayout({
       <body className={`${inter.className} min-h-screen bg-background font-sans antialiased`} suppressHydrationWarning>
         <div className="flex min-h-screen overflow-hidden">
           <Sidebar />
-          <div className="flex-1 flex flex-col lg:ml-64 h-screen overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col lg:ml-64 h-screen overflow-hidden">
             <Header />
-            <main className="flex-1 overflow-y-auto px-6 py-8">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-8">
               <div className="max-w-[1600px] mx-auto">
                 {children}
               </div>

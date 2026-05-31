@@ -8,6 +8,7 @@ const navLinks = [
     { href: '/', label: 'Dashboard', icon: 'dashboard' },
     { href: '/clients', label: 'Clientes', icon: 'group' },
     { href: '/month-end', label: 'Facturación', icon: 'receipt_long' },
+    { href: '/quotes', label: 'Cotizaciones', icon: 'request_quote' },
     { href: '/invoices', label: 'Reportes', icon: 'analytics' },
     { href: '/settings', label: 'Ajustes', icon: 'settings' },
 ]

@@ -62,6 +62,28 @@ export interface CompanySettings {
     updated_at: string
 }
 
+export interface QuoteItem {
+    service: string
+    description: string
+    quantity: number
+    unit_price: number
+    hours: number
+}
+
+export interface Quote {
+    id: string
+    quote_number: string
+    client_name: string
+    company_name?: string | null
+    quote_type: 'amount' | 'hours'
+    currency: 'USD' | 'EUR'
+    items: QuoteItem[]
+    total_amount: number
+    total_hours: number
+    issue_date: string
+    created_at: string
+}
+
 export interface RecurringService {
     id: string
     client_id: string

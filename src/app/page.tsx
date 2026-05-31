@@ -18,7 +18,7 @@ export default function Home() {
   return (
     <div className="flex flex-col xl:flex-row gap-8">
       {/* Main Content */}
-      <div className="flex-1 space-y-8">
+      <div className="flex-1 min-w-0 space-y-8">
         {/* Title */}
         <div className="flex justify-between items-end">
           <div>
