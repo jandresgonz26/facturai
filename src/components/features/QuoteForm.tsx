@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { QuoteItem } from '@/types'
 
 type QuoteType = 'amount' | 'hours'
+type QuoteTemplate = 'jamtech' | 'asiri'
 
 type EditableItem = {
     service: string
@@ -42,6 +43,7 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
     const [clientName, setClientName] = useState('')
     const [companyName, setCompanyName] = useState('')
     const [quoteType, setQuoteType] = useState<QuoteType>('amount')
+    const [template, setTemplate] = useState<QuoteTemplate>('jamtech')
     const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD')
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
     const [items, setItems] = useState<EditableItem[]>([emptyItem()])
@@ -72,6 +74,7 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
         setClientName('')
         setCompanyName('')
         setQuoteType('amount')
+        setTemplate('jamtech')
         setCurrency('USD')
         setDate(new Date().toISOString().split('T')[0])
         setItems([emptyItem()])
@@ -116,6 +119,7 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                 client_name: clientName.trim(),
                 company_name: companyName.trim() || null,
                 quote_type: quoteType,
+                template,
                 currency,
                 items: validItems,
                 total_amount: isHours ? 0 : parseFloat(totalAmount.toFixed(2)),
@@ -187,6 +191,37 @@ export function QuoteForm({ onCreated }: { onCreated?: () => void }) {
                                 >
                                     <span className="material-symbols-rounded text-base">schedule</span>
                                     Solo horas
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Template / visual format selector */}
+                        <div className="space-y-1">
+                            <label className={labelCls}>Formato visual</label>
+                            <div className="grid grid-cols-2 gap-2 max-w-md">
+                                <button
+                                    type="button"
+                                    onClick={() => setTemplate('jamtech')}
+                                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-semibold transition-all ${
+                                        template === 'jamtech'
+                                            ? 'border-sky-600 bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
+                                    }`}
+                                >
+                                    <span className="material-symbols-rounded text-base">corporate_fare</span>
+                                    JAMTech
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setTemplate('asiri')}
+                                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-semibold transition-all ${
+                                        template === 'asiri'
+                                            ? 'border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300'
+                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
+                                    }`}
+                                >
+                                    <span className="material-symbols-rounded text-base">palette</span>
+                                    Asiri
                                 </button>
                             </div>
                         </div>

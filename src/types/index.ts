@@ -76,6 +76,7 @@ export interface Quote {
     client_name: string
     company_name?: string | null
     quote_type: 'amount' | 'hours'
+    template: 'jamtech' | 'asiri'
     currency: 'USD' | 'EUR'
     items: QuoteItem[]
     total_amount: number

@@ -9,6 +9,7 @@ create table if not exists public.quotes (
     client_name   text not null,                       -- Nombre del cliente (texto libre)
     company_name  text,                                -- Nombre de tu empresa (texto libre)
     quote_type    text not null default 'amount',      -- 'amount' (con importe) | 'hours' (solo horas)
+    template      text not null default 'jamtech',     -- 'jamtech' (azul, con header) | 'asiri' (morado)
     currency      text not null default 'USD',         -- 'USD' | 'EUR'
     items         jsonb not null default '[]'::jsonb,  -- [{ service, description, quantity, unit_price, hours }]
     total_amount  numeric not null default 0,
@@ -16,6 +17,10 @@ create table if not exists public.quotes (
     issue_date    date not null default current_date,
     created_at    timestamptz not null default now()
 );
+
+-- Si la tabla ya existía sin la columna 'template', añadirla (idempotente)
+alter table public.quotes
+    add column if not exists template text not null default 'jamtech';
 
 -- Habilitar Row Level Security (igual que el resto de tablas del proyecto)
 alter table public.quotes enable row level security;
