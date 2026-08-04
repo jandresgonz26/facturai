@@ -90,9 +90,14 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
         const client = clientToPackage.client
 
         try {
+            const packagedAt = new Date().toISOString()
             const { error: updateError } = await supabase
                 .from('logs')
-                .update({ status: 'packaged' })
+                .update({
+                    status: 'packaged',
+                    packaged_batch_id: crypto.randomUUID(),
+                    packaged_at: packagedAt,
+                })
                 .in('id', clientToPackage.pendingLogIds)
 
             if (updateError) throw updateError

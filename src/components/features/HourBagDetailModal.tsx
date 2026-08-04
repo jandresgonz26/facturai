@@ -58,10 +58,12 @@ interface PendingLog {
     service_categories?: { name: string } | null
     category_id?: string | null
     value?: number | null
+    packaged_batch_id?: string | null
+    packaged_at?: string | null
 }
 
 interface PackagedBag {
-    /** The date the bag was packaged (derived from when the log entries changed status) */
+    /** The date the bag was packaged */
     packagedAt: string
     totalHours: number
     logs: PendingLog[]
@@ -120,43 +122,65 @@ export function HourBagDetailModal({
         // Fetch packaged logs (historical bags)
         const { data: packaged } = await supabase
             .from('logs')
-            .select('id, description, hours, created_at, category_id, value, service_categories(name)')
+            .select('id, description, hours, created_at, category_id, value, service_categories(name), packaged_batch_id, packaged_at')
             .eq('client_id', client.id)
             .eq('status', 'packaged')
             .not('hours', 'is', null)
             .order('created_at', { ascending: false })
 
-        // Group packaged logs into "bags" — we use a simple heuristic: 
-        // group consecutive logs where cumulative hours reach 10h
         if (packaged && packaged.length > 0) {
+            const all = packaged as unknown as PendingLog[]
             const bags: PackagedBag[] = []
-            let currentBag: PendingLog[] = []
-            let cumHours = 0
 
-            // Sort oldest first for grouping
-            const sorted = [...(packaged as unknown as PendingLog[])].reverse()
-            for (const log of sorted) {
-                currentBag.push(log)
-                cumHours += log.hours || 0
-                if (cumHours >= 10) {
+            // Logs packaged with the current code carry a real packaged_batch_id
+            // set at the moment they were packaged together — group by that.
+            const withBatch = all.filter(l => l.packaged_batch_id)
+            const batchGroups = new Map<string, PendingLog[]>()
+            for (const log of withBatch) {
+                const key = log.packaged_batch_id as string
+                if (!batchGroups.has(key)) batchGroups.set(key, [])
+                batchGroups.get(key)!.push(log)
+            }
+            for (const logs of batchGroups.values()) {
+                bags.push({
+                    packagedAt: logs[0].packaged_at || logs[0].created_at,
+                    totalHours: logs.reduce((s, l) => s + (l.hours || 0), 0),
+                    logs: [...logs].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+                })
+            }
+
+            // Legacy logs packaged before packaged_batch_id existed have no
+            // reliable grouping — fall back to the old approximate heuristic
+            // (chunking by created_at order until 10h) for those only.
+            const legacy = all.filter(l => !l.packaged_batch_id)
+            if (legacy.length > 0) {
+                let currentBag: PendingLog[] = []
+                let cumHours = 0
+                const sorted = [...legacy].reverse() // oldest first
+                for (const log of sorted) {
+                    currentBag.push(log)
+                    cumHours += log.hours || 0
+                    if (cumHours >= 10) {
+                        bags.push({
+                            packagedAt: currentBag[currentBag.length - 1].created_at,
+                            totalHours: cumHours,
+                            logs: [...currentBag],
+                        })
+                        currentBag = []
+                        cumHours = 0
+                    }
+                }
+                if (currentBag.length > 0) {
                     bags.push({
                         packagedAt: currentBag[currentBag.length - 1].created_at,
                         totalHours: cumHours,
                         logs: [...currentBag],
                     })
-                    currentBag = []
-                    cumHours = 0
                 }
             }
-            // If there are remaining logs (partial bag)
-            if (currentBag.length > 0) {
-                bags.push({
-                    packagedAt: currentBag[currentBag.length - 1].created_at,
-                    totalHours: cumHours,
-                    logs: [...currentBag],
-                })
-            }
-            setPackagedBags(bags.reverse()) // Most recent first
+
+            bags.sort((a, b) => b.packagedAt.localeCompare(a.packagedAt)) // most recent first
+            setPackagedBags(bags)
         } else {
             setPackagedBags([])
         }

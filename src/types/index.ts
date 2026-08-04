@@ -30,6 +30,8 @@ export interface Log {
     currency?: string
     hours?: number | null
     status: 'pending' | 'billed' | 'packaged'
+    packaged_batch_id?: string | null
+    packaged_at?: string | null
     category?: string
     category_id?: string
     invoice_id?: string
