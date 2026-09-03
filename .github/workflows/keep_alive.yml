@@ -1,0 +1,32 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Se ejecuta cada 3 días a las 08:00 UTC para evitar la pausa por inactividad (límite de 7 días)
+    - cron: '0 8 */3 * *'
+  workflow_dispatch: # Permite ejecución manual desde la pestaña Actions de GitHub
+
+jobs:
+  ping-supabase:
+    name: Ping Supabase REST API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Project
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://rltyitwiorjovuzvwecu.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_xktzBRzkacL74uzStBBW8A_zwiaBpEe' }}
+        run: |
+          echo "🚀 Enviando ping de actividad a Supabase..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -X GET "${SUPABASE_URL}/rest/v1/" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          echo "📡 Código de respuesta HTTP: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✅ Actividad registrada exitosamente en Supabase. El proyecto se mantendrá activo."
+          else
+            echo "⚠️ Advertencia: Código de respuesta HTTP inesperado ($HTTP_STATUS). Si el proyecto estaba pausado previamente, recuerda despausarlo una vez desde el panel de Supabase."
+          fi
