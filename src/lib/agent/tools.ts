@@ -208,7 +208,8 @@ export const agentTools = {
     }),
 
     add_recurring_service: tool({
-        description: 'Crea un servicio fijo mensual para un cliente. Requiere confirmación. Solo cuando el usuario diga explícitamente que algo debe cobrarse todos los meses.',
+        description:
+            'Crea un servicio FIJO que se cobrará TODOS los meses de forma automática hasta que se desactive. No todos los clientes tienen servicios fijos: es una decisión poco frecuente e importante. Requiere confirmación. Úsala SOLO si el usuario pide explícitamente que sea recurrente ("todos los meses", "cada mes", "de forma fija"). Si el usuario menciona un mes concreto (ej. "el SEO de agosto") es un cobro puntual de ese mes: usa add_log, NO esta herramienta, aunque el trabajo en sí sea mensual.',
         inputSchema: z.object({
             client_id: uuidSchema,
             client_name: clientNameField,

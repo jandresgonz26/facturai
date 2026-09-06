@@ -68,13 +68,13 @@ function describeInput(tool: string, raw: unknown): { title: string; rows: Row[]
             }
         case 'add_recurring_service':
             return {
-                title: `Crear servicio fijo para ${client}`,
+                title: `Nuevo servicio FIJO para ${client}`,
                 rows: [
                     { label: 'Descripción', value: str(input.description) ?? '-' },
                     { label: 'Monto mensual', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` },
                     ...(input.category ? [{ label: 'Categoría', value: str(input.category)! }] : []),
                 ],
-                note: 'Se cobrará todos los meses al cargar los servicios fijos.',
+                note: `A partir de ahora, ${client} tendrá este cargo automático cada mes hasta que lo desactives en Clientes. No es un cobro puntual: no todos los clientes tienen servicios fijos, así que confirma solo si de verdad quieres que se repita mes a mes.`,
             }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, rows: [] }
@@ -297,9 +297,14 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
         const responded = part.state === 'approval-responded'
         const approved = part.approval?.approved
         const snapshot = toolName === 'bill_client_month' ? findSnapshot(context, str((part.input as Rec | undefined)?.client_id)) : undefined
+        const isStandingCommitment = toolName === 'add_recurring_service'
+        const accent = isStandingCommitment
+            ? 'border-amber-500/50 [&_.tc-head]:bg-amber-500/15 [&_.tc-head]:border-amber-500/40 [&_.tc-head]:text-amber-700 dark:[&_.tc-head]:text-amber-300 [&_.tc-confirm]:bg-amber-600 [&_.tc-confirm]:hover:bg-amber-700'
+            : 'border-teal-500/40 [&_.tc-head]:bg-teal-600/10 [&_.tc-head]:border-teal-500/30 [&_.tc-head]:text-teal-700 dark:[&_.tc-head]:text-teal-300 [&_.tc-confirm]:bg-teal-600 [&_.tc-confirm]:hover:bg-teal-700'
         return (
-            <div className="rounded-xl border border-teal-500/40 bg-card shadow-sm overflow-hidden">
-                <div className="px-4 py-2.5 bg-teal-600/10 border-b border-teal-500/30 text-sm font-semibold text-teal-700 dark:text-teal-300">
+            <div className={`rounded-xl border bg-card shadow-sm overflow-hidden ${accent}`}>
+                <div className="tc-head px-4 py-2.5 border-b text-sm font-semibold flex items-center gap-1.5">
+                    {isStandingCommitment && !responded && <TriangleAlert className="w-4 h-4" />}
                     {responded ? (approved ? 'Confirmado' : 'Cancelado') : 'Confirmar'}: {title}
                 </div>
                 <div className="px-4 py-3 space-y-2 text-sm">
@@ -325,14 +330,24 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
                             </ul>
                         </div>
                     )}
-                    {note && <p className="text-xs text-muted-foreground">{note}</p>}
+                    {note && (
+                        <p
+                            className={
+                                isStandingCommitment
+                                    ? 'text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-2'
+                                    : 'text-xs text-muted-foreground'
+                            }
+                        >
+                            {note}
+                        </p>
+                    )}
                 </div>
                 {!responded ? (
                     <div className="px-4 py-3 border-t flex gap-2 justify-end bg-muted/40">
                         <Button size="sm" variant="outline" onClick={() => part.approval && onDeny(part.approval.id)} disabled={busy}>
                             <X /> Cancelar
                         </Button>
-                        <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white" onClick={() => part.approval && onApprove(part.approval.id)} disabled={busy}>
+                        <Button size="sm" className="tc-confirm text-white" onClick={() => part.approval && onApprove(part.approval.id)} disabled={busy}>
                             <Check /> Confirmar
                         </Button>
                     </div>
