@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, CircleCheck, CircleX, Download, FileText, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { TOOL_LABELS, dateLabel, fmtMoney, fmtUsd, isWriteTool, periodLabel } from '@/lib/agent/shared'
-import { downloadInvoice } from '@/lib/invoice-download'
+import { downloadInvoice, saveBlobToFile } from '@/lib/invoice-download'
+import { generateQuotePdf } from '@/lib/quote-pdf-generator'
+import type { Quote } from '@/types'
 
 export interface AnyToolPart {
     type: string
@@ -85,12 +87,40 @@ function describeInput(tool: string, raw: unknown): { title: string; rows: Row[]
                 ],
                 note: `A partir de ahora, ${client} tendrá este cargo automático cada mes hasta que lo desactives en Clientes. No es un cobro puntual: no todos los clientes tienen servicios fijos, así que confirma solo si de verdad quieres que se repita mes a mes.`,
             }
+        case 'add_service_category':
+            return {
+                title: `Crear categoría "${str(input.name) ?? ''}"`,
+                rows: [{ label: 'Nombre', value: str(input.name) ?? '-' }],
+                note: 'Quedará disponible para clasificar actividades y servicios fijos.',
+            }
+        case 'create_quote': {
+            const items = Array.isArray(input.items) ? (input.items as Rec[]) : []
+            const isHours = input.quote_type === 'hours'
+            const sym = input.currency === 'EUR' ? '€' : '$'
+            const total = items.reduce((s, it) => s + (isHours ? num(it.hours) ?? 0 : (num(it.quantity) ?? 1) * (num(it.unit_price) ?? 0)), 0)
+            return {
+                title: `Cotización para ${str(input.client_name) ?? ''}`,
+                rows: [
+                    { label: 'Emite', value: str(input.company_name) ?? 'JAM Tech, C.A.' },
+                    { label: 'Tipo', value: isHours ? 'Solo horas' : 'Con importe' },
+                    { label: 'Moneda', value: str(input.currency) ?? 'USD' },
+                    { label: 'Fecha', value: dateLabel(str(input.issue_date)) },
+                    { label: isHours ? 'Total horas' : 'Total', value: isHours ? `${total}h` : `${sym}${total.toFixed(2)}` },
+                ],
+                items: items.map((it) =>
+                    isHours
+                        ? `${str(it.description)} — ${num(it.hours) ?? 0}h`
+                        : `${str(it.description)} — ${num(it.quantity) ?? 1} × ${sym}${(num(it.unit_price) ?? 0).toFixed(2)}`
+                ),
+                note: 'Se guardará en Cotizaciones y podrás descargar el PDF.',
+            }
+        }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, rows: [] }
     }
 }
 
-function describeResult(tool: string, raw: unknown): { title: string; lines: string[]; invoiceId?: string } {
+function describeResult(tool: string, raw: unknown): { title: string; lines: string[]; invoiceId?: string; quote?: Quote } {
     const d = (raw ?? {}) as Rec
     switch (tool) {
         case 'add_log':
@@ -138,9 +168,43 @@ function describeResult(tool: string, raw: unknown): { title: string; lines: str
                 title: 'Servicio fijo creado',
                 lines: [`${str(d.description)} · ${fmtUsd(num(d.amount_usd))} al mes · ${str(d.client_name)}`],
             }
+        case 'add_service_category':
+            return { title: 'Categoría creada', lines: [str(d.name) ?? ''] }
+        case 'create_quote': {
+            const q = d as unknown as Quote
+            const sym = q.currency === 'EUR' ? '€' : '$'
+            return {
+                title: `Cotización ${q.quote_number} creada para ${q.client_name}`,
+                lines: [q.quote_type === 'hours' ? `${q.total_hours}h en total` : `Total ${sym}${Number(q.total_amount).toFixed(2)} · ${q.items?.length ?? 0} ítems`],
+                quote: q,
+            }
+        }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, lines: [] }
     }
+}
+
+function QuoteDownloadButton({ quote }: { quote: Quote }) {
+    const [busy, setBusy] = useState(false)
+    const go = async () => {
+        setBusy(true)
+        try {
+            const { blob, fileName } = await generateQuotePdf(quote)
+            await saveBlobToFile(blob, fileName, { description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] } })
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setBusy(false)
+        }
+    }
+    return (
+        <div className="pt-1">
+            <Button size="sm" variant="outline" onClick={go} disabled={busy}>
+                {busy ? <LoaderCircle className="animate-spin" /> : <FileText />}
+                Descargar PDF
+            </Button>
+        </div>
+    )
 }
 
 function InvoiceDownloadButtons({ invoiceId }: { invoiceId: string }) {
@@ -409,7 +473,7 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
                 </div>
             )
         }
-        const { title, lines, invoiceId } = describeResult(toolName, out.data)
+        const { title, lines, invoiceId, quote } = describeResult(toolName, out.data)
         return (
             <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm space-y-1">
                 <p className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5"><CircleCheck className="w-4 h-4" /> {title}</p>
@@ -417,6 +481,7 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
                     <p key={i} className="text-muted-foreground">{l}</p>
                 ))}
                 {invoiceId && <InvoiceDownloadButtons invoiceId={invoiceId} />}
+                {quote && <QuoteDownloadButton quote={quote} />}
             </div>
         )
     }

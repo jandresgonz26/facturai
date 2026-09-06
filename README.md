@@ -42,7 +42,7 @@ Facturación para JAMTech: registro de actividades, servicios fijos mensuales, b
 ## Configuración
 
 1. Copia `.env.example` a `.env.local` y rellena las variables. La clave de OpenAI vive solo en el servidor.
-2. Ejecuta en el SQL Editor de Supabase los esquemas en orden (`schema.sql` y los `schema_update_*.sql`). Para el asistente es necesario **`schema_update_agent.sql`** (trazabilidad de servicios fijos por periodo y fecha de vencimiento en facturas). La app funciona sin esa migración, pero con ella la carga de fijos es idempotente de forma fiable.
+2. Ejecuta en el SQL Editor de Supabase los esquemas en orden (`schema.sql` y los `schema_update_*.sql`). Para el asistente es necesario **`schema_update_agent.sql`** (trazabilidad de servicios fijos por periodo y fecha de vencimiento en facturas) y para la meta mensual del dashboard **`schema_update_dashboard.sql`**. La app funciona sin esas migraciones, pero con ellas la carga de fijos es idempotente de forma fiable y la meta es configurable en Ajustes.
 3. `npm install` y `npm run dev`.
 
 Variables de entorno:
@@ -63,7 +63,19 @@ Se abre desde la barra superior, con `⌘K` / `Ctrl+K`, o con el botón flotante
 - «Registra 2 horas de soporte a Arco Iris»
 - «¿Quién me debe dinero?» · «¿Cuánto facturé en agosto?»
 - «Marca pagada la factura 0542»
+- «¿Qué se le cobró a Total Envíos en mayo?» (detalle de ítems)
+- «Cotízale a X una landing por 800 y mantenimiento por 100» (crea la cotización y ofrece el PDF)
+- «¿Qué tengo pendiente hoy?» (briefing: vencidas, fijos sin cargar, trabajo sin facturar, bolsas casi llenas)
+
+Antes de registrar un servicio que suene recurrente (SEO, mantenimiento…), el asistente revisa cómo se describió antes para ese cliente y reutiliza la misma redacción cambiando el mes; si ya existe un pendiente igual, avisa en vez de duplicar. Si mencionas una categoría que no existe, pregunta si quieres crearla.
 
 Reglas: las lecturas se ejecutan solas; **toda escritura muestra una tarjeta de confirmación** con el desglose (para facturar, con fijos por cargar, pendientes, ítems nuevos y total proyectado) y no toca la base de datos hasta que pulsas Confirmar. Los ítems dictados son puntuales por defecto. El micrófono graba al tocarlo, transcribe en el servidor y deja el texto editable en la caja.
+
+## Pantallas
+
+- **Dashboard**: "Qué toca hoy" (alertas accionables, también en la campana de la cabecera), registro rápido, bolsas de horas, actividad. "Facturado este mes" suma las facturas emitidas en el mes por fecha de emisión, con cobrado y por cobrar, contra una meta configurable en Ajustes.
+- **Clientes**: lista con búsqueda, subclientes anidados y pendientes por cliente; ficha lateral para crear/editar con pestaña de servicios fijos (pausar, eliminar).
+- **Facturación**: asistente paso a paso: cliente → servicios fijos que faltan → ítems del mes (agregar, quitar, actualizar tasa EUR) → revisar y emitir (número, fecha, vencimiento) → descargar PDF/DOCX.
+- **Facturas**: filtros por cliente, estado y mes; estados borrador/enviada/pagada; fecha de vencimiento (sale en el documento como "Pagar antes de" y marca la factura como vencida).
 
 Arquitectura: `src/lib/actions/` contiene la lógica de negocio validada (zod) que comparten los botones de la interfaz y las herramientas del asistente; `src/lib/agent/` define las herramientas y el prompt; `src/app/api/agent` y `src/app/api/transcribe` son las rutas de servidor; `src/components/agent/` es el panel de chat.

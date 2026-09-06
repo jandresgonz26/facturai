@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, AlignmentType, WidthType, BorderStyle, HeadingLevel, ImageRun, ShadingType, Header } from 'docx'
+import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, AlignmentType, WidthType, BorderStyle, ImageRun, ShadingType, Header } from 'docx'
 // file-saver not used — Data URI approach preserves filename in async contexts
 import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
@@ -120,7 +120,7 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                                                 type: 3, // Behind text
                                             },
                                         },
-                                    } as any) : new TextRun({
+                                    } as unknown as ConstructorParameters<typeof ImageRun>[0]) : new TextRun({
                                         text: "",
                                     }),
                                 ],
@@ -181,7 +181,7 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                                         children: [
                                             new Paragraph({ text: `Factura No.: ${invoice.invoice_number}`, alignment: AlignmentType.RIGHT }),
                                             new Paragraph({ text: `Fecha: ${formattedDate}`, alignment: AlignmentType.RIGHT }),
-                                            new Paragraph({ text: "Pagar antes de: ", alignment: AlignmentType.RIGHT }),
+                                            new Paragraph({ text: `Pagar antes de: ${invoice.due_date ? formatDate(invoice.due_date) : ""}`, alignment: AlignmentType.RIGHT }),
                                         ],
                                     }),
                                 ],

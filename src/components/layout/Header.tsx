@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { Moon, Settings, Sparkles, Sun } from 'lucide-react'
 import { useAgent } from '@/components/agent/AgentProvider'
+import { AlertsBell } from './AlertsBell'
 
 function ThemeToggle() {
     const { resolvedTheme, setTheme } = useTheme()
@@ -42,6 +43,7 @@ export function Header() {
             </button>
 
             <div className="flex items-center gap-2">
+                <AlertsBell />
                 <ThemeToggle />
                 <div className="h-8 w-px bg-gray-700 hidden sm:block" />
                 <Link

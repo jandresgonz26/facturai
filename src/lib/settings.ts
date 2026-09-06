@@ -24,13 +24,14 @@ export const updateCompanySettings = async (settings: Partial<CompanySettings>):
 
     if (!existing) return false
 
-    const { error } = await supabase
-        .from('company_settings')
-        .update({
-            ...settings,
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', existing.id)
+    const payload: Record<string, unknown> = { ...settings, updated_at: new Date().toISOString() }
+    let { error } = await supabase.from('company_settings').update(payload).eq('id', existing.id)
+
+    // Si aún no se ejecutó schema_update_dashboard.sql, la columna monthly_goal no existe.
+    if (error && 'monthly_goal' in payload && (error.code === '42703' || /monthly_goal/.test(error.message))) {
+        delete payload.monthly_goal
+        ;({ error } = await supabase.from('company_settings').update(payload).eq('id', existing.id))
+    }
 
     if (error) {
         console.error('Error updating company settings:', JSON.stringify(error, null, 2))

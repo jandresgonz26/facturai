@@ -1,500 +1,257 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { ArrowUpRight, Clock, Pencil, Plus, Search, Settings2, Trash2, UserRound } from 'lucide-react'
+import { Client } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { toast } from 'sonner'
-import { Client } from '@/types'
-import { Trash2, Edit2, Plus, Settings2 } from 'lucide-react'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import { RecurringServicesManager } from '@/components/features/RecurringServicesManager'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ClientForm } from '@/components/features/ClientForm'
+import { RecurringServicesPanel } from '@/components/features/RecurringServicesPanel'
+import { createClient, deleteClient, getClientStats, listClients, updateClient, type ClientInput } from '@/lib/actions'
+import { emitDataChanged, useDataChanged } from '@/lib/events'
+import { normalizeText } from '@/lib/actions/validation'
+
+type Stats = Awaited<ReturnType<typeof getClientStats>>
+type Tab = 'datos' | 'fijos'
 
 export default function ClientsPage() {
     const [clients, setClients] = useState<Client[]>([])
-    const [newClient, setNewClient] = useState({
-        name: '',
-        currency: 'USD' as 'USD' | 'EUR',
-        tax_id: '',
-        contact_name: '',
-        billing_address: '',
-        postal_code: '',
-        city: '',
-        email: '',
-        billing_modality: 'standard' as 'standard' | 'hour_bag',
-        parent_client_id: '' as string,
-        hour_bag_price: '' as string
-    })
-    const [loading, setLoading] = useState(false)
-    const [editingId, setEditingId] = useState<string | null>(null)
-    const [editClient, setEditClient] = useState({
-        name: '',
-        currency: 'USD' as 'USD' | 'EUR',
-        tax_id: '',
-        contact_name: '',
-        billing_address: '',
-        postal_code: '',
-        city: '',
-        email: '',
-        billing_modality: 'standard' as 'standard' | 'hour_bag',
-        parent_client_id: '' as string,
-        hour_bag_price: '' as string
-    })
-    const [selectedClientForServices, setSelectedClientForServices] = useState<Client | null>(null)
+    const [stats, setStats] = useState<Stats>({})
+    const [loading, setLoading] = useState(true)
+    const [query, setQuery] = useState('')
+    const [sheetOpen, setSheetOpen] = useState(false)
+    const [editing, setEditing] = useState<Client | null>(null)
+    const [tab, setTab] = useState<Tab>('datos')
+    const [saving, setSaving] = useState(false)
+    const [toDelete, setToDelete] = useState<Client | null>(null)
+    const [deleting, setDeleting] = useState(false)
+
+    const load = async () => {
+        try {
+            const [c, s] = await Promise.all([listClients(), getClientStats()])
+            setClients(c)
+            setStats(s)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Error al cargar clientes')
+        } finally {
+            setLoading(false)
+        }
+    }
 
     useEffect(() => {
-        fetchClients()
+        load()
     }, [])
+    useDataChanged(load)
 
-    const fetchClients = async () => {
-        const { data, error } = await supabase
-            .from('clients')
-            .select('*')
-            .order('name')
+    const byId = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
+    const filtered = useMemo(() => {
+        const q = normalizeText(query)
+        if (!q) return clients
+        return clients.filter((c) => normalizeText(c.name).includes(q) || normalizeText(c.contact_name ?? '').includes(q) || normalizeText(c.email ?? '').includes(q))
+    }, [clients, query])
+    // Padres primero, con sus subclientes anidados debajo
+    const grouped = useMemo(() => {
+        const parents = filtered.filter((c) => !c.parent_client_id)
+        const orphans = filtered.filter((c) => c.parent_client_id && !filtered.some((p) => p.id === c.parent_client_id))
+        return [...parents, ...orphans].map((p) => ({ client: p, children: filtered.filter((c) => c.parent_client_id === p.id) }))
+    }, [filtered])
 
-        if (error) {
-            console.error('Error fetching clients:', error)
-        } else {
-            setClients(data || [])
+    const openNew = () => {
+        setEditing(null)
+        setTab('datos')
+        setSheetOpen(true)
+    }
+    const openEdit = (c: Client, t: Tab = 'datos') => {
+        setEditing(c)
+        setTab(t)
+        setSheetOpen(true)
+    }
+
+    const handleSubmit = async (values: ClientInput) => {
+        setSaving(true)
+        try {
+            if (editing) {
+                const updated = await updateClient(editing.id, values)
+                toast.success('Cliente actualizado')
+                setEditing(updated)
+            } else {
+                const created = await createClient(values)
+                toast.success('Cliente creado')
+                setEditing(created)
+            }
+            emitDataChanged()
+            await load()
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo guardar el cliente')
+        } finally {
+            setSaving(false)
         }
     }
 
-    const handleAddClient = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!newClient.name.trim()) return
-
-        setLoading(true)
-        const { error } = await supabase.from('clients').insert({
-            name: newClient.name.trim(),
-            preferred_input_currency: newClient.currency,
-            tax_id: newClient.tax_id.trim() || null,
-            contact_name: newClient.contact_name.trim() || null,
-            billing_address: newClient.billing_address.trim() || null,
-            postal_code: newClient.postal_code.trim() || null,
-            city: newClient.city.trim() || null,
-            email: newClient.email.trim() || null,
-            billing_modality: newClient.billing_modality,
-            parent_client_id: newClient.parent_client_id || null,
-            hour_bag_price: newClient.billing_modality === 'hour_bag' && newClient.hour_bag_price ? parseFloat(newClient.hour_bag_price) : null
-        })
-
-        if (error) {
-            toast.error('Error al agregar cliente')
-        } else {
-            toast.success('Cliente agregado')
-            setNewClient({
-                name: '',
-                currency: 'USD',
-                tax_id: '',
-                contact_name: '',
-                billing_address: '',
-                postal_code: '',
-                city: '',
-                email: '',
-                billing_modality: 'standard',
-                parent_client_id: '',
-                hour_bag_price: ''
-            })
-            fetchClients()
-        }
-        setLoading(false)
-    }
-
-    const handleDelete = async (id: string) => {
-        if (!confirm('¿Estás seguro? Esto eliminará todos los registros de este cliente.')) return
-
-        const { error } = await supabase.from('clients').delete().eq('id', id)
-        if (error) {
-            toast.error('Error al eliminar cliente')
-        } else {
+    const handleDelete = async () => {
+        if (!toDelete) return
+        setDeleting(true)
+        try {
+            await deleteClient(toDelete.id)
             toast.success('Cliente eliminado')
-            fetchClients()
+            setToDelete(null)
+            if (editing?.id === toDelete.id) setSheetOpen(false)
+            emitDataChanged()
+            await load()
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo eliminar')
+        } finally {
+            setDeleting(false)
         }
     }
 
-    const startEdit = (client: Client) => {
-        setEditingId(client.id)
-        setEditClient({
-            name: client.name,
-            currency: client.preferred_input_currency,
-            tax_id: client.tax_id || '',
-            contact_name: client.contact_name || '',
-            billing_address: client.billing_address || '',
-            postal_code: client.postal_code || '',
-            city: client.city || '',
-            email: client.email || '',
-            billing_modality: client.billing_modality || 'standard',
-            parent_client_id: client.parent_client_id || '',
-            hour_bag_price: client.hour_bag_price ? String(client.hour_bag_price) : ''
-        })
-    }
-
-    const saveEdit = async () => {
-        if (!editClient.name.trim() || !editingId) return
-
-        const { error } = await supabase
-            .from('clients')
-            .update({
-                name: editClient.name.trim(),
-                preferred_input_currency: editClient.currency,
-                tax_id: editClient.tax_id.trim() || null,
-                contact_name: editClient.contact_name.trim() || null,
-                billing_address: editClient.billing_address.trim() || null,
-                postal_code: editClient.postal_code.trim() || null,
-                city: editClient.city.trim() || null,
-                email: editClient.email.trim() || null,
-                billing_modality: editClient.billing_modality,
-                parent_client_id: editClient.parent_client_id || null,
-                hour_bag_price: editClient.billing_modality === 'hour_bag' && editClient.hour_bag_price ? parseFloat(editClient.hour_bag_price) : null
-            })
-            .eq('id', editingId)
-
-        if (error) {
-            toast.error('Error al actualizar cliente')
-        } else {
-            toast.success('Cliente actualizado')
-            setEditingId(null)
-            fetchClients()
-        }
+    const ClientRow = ({ c, child }: { c: Client; child?: boolean }) => {
+        const st = stats[c.id]
+        const isBag = c.billing_modality === 'hour_bag'
+        return (
+            <div className={`flex items-center gap-3 px-4 py-3 ${child ? 'pl-10 bg-muted/20' : ''}`}>
+                {child && <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                <button type="button" onClick={() => openEdit(c)} className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold truncate">{c.name}</span>
+                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{c.preferred_input_currency}</span>
+                        {isBag && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Bolsa 10h{c.hour_bag_price ? ` · €${c.hour_bag_price}` : ''}
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                        {[c.contact_name, c.email, c.city].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                    </p>
+                </button>
+                <div className="hidden sm:block text-right text-xs shrink-0 w-36">
+                    {st && st.pending_count > 0 ? (
+                        <>
+                            <p className="font-mono font-semibold text-amber-600 dark:text-amber-400">{isBag ? `${st.pending_count} registros` : `$${st.pending_total.toFixed(2)}`}</p>
+                            <p className="text-muted-foreground">{isBag ? 'en la bolsa' : 'sin facturar'}</p>
+                        </>
+                    ) : (
+                        <p className="text-muted-foreground">{st?.last_invoice_date ? `Últ. factura ${st.last_invoice_date.split('-').reverse().join('/')}` : 'Sin pendientes'}</p>
+                    )}
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                    {!isBag && (
+                        <Button size="icon-sm" variant="ghost" title="Servicios fijos" onClick={() => openEdit(c, 'fijos')}>
+                            <Settings2 className="text-teal-600" />
+                        </Button>
+                    )}
+                    <Button size="icon-sm" variant="ghost" title="Editar" onClick={() => openEdit(c)}>
+                        <Pencil className="text-muted-foreground" />
+                    </Button>
+                    <Button size="icon-sm" variant="ghost" title="Eliminar" onClick={() => setToDelete(c)}>
+                        <Trash2 className="text-destructive" />
+                    </Button>
+                </div>
+            </div>
+        )
     }
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Gestión de Clientes</h1>
-
-            <Card className="mb-8">
-                <CardHeader>
-                    <CardTitle className="text-lg">Agregar Nuevo Cliente</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleAddClient} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Nombre Comercial / Empresa</label>
-                                <Input
-                                    placeholder="Ej: Acme Corp"
-                                    value={newClient.name}
-                                    onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Moneda Preferida</label>
-                                <Select
-                                    value={newClient.currency}
-                                    onValueChange={(v: 'USD' | 'EUR') => setNewClient({ ...newClient, currency: v })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Moneda" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="USD">USD</SelectItem>
-                                        <SelectItem value="EUR">EUR</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">ID Fiscal (CIF/RIF/NIT)</label>
-                                <Input
-                                    placeholder="Ej: J-12345678-9"
-                                    value={newClient.tax_id}
-                                    onChange={(e) => setNewClient({ ...newClient, tax_id: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Correo Electrónico</label>
-                                <Input
-                                    type="email"
-                                    placeholder="Ej: cliente@correo.com"
-                                    value={newClient.email}
-                                    onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Nombre de Contacto / Razón Social</label>
-                                <Input
-                                    placeholder="Ej: Juan Pérez"
-                                    value={newClient.contact_name}
-                                    onChange={(e) => setNewClient({ ...newClient, contact_name: e.target.value })}
-                                />
-                            </div>
-                            <div className="md:col-span-2 space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Dirección de Facturación</label>
-                                <Input
-                                    placeholder="Calle, número, oficina..."
-                                    value={newClient.billing_address}
-                                    onChange={(e) => setNewClient({ ...newClient, billing_address: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Código Postal</label>
-                                <Input
-                                    placeholder="Ej: 1010"
-                                    value={newClient.postal_code}
-                                    onChange={(e) => setNewClient({ ...newClient, postal_code: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground">Ciudad</label>
-                                <Input
-                                    placeholder="Ej: Caracas"
-                                    value={newClient.city}
-                                    onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Sub-client / Hour Bag Section */}
-                        <div className="border-t pt-4 mt-2">
-                            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Modalidad de Facturación</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Modalidad</label>
-                                    <Select
-                                        value={newClient.billing_modality}
-                                        onValueChange={(v: 'standard' | 'hour_bag') => setNewClient({ ...newClient, billing_modality: v })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Modalidad" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="standard">Estándar</SelectItem>
-                                            <SelectItem value="hour_bag">Bolsa de 10 Horas</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Cliente Padre (Facturar a)</label>
-                                    <Select
-                                        value={newClient.parent_client_id || 'none'}
-                                        onValueChange={(v) => setNewClient({ ...newClient, parent_client_id: v === 'none' ? '' : v })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Ninguno" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">Ninguno (directo)</SelectItem>
-                                            {clients.map((c) => (
-                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {newClient.billing_modality === 'hour_bag' && (
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Precio Bolsa (€)</label>
-                                        <Input
-                                            type="number"
-                                            step="0.01"
-                                            placeholder="Ej: 120.00"
-                                            value={newClient.hour_bag_price}
-                                            onChange={(e) => setNewClient({ ...newClient, hour_bag_price: e.target.value })}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <Button type="submit" disabled={loading} className="w-full">
-                            <Plus className="w-4 h-4 mr-2" />
-                            Agregar Cliente
-                        </Button>
-                    </form>
-                </CardContent>
-            </Card>
-
-            <div className="space-y-3">
-                {clients.map((client) => (
-                    <div
-                        key={client.id}
-                        className="p-4 bg-card border rounded-lg shadow-sm"
-                    >
-                        {editingId === client.id ? (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <Input
-                                        value={editClient.name}
-                                        onChange={(e) => setEditClient({ ...editClient, name: e.target.value })}
-                                        placeholder="Nombre"
-                                        className="h-9"
-                                    />
-                                    <Select
-                                        value={editClient.currency}
-                                        onValueChange={(v: 'USD' | 'EUR') => setEditClient({ ...editClient, currency: v })}
-                                    >
-                                        <SelectTrigger className="h-9">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="USD">USD</SelectItem>
-                                            <SelectItem value="EUR">EUR</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Input
-                                        value={editClient.tax_id}
-                                        onChange={(e) => setEditClient({ ...editClient, tax_id: e.target.value })}
-                                        placeholder="ID Fiscal"
-                                        className="h-9"
-                                    />
-                                    <Input
-                                        value={editClient.contact_name}
-                                        onChange={(e) => setEditClient({ ...editClient, contact_name: e.target.value })}
-                                        placeholder="Contacto"
-                                        className="h-9"
-                                    />
-                                    <Input
-                                        value={editClient.email}
-                                        onChange={(e) => setEditClient({ ...editClient, email: e.target.value })}
-                                        placeholder="Email"
-                                        className="h-9"
-                                    />
-                                    <Input
-                                        value={editClient.billing_address}
-                                        onChange={(e) => setEditClient({ ...editClient, billing_address: e.target.value })}
-                                        placeholder="Dirección"
-                                        className="h-9 md:col-span-2"
-                                    />
-                                    <Input
-                                        value={editClient.postal_code}
-                                        onChange={(e) => setEditClient({ ...editClient, postal_code: e.target.value })}
-                                        placeholder="CP"
-                                        className="h-9"
-                                    />
-                                    <Input
-                                        value={editClient.city}
-                                        onChange={(e) => setEditClient({ ...editClient, city: e.target.value })}
-                                        placeholder="Ciudad"
-                                        className="h-9"
-                                    />
-                                    <Input
-                                        value={editClient.hour_bag_price}
-                                        onChange={(e) => setEditClient({ ...editClient, hour_bag_price: e.target.value })}
-                                        placeholder="Precio Bolsa (€)"
-                                        className="h-9"
-                                        type="number"
-                                        step="0.01"
-                                        disabled={editClient.billing_modality !== 'hour_bag'}
-                                    />
-                                    <Select
-                                        value={editClient.billing_modality}
-                                        onValueChange={(v: 'standard' | 'hour_bag') => setEditClient({ ...editClient, billing_modality: v })}
-                                    >
-                                        <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Modalidad" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="standard">Estándar</SelectItem>
-                                            <SelectItem value="hour_bag">Bolsa de 10 Horas</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Select
-                                        value={editClient.parent_client_id || 'none'}
-                                        onValueChange={(v) => setEditClient({ ...editClient, parent_client_id: v === 'none' ? '' : v })}
-                                    >
-                                        <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Cliente Padre" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">Ninguno (directo)</SelectItem>
-                                            {clients.filter(c => c.id !== editingId).map((c) => (
-                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="flex gap-2 justify-end">
-                                    <Button size="sm" onClick={saveEdit}>Guardar Cambios</Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex justify-between items-start">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-lg">{client.name}</span>
-                                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">
-                                            {client.preferred_input_currency}
-                                        </span>
-                                        {client.billing_modality === 'hour_bag' && (
-                                            <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-1.5 py-0.5 rounded font-semibold">
-                                                ⏱ Bolsa 10h{client.hour_bag_price ? ` • €${client.hour_bag_price}` : ''}
-                                            </span>
-                                        )}
-                                        {client.parent_client_id && (
-                                            <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded font-semibold">
-                                                ↗ {clients.find(c => c.id === client.parent_client_id)?.name || 'Padre'}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {client.contact_name && (
-                                        <span className="text-sm text-muted-foreground font-medium">
-                                            {client.contact_name} {client.tax_id && `(${client.tax_id})`}
-                                        </span>
-                                    )}
-                                    {client.email && (
-                                        <span className="text-xs text-primary font-medium">
-                                            {client.email}
-                                        </span>
-                                    )}
-                                    {(client.billing_address || client.city) && (
-                                        <span className="text-xs text-muted-foreground">
-                                            {client.billing_address}{client.city && `, ${client.city}`}{client.postal_code && ` (${client.postal_code})`}
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => setSelectedClientForServices(client)}
-                                        title="Servicios Fijos"
-                                        className="h-8 w-8"
-                                    >
-                                        <Settings2 className="w-4 h-4 text-primary" />
-                                    </Button>
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => startEdit(client)}
-                                        disabled={!!editingId}
-                                        className="h-8 w-8"
-                                    >
-                                        <Edit2 className="w-4 h-4 text-muted-foreground" />
-                                    </Button>
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => handleDelete(client.id)}
-                                        disabled={!!editingId}
-                                        className="h-8 w-8"
-                                    >
-                                        <Trash2 className="w-4 h-4 text-destructive" />
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+        <div className="max-w-4xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-2xl font-bold">Clientes</h1>
+                    <p className="text-sm text-muted-foreground mt-1">{clients.length} clientes · toca uno para ver su ficha</p>
+                </div>
+                <div className="flex gap-2">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+                        <Input placeholder="Buscar…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 w-full sm:w-56" />
                     </div>
-                ))}
+                    <Button onClick={openNew} className="bg-teal-600 hover:bg-teal-700 text-white">
+                        <Plus /> Nuevo cliente
+                    </Button>
+                </div>
+            </div>
 
-                {selectedClientForServices && (
-                    <RecurringServicesManager
-                        client={selectedClientForServices}
-                        onClose={() => setSelectedClientForServices(null)}
-                    />
-                )}
-                {clients.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                        No se encontraron clientes.
-                    </div>
+            <div className="rounded-xl border bg-card shadow-sm divide-y">
+                {loading ? (
+                    <p className="p-8 text-center text-sm text-muted-foreground">Cargando…</p>
+                ) : grouped.length === 0 ? (
+                    <p className="p-8 text-center text-sm text-muted-foreground">{query ? 'Sin resultados.' : 'Aún no hay clientes.'}</p>
+                ) : (
+                    grouped.map(({ client, children }) => (
+                        <div key={client.id}>
+                            <ClientRow c={client} />
+                            {children.map((ch) => (
+                                <ClientRow key={ch.id} c={ch} child />
+                            ))}
+                        </div>
+                    ))
                 )}
             </div>
+
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+                <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0 overflow-hidden">
+                    <SheetHeader className="px-5 py-4 border-b space-y-1">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+                                <UserRound className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <SheetTitle className="truncate">{editing ? editing.name : 'Nuevo cliente'}</SheetTitle>
+                                <SheetDescription className="text-xs">
+                                    {editing
+                                        ? [editing.preferred_input_currency, editing.billing_modality === 'hour_bag' ? 'Bolsa de 10 h' : 'Estándar', editing.parent_client_id ? `subcliente de ${byId.get(editing.parent_client_id)?.name ?? ''}` : null].filter(Boolean).join(' · ')
+                                        : 'Solo el nombre es obligatorio. El resto sale en la factura si lo rellenas.'}
+                                </SheetDescription>
+                            </div>
+                        </div>
+                        {editing && editing.billing_modality !== 'hour_bag' && (
+                            <div className="flex gap-1 pt-3">
+                                {(['datos', 'fijos'] as Tab[]).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setTab(t)}
+                                        className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${tab === t ? 'bg-teal-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        {t === 'datos' ? 'Datos' : 'Servicios fijos'}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </SheetHeader>
+                    <div className="flex-1 overflow-y-auto px-5 py-5">
+                        {tab === 'fijos' && editing ? (
+                            <RecurringServicesPanel client={editing} />
+                        ) : (
+                            <ClientForm
+                                key={editing?.id ?? 'new'}
+                                clients={clients}
+                                initial={editing}
+                                submitting={saving}
+                                onSubmit={handleSubmit}
+                                onCancel={() => setSheetOpen(false)}
+                            />
+                        )}
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            <Dialog open={!!toDelete} onOpenChange={(o) => !o && !deleting && setToDelete(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Eliminar cliente</DialogTitle>
+                        <DialogDescription>
+                            ¿Eliminar <strong>{toDelete?.name}</strong>? Se borrarán también todos sus registros de actividad y sus facturas. Esta acción no se puede deshacer.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setToDelete(null)} disabled={deleting}>Cancelar</Button>
+                        <Button variant="destructive" onClick={handleDelete} disabled={deleting}>{deleting ? 'Eliminando…' : 'Eliminar'}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

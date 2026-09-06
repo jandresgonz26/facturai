@@ -83,6 +83,13 @@ export const agentTools = {
         execute: async ({ client_id, keyword }) => run(() => actions.findPastItems(client_id, keyword)),
     }),
 
+    get_briefing: tool({
+        description:
+            'Resumen de lo que hay pendiente hoy: facturas sin cobrar (y vencidas), clientes con trabajo sin facturar, servicios fijos aún no cargados este mes y bolsas de horas casi completas. Úsala para "¿qué tengo pendiente?", "¿qué toca hoy?", "dame el resumen" o al inicio de mes.',
+        inputSchema: z.object({}),
+        execute: async () => run(() => actions.getBriefing()),
+    }),
+
     list_categories: tool({
         description: 'Categorías de servicio disponibles para clasificar actividades.',
         inputSchema: z.object({}),
@@ -263,6 +270,42 @@ export const agentTools = {
                 const inv = await actions.markInvoicePaid(invoice_id)
                 return { invoice_number, client_name, total_amount: inv.total_amount, paid_at: inv.paid_at }
             }),
+    }),
+
+    add_service_category: tool({
+        description:
+            'Crea una categoría de servicio nueva (ej. "Consultoría"). Requiere confirmación. Úsala SOLO cuando el usuario mencione una categoría que no exista en la lista y confirme que quiere crearla; nunca la crees por tu cuenta.',
+        inputSchema: z.object({ name: z.string().min(2).max(60).describe('Nombre de la categoría, corto y en singular') }),
+        execute: async ({ name }) =>
+            run(async () => {
+                const c = await actions.addServiceCategory(name)
+                return { id: c.id, name: c.name }
+            }),
+    }),
+
+    create_quote: tool({
+        description:
+            'Crea una cotización (presupuesto) para un cliente potencial o existente. Requiere confirmación. quote_type "amount" lleva precio por ítem; "hours" solo horas. company_name define la plantilla del PDF. El cliente es texto libre (no necesita existir en la lista).',
+        inputSchema: z.object({
+            client_name: z.string().min(2).describe('Nombre del cliente tal como debe salir en el PDF'),
+            company_name: z.enum(['JAM Tech, C.A.', 'Asiri Marketing']).default('JAM Tech, C.A.').describe('Empresa que emite la cotización'),
+            quote_type: z.enum(['amount', 'hours']).default('amount'),
+            currency: z.enum(['USD', 'EUR']).default('USD'),
+            doc_title: optionalText.describe('Título del documento; por defecto COTIZACIÓN'),
+            items: z
+                .array(
+                    z.object({
+                        service: optionalText.describe('Nombre corto del servicio (columna Servicio)'),
+                        description: z.string().min(2).describe('Descripción del ítem'),
+                        quantity: z.number().positive().default(1),
+                        unit_price: z.number().min(0).default(0).describe('Precio unitario (solo quote_type amount)'),
+                        hours: z.number().min(0).default(0).describe('Horas (solo quote_type hours)'),
+                    })
+                )
+                .min(1),
+            issue_date: optionalDate.describe('SOLO si el usuario pide una fecha distinta de hoy'),
+        }),
+        execute: async (input) => run(() => actions.createQuote(input)),
     }),
 
     add_recurring_service: tool({

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import { CompanySettings } from '@/types'
 import { getCompanySettings, updateCompanySettings, uploadLogo } from '@/lib/settings'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +12,6 @@ import Image from 'next/image'
 import { ServiceCategoryManager } from '@/components/features/ServiceCategoryManager'
 
 export default function SettingsPage() {
-    const [settings, setSettings] = useState<CompanySettings | null>(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [uploading, setUploading] = useState(false)
@@ -24,25 +22,36 @@ export default function SettingsPage() {
     const [email, setEmail] = useState('')
     const [logoUrl, setLogoUrl] = useState<string | null>(null)
     const [eurUsdRate, setEurUsdRate] = useState<string>('')
+    const [monthlyGoal, setMonthlyGoal] = useState<string>('')
 
-    useEffect(() => {
-        loadSettings()
-    }, [])
-
-    const loadSettings = async () => {
-        setLoading(true)
-        const data = await getCompanySettings()
+    const applySettings = (data: Awaited<ReturnType<typeof getCompanySettings>>) => {
         if (data) {
-            setSettings(data)
             setCompanyName(data.company_name)
             setRif(data.rif)
             setPhone(data.phone)
             setEmail(data.email)
             setLogoUrl(data.logo_url)
             setEurUsdRate(data.eur_usd_rate?.toString() || '')
+            setMonthlyGoal(data.monthly_goal?.toString() || '')
         }
-        setLoading(false)
     }
+
+    const loadSettings = async () => {
+        applySettings(await getCompanySettings())
+    }
+
+    useEffect(() => {
+        let active = true
+        getCompanySettings().then((data) => {
+            if (!active) return
+            applySettings(data)
+            setLoading(false)
+        })
+        return () => {
+            active = false
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const handleSave = async () => {
         setSaving(true)
@@ -52,7 +61,8 @@ export default function SettingsPage() {
             phone,
             email,
             logo_url: logoUrl,
-            eur_usd_rate: eurUsdRate ? parseFloat(eurUsdRate) : null
+            eur_usd_rate: eurUsdRate ? parseFloat(eurUsdRate) : null,
+            monthly_goal: monthlyGoal ? parseFloat(monthlyGoal) : null,
         })
 
         if (success) {
@@ -189,6 +199,23 @@ export default function SettingsPage() {
                         />
                         <p className="text-xs text-muted-foreground">
                             Si se define, esta tasa se usará en lugar de la automática. Útil para coincidir con Google.
+                        </p>
+                    </div>
+
+                    {/* Monthly goal */}
+                    <div className="space-y-2 pt-4 border-t">
+                        <Label htmlFor="monthlyGoal" className="text-teal-600 font-semibold">Meta mensual de facturación (USD)</Label>
+                        <Input
+                            id="monthlyGoal"
+                            type="number"
+                            step="1"
+                            min="0"
+                            placeholder="Ej: 5500"
+                            value={monthlyGoal}
+                            onChange={(e) => setMonthlyGoal(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Se usa en la tarjeta «Facturado este mes» del dashboard. Requiere ejecutar schema_update_dashboard.sql en Supabase.
                         </p>
                     </div>
 

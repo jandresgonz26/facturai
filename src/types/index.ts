@@ -63,6 +63,7 @@ export interface CompanySettings {
     email: string
     logo_url: string | null
     eur_usd_rate?: number | null
+    monthly_goal?: number | null
     created_at: string
     updated_at: string
 }

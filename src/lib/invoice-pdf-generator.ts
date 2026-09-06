@@ -65,7 +65,7 @@ export const generateInvoicePdf = async (
     doc.setTextColor(0, 0, 0)
     doc.text(`Factura No.: ${invoice.invoice_number}`, pageWidth - margin, y - 8, { align: 'right' })
     doc.text(`Fecha: ${formattedDate}`, pageWidth - margin, y - 3, { align: 'right' })
-    doc.text('Pagar antes de: ', pageWidth - margin, y + 2, { align: 'right' })
+    doc.text(`Pagar antes de: ${invoice.due_date ? invoice.due_date.split('-').reverse().join('/') : ''}`, pageWidth - margin, y + 2, { align: 'right' })
 
     y += 10
 
@@ -168,7 +168,7 @@ export const generateInvoicePdf = async (
     })
 
     // Get Y position after table
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
 
     // ── Totals ──
     const totalsX = pageWidth - margin - 25 // Align perfectly with the IMPORTE column

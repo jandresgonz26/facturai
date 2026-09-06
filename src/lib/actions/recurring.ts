@@ -163,3 +163,24 @@ export async function addRecurringService(raw: AddRecurringServiceInput): Promis
     if (error) throw new ActionError(`No se pudo crear el servicio fijo: ${error.message}`)
     return data as RecurringService
 }
+
+export async function deleteRecurringService(id: string): Promise<void> {
+    const { error } = await supabase.from('recurring_services').delete().eq('id', id)
+    if (error) throw new ActionError(`No se pudo eliminar el servicio fijo: ${error.message}`)
+}
+
+export async function setRecurringServiceActive(id: string, is_active: boolean): Promise<void> {
+    const { error } = await supabase.from('recurring_services').update({ is_active }).eq('id', id)
+    if (error) throw new ActionError(`No se pudo actualizar el servicio fijo: ${error.message}`)
+}
+
+/** Todos los servicios fijos de un cliente (activos e inactivos), para administrarlos. */
+export async function listAllRecurringServices(clientId: string): Promise<RecurringService[]> {
+    const { data, error } = await supabase
+        .from('recurring_services')
+        .select('*, service_categories(name)')
+        .eq('client_id', clientId)
+        .order('created_at')
+    if (error) throw new ActionError(`No se pudieron cargar los servicios fijos: ${error.message}`)
+    return (data || []) as RecurringService[]
+}

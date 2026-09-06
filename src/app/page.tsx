@@ -9,6 +9,7 @@ import { HourBagTracker } from '@/components/features/HourBagTracker'
 import { MonthlyRevenue } from '@/components/features/MonthlyRevenue'
 import { PendingPayments } from '@/components/features/PendingPayments'
 import { PendingInvoices } from '@/components/features/PendingInvoices'
+import { BriefingCard } from '@/components/features/BriefingCard'
 
 export default function Home() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -34,6 +35,9 @@ export default function Home() {
             </p>
           </div>
         </div>
+
+        {/* Qué toca hoy */}
+        <BriefingCard />
 
         {/* Quick Entry */}
         <QuickEntry onEntryAdded={handleActivityChange} />

@@ -9,6 +9,8 @@ export const WRITE_TOOLS = [
     'bill_client_month',
     'mark_invoice_paid',
     'add_recurring_service',
+    'add_service_category',
+    'create_quote',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -31,6 +33,9 @@ export const TOOL_LABELS: Record<string, string> = {
     bill_client_month: 'Facturar el mes',
     mark_invoice_paid: 'Marcar factura como pagada',
     add_recurring_service: 'Crear servicio fijo',
+    add_service_category: 'Crear categoría de servicio',
+    create_quote: 'Crear cotización',
+    get_briefing: 'Revisando qué hay pendiente',
 }
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']

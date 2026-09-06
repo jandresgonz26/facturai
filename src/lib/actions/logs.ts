@@ -142,3 +142,24 @@ export async function findPastItems(clientId: string, keyword: string, limit = 5
         status: l.status as 'pending' | 'billed',
     }))
 }
+
+/** Recalcula el valor en USD de los pendientes en EUR del cliente con la tasa vigente. */
+export async function refreshEurValues(clientId: string): Promise<{ updated: number; rate: number }> {
+    const pending = await getPendingLogs(clientId)
+    const eurLogs = pending.filter((l) => l.currency === 'EUR' && l.original_amount != null)
+    if (eurLogs.length === 0) return { updated: 0, rate: await getEurToUsdRate() }
+    const rate = await getEurToUsdRate()
+    await Promise.all(
+        eurLogs.map((l) => supabase.from('logs').update({ value: round2(Number(l.original_amount) * rate) }).eq('id', l.id))
+    )
+    return { updated: eurLogs.length, rate }
+}
+
+export async function deleteLog(id: string): Promise<void> {
+    const { data, error: readError } = await supabase.from('logs').select('status').eq('id', id).maybeSingle()
+    if (readError) throw new ActionError(`No se pudo consultar el ítem: ${readError.message}`)
+    if (!data) throw new ActionError('El ítem no existe', 'NOT_FOUND')
+    if (data.status === 'billed') throw new ActionError('El ítem ya está facturado; elimina o revierte la factura primero.')
+    const { error } = await supabase.from('logs').delete().eq('id', id)
+    if (error) throw new ActionError(`No se pudo eliminar el ítem: ${error.message}`)
+}

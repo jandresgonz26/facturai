@@ -173,3 +173,20 @@ export async function deleteInvoice(id: string): Promise<void> {
     const { error } = await supabase.from('invoices').delete().eq('id', id)
     if (error) throw new ActionError(`No se pudo eliminar la factura: ${error.message}`)
 }
+
+/** Borrador → enviada (la factura ya se le mandó al cliente). */
+export async function markInvoiceSent(id: string): Promise<Invoice> {
+    const invoice = await getInvoice(id)
+    if (invoice.status === 'paid') throw new ActionError(`La factura #${invoice.invoice_number} ya está pagada.`)
+    const { data, error } = await supabase.from('invoices').update({ status: 'sent' }).eq('id', id).select('*, clients(*)').single()
+    if (error) throw new ActionError(`No se pudo marcar como enviada: ${error.message}`)
+    return data as Invoice
+}
+
+export async function updateInvoiceDueDate(id: string, due_date: string | null): Promise<Invoice> {
+    await getInvoice(id)
+    if (due_date) parseInput(dateSchema, due_date)
+    const { data, error } = await supabase.from('invoices').update({ due_date }).eq('id', id).select('*, clients(*)').single()
+    if (error) throw new ActionError(`No se pudo guardar el vencimiento: ${error.message}`)
+    return data as Invoice
+}

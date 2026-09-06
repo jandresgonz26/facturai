@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
 interface PendingItem {
     clientName: string
@@ -12,12 +13,9 @@ interface PendingItem {
 export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: number }) {
     const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
     const [loading, setLoading] = useState(true)
+    const router = useRouter()
 
-    useEffect(() => {
-        fetchPendingPayments()
-    }, [refreshTrigger])
-
-    const fetchPendingPayments = async () => {
+    const computePending = async (): Promise<PendingItem[]> => {
         const { data, error } = await supabase
             .from('logs')
             .select(`
@@ -26,27 +24,33 @@ export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: numbe
             `)
             .eq('status', 'pending')
             .not('value', 'is', null)
-
-        if (!error && data) {
-            // Group by client
-            const grouped: Record<string, number> = {}
-            data.forEach((log: any) => {
-                const name = log.clients?.name || 'Desconocido'
-                grouped[name] = (grouped[name] || 0) + (log.value || 0)
-            })
-
-            const items: PendingItem[] = Object.entries(grouped)
-                .map(([clientName, total]) => ({
-                    clientName,
-                    total,
-                    urgency: total > 100 ? 'high' : total > 50 ? 'medium' : 'low' as 'high' | 'medium' | 'low',
-                }))
-                .sort((a, b) => b.total - a.total)
-
-            setPendingItems(items)
-        }
-        setLoading(false)
+        if (error || !data) return []
+        const grouped: Record<string, number> = {}
+        ;(data as unknown as { value: number | null; clients: { name: string } | null }[]).forEach((log) => {
+            const name = log.clients?.name || 'Desconocido'
+            grouped[name] = (grouped[name] || 0) + (log.value || 0)
+        })
+        return Object.entries(grouped)
+            .map(([clientName, total]) => ({
+                clientName,
+                total,
+                urgency: (total > 100 ? 'high' : total > 50 ? 'medium' : 'low') as 'high' | 'medium' | 'low',
+            }))
+            .sort((a, b) => b.total - a.total)
     }
+
+    useEffect(() => {
+        let active = true
+        computePending().then((items) => {
+            if (!active) return
+            setPendingItems(items)
+            setLoading(false)
+        })
+        return () => {
+            active = false
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshTrigger])
 
     const urgencyColors = {
         high: 'bg-red-400',
@@ -86,7 +90,7 @@ export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: numbe
                             </li>
                         ))}
                     </ul>
-                    <button className="w-full mt-6 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors">
+                    <button onClick={() => router.push('/month-end')} className="w-full mt-6 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors">
                         Facturar Pendientes
                     </button>
                 </>
