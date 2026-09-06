@@ -54,6 +54,8 @@ Variables de entorno:
 | `OPENAI_MODEL` | Modelo de chat con llamadas a funciones (por defecto `gpt-5.4-mini`) |
 | `OPENAI_TRANSCRIBE_MODEL` | Modelo de transcripción del micrófono (por defecto `gpt-4o-mini-transcribe`) |
 | `AGENT_APPROVAL_SECRET` | Opcional. Firma HMAC de las confirmaciones del asistente |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ALLOWED_CHAT_IDS` | Bot de Telegram (opcional) |
+| `APP_BASE_URL` | URL pública de la app; el servidor la usa para cargar la cabecera de los PDF enviados por Telegram |
 
 ## Asistente
 
@@ -70,6 +72,18 @@ Se abre desde la barra superior, con `⌘K` / `Ctrl+K`, o con el botón flotante
 Antes de registrar un servicio que suene recurrente (SEO, mantenimiento…), el asistente revisa cómo se describió antes para ese cliente y reutiliza la misma redacción cambiando el mes; si ya existe un pendiente igual, avisa en vez de duplicar. Si mencionas una categoría que no existe, pregunta si quieres crearla.
 
 Reglas: las lecturas se ejecutan solas; **toda escritura muestra una tarjeta de confirmación** con el desglose (para facturar, con fijos por cargar, pendientes, ítems nuevos y total proyectado) y no toca la base de datos hasta que pulsas Confirmar. Los ítems dictados son puntuales por defecto. El micrófono graba al tocarlo, transcribe en el servidor y deja el texto editable en la caja.
+
+## Bot de Telegram (sin n8n)
+
+El bot usa el mismo asistente, las mismas herramientas y las mismas confirmaciones que el chat web, directamente contra la app.
+
+1. Crea el bot en Telegram con **@BotFather** (`/newbot`) y copia el token.
+2. Ejecuta `schema_update_telegram.sql` en Supabase (guarda la conversación por chat).
+3. En el servidor añade `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (una cadena aleatoria larga), `APP_BASE_URL` (URL pública de la app) y despliega.
+4. Registra el webhook: `node scripts/telegram-setup.mjs https://tu-dominio.com`.
+5. Escríbele al bot: te responderá tu **chat id**. Ponlo en `TELEGRAM_ALLOWED_CHAT_IDS` y redespliega. Nadie más podrá usarlo.
+
+Desde Telegram puedes escribir o mandar **notas de voz**. Toda escritura llega como una tarjeta con botones **Confirmar / Cancelar**; nada se guarda hasta que confirmas. Al facturar o cotizar, el bot te manda el **PDF** al chat. Comandos: `/pendiente`, `/nuevo`, `/ayuda`.
 
 ## Pantallas
 

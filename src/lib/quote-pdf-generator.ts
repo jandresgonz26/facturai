@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Quote, CompanySettings } from '@/types'
 import { getCompanySettings } from './settings'
+import { loadHeaderImage } from './pdf-assets'
 
 const formatDate = (dateString: string) => {
     if (!dateString) return ''
@@ -37,27 +38,12 @@ const renderJamtechTemplate = async (quote: Quote, settings: CompanySettings | n
     const pageWidth = doc.internal.pageSize.getWidth()
     const margin = 15
 
-    // ── Header Image ──
+    // ── Header Image ── (funciona en navegador y en servidor)
     let headerHeight = 0
-    try {
-        const response = await fetch('/invoice-header.png')
-        if (response.ok) {
-            const blob = await response.blob()
-            const dataUrl = await new Promise<string>((resolve) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result as string)
-                reader.readAsDataURL(blob)
-            })
-            const imgDims = await new Promise<{ w: number; h: number }>((resolve) => {
-                const img = new Image()
-                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-                img.src = dataUrl
-            })
-            headerHeight = (pageWidth * imgDims.h) / imgDims.w
-            doc.addImage(dataUrl, 'PNG', 0, 0, pageWidth, headerHeight)
-        }
-    } catch (e) {
-        console.error('Could not load header image', e)
+    const header = await loadHeaderImage()
+    if (header) {
+        headerHeight = (pageWidth * header.height) / header.width
+        doc.addImage(header.dataUrl, 'PNG', 0, 0, pageWidth, headerHeight)
     }
 
     let y = headerHeight + 12

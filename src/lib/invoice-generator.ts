@@ -2,6 +2,7 @@ import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, Align
 // file-saver not used — Data URI approach preserves filename in async contexts
 import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
+import { loadHeaderImage } from './pdf-assets'
 
 export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client: Client): Promise<{ base64: string; fileName: string }> => {
     // Fetch company settings
@@ -11,16 +12,9 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
     const companyPhone = settings?.phone || '+58(424)922-5108'
     const companyEmail = settings?.email || 'hello@jamtechcorp.com'
 
-    // Fetch header image (fixed from public folder)
-    let headerData: ArrayBuffer | null = null
-    try {
-        const response = await fetch('/invoice-header.png')
-        if (response.ok) {
-            headerData = await response.arrayBuffer()
-        }
-    } catch (e) {
-        console.error("Could not load header", e)
-    }
+    // Fetch header image (navegador o servidor)
+    const headerImage = await loadHeaderImage()
+    const headerData: ArrayBuffer | null = headerImage ? headerImage.bytes.buffer.slice(headerImage.bytes.byteOffset, headerImage.bytes.byteOffset + headerImage.bytes.byteLength) as ArrayBuffer : null
 
     // Format date to DD/MM/YYYY
     const formatDate = (dateString: string) => {
