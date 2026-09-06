@@ -6,6 +6,29 @@ import { listClients } from '@/lib/actions'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+function normalize(s: string): string {
+    return s
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+}
+
+/**
+ * Con audio corto, silencioso o poco claro, los modelos de transcripción
+ * basados en LLM a veces "alucinan" devolviendo el prompt de contexto que
+ * les damos para reconocer nombres de clientes, en vez de fallar. Si el
+ * texto devuelto es en gran parte ese prompt, lo tratamos como si no se
+ * hubiera entendido nada, en vez de pasarle al agente instrucciones falsas.
+ */
+function looksLikePromptEcho(text: string, clientNames: string[]): boolean {
+    const n = normalize(text)
+    if (n.includes('vocabulario de facturacion') || n.includes('terminos ') || n.startsWith('clientes ')) return true
+    const mentioned = clientNames.filter((name) => n.includes(normalize(name))).length
+    return mentioned >= 4
+}
+
 export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
@@ -22,8 +45,10 @@ export async function POST(req: NextRequest) {
     }
 
     const clients = await listClients().catch(() => [])
-    const names = clients.map((c) => c.name).join(', ')
-    const prompt = `Instrucciones de facturación en español. Nombres de clientes: ${names}. Términos: factura, facturar, cotización, bolsa de horas, servicios fijos, pendientes, pagada, USD, EUR, dólares, euros.`
+    const names = clients.map((c) => c.name)
+    // Deliberadamente corto: una lista de vocabulario, no una frase completa,
+    // para reducir el riesgo de que el modelo la repita como si fuera el audio.
+    const prompt = `Vocabulario de facturación. Clientes: ${names.join(', ')}. Términos: factura, cotización, bolsa de horas, servicios fijos, pendientes, pagada, dólares, euros.`
 
     try {
         const openai = createOpenAI({ apiKey })
@@ -32,7 +57,15 @@ export async function POST(req: NextRequest) {
             audio: new Uint8Array(await file.arrayBuffer()),
             providerOptions: { openai: { language: 'es', prompt } },
         })
-        return Response.json({ text: result.text.trim() })
+        const text = result.text.trim()
+        if (text && looksLikePromptEcho(text, names)) {
+            console.warn('[transcribe] descartada transcripción que repetía el prompt de contexto')
+            return Response.json(
+                { error: 'No se entendió el audio con claridad. Intenta de nuevo hablando cerca del micrófono.' },
+                { status: 422 }
+            )
+        }
+        return Response.json({ text })
     } catch (e) {
         console.error('[transcribe]', e)
         return Response.json(
