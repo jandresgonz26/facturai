@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Hourglass, Package } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Client } from '@/types'
 import { toast } from 'sonner'
@@ -144,7 +145,7 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
             <section className="space-y-4">
                 <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
                     <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        <span className="material-symbols-rounded text-purple-600">hourglass_top</span>
+                        <Hourglass className="w-5 h-5 text-purple-600" />
                         Bolsas de Horas
                     </h2>
                     <span className="text-xs text-muted-foreground">Haz clic en una tarjeta para ver el detalle</span>
@@ -166,7 +167,7 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
                                 onClick={() => setDetailClient(item)}
                                 className={`p-4 rounded-lg border shadow-sm transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${isComplete
                                         ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 ring-2 ring-green-300 dark:ring-green-700'
-                                        : 'bg-white dark:bg-[#1E293B] border-gray-100 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700'
+                                        : 'bg-card border-gray-100 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700'
                                     }`}
                             >
                                 <div className="flex justify-between items-start mb-3">
@@ -210,7 +211,7 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
                                         className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold"
                                         onClick={(e) => { e.stopPropagation(); setClientToPackage(item) }}
                                     >
-                                        <span className="material-symbols-rounded text-lg mr-2">package_2</span>
+                                        <Package className="w-4 h-4 mr-2" />
                                         Empaquetar y facturar a {item.parentClientName}
                                     </Button>
                                 )}

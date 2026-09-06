@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Clock, Code, FileText, Headset, Megaphone, Pencil, Trash2, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Log, Client, ServiceCategory } from '@/types'
 import { toast } from 'sonner'
@@ -18,11 +19,11 @@ import {
 
 // Icon/color mapping for visual variety
 const activityIcons = [
-    { icon: 'description', borderColor: 'border-teal-100 dark:border-teal-900', hoverBorder: 'group-hover:border-teal-500', iconColor: 'text-teal-600' },
-    { icon: 'build', borderColor: 'border-indigo-100 dark:border-indigo-900', hoverBorder: 'group-hover:border-indigo-500', iconColor: 'text-indigo-600' },
-    { icon: 'campaign', borderColor: 'border-orange-100 dark:border-orange-900', hoverBorder: 'group-hover:border-orange-500', iconColor: 'text-orange-600' },
-    { icon: 'code', borderColor: 'border-sky-100 dark:border-sky-900', hoverBorder: 'group-hover:border-sky-500', iconColor: 'text-sky-600' },
-    { icon: 'support_agent', borderColor: 'border-purple-100 dark:border-purple-900', hoverBorder: 'group-hover:border-purple-500', iconColor: 'text-purple-600' },
+    { Icon: FileText, borderColor: 'border-teal-100 dark:border-teal-900', hoverBorder: 'group-hover:border-teal-500', iconColor: 'text-teal-600' },
+    { Icon: Wrench, borderColor: 'border-indigo-100 dark:border-indigo-900', hoverBorder: 'group-hover:border-indigo-500', iconColor: 'text-indigo-600' },
+    { Icon: Megaphone, borderColor: 'border-orange-100 dark:border-orange-900', hoverBorder: 'group-hover:border-orange-500', iconColor: 'text-orange-600' },
+    { Icon: Code, borderColor: 'border-sky-100 dark:border-sky-900', hoverBorder: 'group-hover:border-sky-500', iconColor: 'text-sky-600' },
+    { Icon: Headset, borderColor: 'border-purple-100 dark:border-purple-900', hoverBorder: 'group-hover:border-purple-500', iconColor: 'text-purple-600' },
 ]
 
 function getIconForIndex(index: number) {
@@ -280,7 +281,7 @@ export function Feed({
                 {groupedLogs.map((group, groupIdx) => (
                     <div key={group.dateKey} className="mb-8 relative timeline-item">
                         {/* Date header */}
-                        <div className="sticky top-0 z-10 bg-[#F8FAFC] dark:bg-[#0F172A] py-2 mb-4 w-full border-b border-gray-100 dark:border-gray-800">
+                        <div className="sticky top-0 z-10 bg-background py-2 mb-4 w-full border-b border-gray-100 dark:border-gray-800">
                             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-12">
                                 {group.dateLabel}
                             </h3>
@@ -299,14 +300,12 @@ export function Feed({
                                 return (
                                     <article key={log.id} className="relative pl-12 group cursor-pointer">
                                         {/* Timeline circle */}
-                                        <div className={`absolute left-0 top-1 w-10 h-10 rounded-full bg-white dark:bg-[#1E293B] border-2 ${iconStyle.borderColor} ${iconStyle.hoverBorder} flex items-center justify-center z-10 shadow-sm transition-colors`}>
-                                            <span className={`material-symbols-rounded ${iconStyle.iconColor} text-lg`}>
-                                                {iconStyle.icon}
-                                            </span>
+                                        <div className={`absolute left-0 top-1 w-10 h-10 rounded-full bg-card border-2 ${iconStyle.borderColor} ${iconStyle.hoverBorder} flex items-center justify-center z-10 shadow-sm transition-colors`}>
+                                            <iconStyle.Icon className={`${iconStyle.iconColor} w-4 h-4`} />
                                         </div>
 
                                         {/* Card */}
-                                        <div className="bg-white dark:bg-[#1E293B] rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
+                                        <div className="bg-card rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="text-xs font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 rounded">
@@ -348,7 +347,7 @@ export function Feed({
                                                         title="Editar"
                                                         type="button"
                                                     >
-                                                        <span className="material-symbols-rounded text-lg">edit</span>
+                                                        <Pencil className="w-4 h-4" />
                                                     </button>
                                                 )}
                                                 <button
@@ -357,7 +356,7 @@ export function Feed({
                                                     title="Eliminar"
                                                     type="button"
                                                 >
-                                                    <span className="material-symbols-rounded text-lg">delete</span>
+                                                    <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         </div>
@@ -454,7 +453,7 @@ export function Feed({
                         {isEditHourBagClient && (
                             <div className="space-y-1">
                                 <label className="text-xs font-semibold text-purple-500 uppercase tracking-wider flex items-center gap-1">
-                                    <span className="material-symbols-rounded text-sm">schedule</span>
+                                    <Clock className="w-3.5 h-3.5" />
                                     Horas
                                 </label>
                                 <input

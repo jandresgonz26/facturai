@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Invoice, Log } from '@/types'
+import { Invoice } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, CheckCircle, Trash2, RotateCcw, FileText, FileDown } from 'lucide-react'
-import { generateInvoiceDoc } from '@/lib/invoice-generator'
-import { generateInvoicePdf } from '@/lib/invoice-pdf-generator'
+import { downloadInvoice } from '@/lib/invoice-download'
+import { useDataChanged } from '@/lib/events'
 import { formatDate } from '@/lib/date-utils'
 import { toast } from 'sonner'
 import { Pagination } from '@/components/ui/Pagination'
@@ -19,6 +19,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
+
+const STATUS_LABELS: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', paid: 'Pagada' }
 
 export default function InvoicesPage() {
     const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -36,6 +38,8 @@ export default function InvoicesPage() {
     useEffect(() => {
         fetchInvoices()
     }, [])
+
+    useDataChanged(() => fetchInvoices())
 
     const fetchInvoices = async () => {
         setLoading(true)
@@ -61,98 +65,14 @@ export default function InvoicesPage() {
         setInvoiceToDownload(invoice)
     }
 
-    const fetchInvoiceItems = async (invoice: Invoice) => {
-        if (!invoice.clients) return null
-        const { data: items, error } = await supabase
-            .from('logs')
-            .select('*, service_categories(name)')
-            .eq('invoice_id', invoice.id)
-        if (error) {
-            toast.error('Error al obtener ítems de la factura')
-            return null
-        }
-        return items
-    }
-
-    const saveBlobToFile = async (blob: Blob, fileName: string, fileType: { description: string; accept: Record<string, string[]> }) => {
-        if ('showSaveFilePicker' in window) {
-            try {
-                const handle = await (window as any).showSaveFilePicker({
-                    suggestedName: fileName,
-                    types: [fileType]
-                })
-                const writable = await handle.createWritable()
-                await writable.write(blob)
-                await writable.close()
-                toast.dismiss()
-                toast.success('Factura guardada')
-                return
-            } catch (pickerError: any) {
-                if (pickerError?.name === 'AbortError') {
-                    toast.dismiss()
-                    return
-                }
-            }
-        }
-        // Fallback
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = fileName
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a) }, 200)
-        toast.dismiss()
-        toast.success('Factura descargada')
-    }
-
-    const handleDownloadDocx = async () => {
-        if (!invoiceToDownload || !invoiceToDownload.clients) return
+    const handleDownload = async (format: 'pdf' | 'docx') => {
+        if (!invoiceToDownload) return
+        const id = invoiceToDownload.id
         setInvoiceToDownload(null)
-        toast.loading('Generando DOCX...')
-
-        const items = await fetchInvoiceItems(invoiceToDownload)
-        if (!items) return
-
-        try {
-            const { base64, fileName } = await generateInvoiceDoc(invoiceToDownload, items, invoiceToDownload.clients)
-            const byteCharacters = atob(base64)
-            const byteArray = new Uint8Array(byteCharacters.length)
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteArray[i] = byteCharacters.charCodeAt(i)
-            }
-            const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-            await saveBlobToFile(blob, fileName, {
-                description: 'Documento Word',
-                accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] }
-            })
-        } catch (e) {
-            console.error(e)
-            toast.dismiss()
-            toast.error('Error al generar DOCX')
-        }
+        await downloadInvoice(id, format)
     }
-
-    const handleDownloadPdf = async () => {
-        if (!invoiceToDownload || !invoiceToDownload.clients) return
-        setInvoiceToDownload(null)
-        toast.loading('Generando PDF...')
-
-        const items = await fetchInvoiceItems(invoiceToDownload)
-        if (!items) return
-
-        try {
-            const { blob, fileName } = await generateInvoicePdf(invoiceToDownload, items, invoiceToDownload.clients)
-            await saveBlobToFile(blob, fileName, {
-                description: 'Documento PDF',
-                accept: { 'application/pdf': ['.pdf'] }
-            })
-        } catch (e) {
-            console.error(e)
-            toast.dismiss()
-            toast.error('Error al generar PDF')
-        }
-    }
+    const handleDownloadDocx = () => handleDownload('docx')
+    const handleDownloadPdf = () => handleDownload('pdf')
 
     const confirmMarkAsPaid = (invoice: Invoice, e?: React.MouseEvent) => {
         if (e) {
@@ -308,7 +228,7 @@ export default function InvoicesPage() {
                                         ${invoice.total_amount.toFixed(2)}
                                     </div>
                                     <div className={`text-xs font-bold uppercase ${invoice.status === 'paid' ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                                        {invoice.status === 'paid' ? 'Pagada' : invoice.status}
+                                        {STATUS_LABELS[invoice.status] ?? invoice.status}
                                     </div>
                                 </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { TrendingUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export function MonthlyRevenue({ refreshTrigger = 0 }: { refreshTrigger?: number }) {
@@ -34,7 +35,7 @@ export function MonthlyRevenue({ refreshTrigger = 0 }: { refreshTrigger?: number
     const progressPercent = Math.min((totalRevenue / goal) * 100, 100)
 
     return (
-        <div className="bg-white dark:bg-[#1E293B] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
                 Ingresos Mes Actual
             </h3>
@@ -44,7 +45,7 @@ export function MonthlyRevenue({ refreshTrigger = 0 }: { refreshTrigger?: number
                 </span>
                 {!loading && totalRevenue > 0 && (
                     <span className="text-sm font-medium text-emerald-500 flex items-center">
-                        <span className="material-symbols-rounded text-base">trending_up</span>
+                        <TrendingUp className="w-4 h-4" />
                         {Math.round(progressPercent)}%
                     </span>
                 )}

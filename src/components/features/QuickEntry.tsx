@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { ClipboardCheck, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Client, ServiceCategory } from '@/types'
@@ -130,12 +131,12 @@ export function QuickEntry({ onEntryAdded }: { onEntryAdded?: () => void }) {
 
     return (
         <section aria-labelledby="add-activity-title" className="relative z-10">
-            <div className="bg-white dark:bg-[#1E293B] rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="bg-card rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
                 {/* Dark gradient header */}
                 <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-1.5 bg-teal-500/20 rounded text-teal-400">
-                            <span className="material-symbols-rounded text-xl">add_task</span>
+                            <ClipboardCheck className="w-5 h-5" />
                         </div>
                         <h2 className="text-base font-semibold text-white" id="add-activity-title">
                             Registro Rápido
@@ -205,7 +206,7 @@ export function QuickEntry({ onEntryAdded }: { onEntryAdded?: () => void }) {
                             {isHourBagClient && (
                                 <div className="md:col-span-12 space-y-1">
                                     <label className="text-xs font-semibold text-purple-500 uppercase tracking-wider flex items-center gap-1" htmlFor="hours">
-                                        <span className="material-symbols-rounded text-sm">schedule</span>
+                                        <Clock className="w-3.5 h-3.5" />
                                         Horas (Bolsa de 10h)
                                     </label>
                                     <div className="relative rounded-md shadow-sm">

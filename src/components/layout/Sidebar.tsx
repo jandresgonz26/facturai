@@ -3,14 +3,26 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import {
+    ClipboardList,
+    FileText,
+    LayoutDashboard,
+    Menu,
+    ReceiptText,
+    Settings,
+    UserRound,
+    Users,
+    X,
+    type LucideIcon,
+} from 'lucide-react'
 
-const navLinks = [
-    { href: '/', label: 'Dashboard', icon: 'dashboard' },
-    { href: '/clients', label: 'Clientes', icon: 'group' },
-    { href: '/month-end', label: 'Facturación', icon: 'receipt_long' },
-    { href: '/quotes', label: 'Cotizaciones', icon: 'request_quote' },
-    { href: '/invoices', label: 'Reportes', icon: 'analytics' },
-    { href: '/settings', label: 'Ajustes', icon: 'settings' },
+const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
+    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/clients', label: 'Clientes', icon: Users },
+    { href: '/month-end', label: 'Facturación', icon: ReceiptText },
+    { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
+    { href: '/invoices', label: 'Facturas', icon: FileText },
+    { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
 
 export function Sidebar() {
@@ -22,30 +34,27 @@ export function Sidebar() {
             {/* Mobile toggle */}
             <button
                 onClick={() => setMobileOpen(!mobileOpen)}
-                className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-gray-900 text-white rounded-lg shadow-lg"
-                aria-label="Toggle menu"
+                className="lg:hidden fixed top-3.5 left-4 z-50 p-2 bg-gray-900 text-white rounded-lg shadow-lg"
+                aria-label="Abrir menú"
             >
-                <span className="material-symbols-rounded text-xl">
-                    {mobileOpen ? 'close' : 'menu'}
-                </span>
+                {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
 
             {/* Backdrop */}
             {mobileOpen && (
-                <div
-                    className="lg:hidden fixed inset-0 bg-black/50 z-30"
-                    onClick={() => setMobileOpen(false)}
-                />
+                <div className="lg:hidden fixed inset-0 bg-black/50 z-30" onClick={() => setMobileOpen(false)} />
             )}
 
-            <aside className={`
+            <aside
+                className={`
                 fixed left-0 top-0 h-screen z-40
                 w-64 bg-gray-900 text-white border-r border-gray-800
                 flex flex-col py-6 shadow-xl
                 transition-transform duration-300
                 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
                 lg:translate-x-0
-            `}>
+            `}
+            >
                 {/* Logo */}
                 <div className="flex items-center px-6 mb-10">
                     <div className="relative w-8 h-8 flex-shrink-0">
@@ -64,6 +73,7 @@ export function Sidebar() {
                 <nav className="flex-1 w-full px-3 space-y-1">
                     {navLinks.map((link) => {
                         const isActive = pathname === link.href
+                        const Icon = link.icon
                         return (
                             <Link
                                 key={link.href}
@@ -71,15 +81,14 @@ export function Sidebar() {
                                 onClick={() => setMobileOpen(false)}
                                 className={`
                                     sidebar-link relative flex items-center gap-4 px-4 py-3 rounded-lg transition-all group
-                                    ${isActive
-                                        ? 'active text-white bg-gray-800 border border-gray-700/50'
-                                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                    ${
+                                        isActive
+                                            ? 'active text-white bg-gray-800 border border-gray-700/50'
+                                            : 'text-gray-400 hover:text-white hover:bg-gray-800'
                                     }
                                 `}
                             >
-                                <span className={`material-symbols-rounded text-2xl ${isActive ? 'text-teal-400' : 'font-light'}`}>
-                                    {link.icon}
-                                </span>
+                                <Icon className={`w-5 h-5 ${isActive ? 'text-teal-400' : ''}`} strokeWidth={isActive ? 2.25 : 1.75} />
                                 <span className="text-sm font-medium">{link.label}</span>
                             </Link>
                         )
@@ -89,17 +98,17 @@ export function Sidebar() {
                 {/* User Profile Footer */}
                 <div className="px-3 w-full mt-auto space-y-4">
                     <div className="pt-4 border-t border-gray-800">
-                        <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+                        <Link href="/settings" className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
                             <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-teal-500 to-sky-500 p-[2px] flex-shrink-0 shadow-lg shadow-teal-900/50">
                                 <div className="h-full w-full rounded-full bg-gray-700 flex items-center justify-center">
-                                    <span className="material-symbols-rounded text-white text-sm">person</span>
+                                    <UserRound className="w-4 h-4 text-white" />
                                 </div>
                             </div>
                             <div className="overflow-hidden">
                                 <p className="text-sm font-medium text-white truncate">Admin</p>
                                 <p className="text-xs text-gray-400 truncate">Executive View</p>
                             </div>
-                        </div>
+                        </Link>
                     </div>
                 </div>
             </aside>

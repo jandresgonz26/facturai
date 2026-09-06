@@ -35,6 +35,8 @@ export interface Log {
     category?: string
     category_id?: string
     invoice_id?: string
+    recurring_service_id?: string | null
+    billing_period?: string | null
     created_at: string
     clients?: { name: string; billing_modality?: string; parent_client_id?: string | null }
     service_categories?: { name: string }
@@ -48,6 +50,7 @@ export interface Invoice {
     total_amount: number
     status: 'draft' | 'sent' | 'paid'
     paid_at?: string
+    due_date?: string | null
     created_at: string
     clients?: Client
 }

@@ -55,7 +55,7 @@ export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: numbe
     }
 
     return (
-        <div className="bg-white dark:bg-[#1E293B] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Pendientes por Facturar

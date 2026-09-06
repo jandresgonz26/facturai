@@ -15,6 +15,8 @@ import { toast } from 'sonner'
 import { Client, Log } from '@/types'
 import { CheckCircle, Sparkles, RefreshCw } from 'lucide-react'
 import { getEurToUsdRate } from '@/lib/currency'
+import { currentPeriod, loadRecurringServices } from '@/lib/actions'
+import { useDataChanged } from '@/lib/events'
 
 import { InvoiceModal } from '@/components/features/InvoiceModal'
 
@@ -34,6 +36,11 @@ export default function MonthEndPage() {
         fetchPendingLogs()
         checkRecurringServices()
     }, [selectedClientId])
+
+    useDataChanged(() => {
+        fetchPendingLogs()
+        checkRecurringServices()
+    })
 
     const checkRecurringServices = async () => {
         if (selectedClientId === 'all') {
@@ -117,56 +124,23 @@ export default function MonthEndPage() {
     }
 
     const handleLoadRecurring = async () => {
+        if (selectedClientId === 'all') {
+            toast.error('Selecciona un cliente para cargar sus servicios fijos')
+            return
+        }
         setLoading(true)
         try {
-            // 1. Fetch all active recurring services
-            const { data: services, error: sError } = await supabase
-                .from('recurring_services')
-                .select('*')
-                .eq('is_active', true)
-
-            if (sError) throw sError
-            if (!services || services.length === 0) {
-                toast.info('No hay servicios fijos configurados')
-                setLoading(false)
-                return
-            }
-
-            // 2. Get current month range
-            const now = new Date()
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-
-            // 3. Prepare logs to insert (Removed duplicate check as requested)
-            const currentRate = await getEurToUsdRate()
-
-            const logsToInsert = services.map(service => {
-                const finalValue = service.currency === 'EUR' && service.original_amount
-                    ? parseFloat((service.original_amount * currentRate).toFixed(2))
-                    : service.amount
-
-                return {
-                    client_id: service.client_id,
-                    description: service.description,
-                    value: finalValue,
-                    original_amount: service.original_amount || service.amount,
-                    currency: service.currency || 'USD',
-                    category_id: service.category_id,
-                    status: 'pending'
-                }
-            })
-
-            if (logsToInsert.length === 0) {
-                toast.info('No hay servicios para cargar')
+            const { inserted, skipped } = await loadRecurringServices(selectedClientId, currentPeriod())
+            if (inserted.length === 0) {
+                toast.info(skipped.length > 0 ? 'Los servicios fijos de este mes ya estaban cargados' : 'No hay servicios fijos configurados')
             } else {
-                const { error: iError } = await supabase.from('logs').insert(logsToInsert)
-                if (iError) throw iError
-                toast.success(`${logsToInsert.length} servicios fijos cargados correctamente`)
+                const extra = skipped.length ? ` (${skipped.length} ya estaban cargados)` : ''
+                toast.success(`${inserted.length} servicios fijos cargados${extra}`)
                 fetchPendingLogs()
             }
         } catch (error) {
             console.error('Error loading recurring services:', error)
-            toast.error('Error al cargar servicios fijos')
+            toast.error(error instanceof Error ? error.message : 'Error al cargar servicios fijos')
         }
         setLoading(false)
     }

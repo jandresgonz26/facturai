@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Client, Log } from '@/types'
-import { supabase } from '@/lib/supabase'
+import { createInvoice, getNextInvoiceNumber } from '@/lib/actions'
 import { toast } from 'sonner'
-import { generateInvoiceDoc } from '@/lib/invoice-generator'
+import { downloadInvoice } from '@/lib/invoice-download'
 
 interface InvoiceModalProps {
     open: boolean
@@ -32,22 +32,10 @@ export function InvoiceModal({ open, onOpenChange, client, items, onSuccess }: I
     }, [open])
 
     const fetchNextInvoiceNumber = async () => {
-        // Simple logic: get last invoice number and increment
-        // In a real app, this might be more complex or handled by DB sequence
-        const { data, error } = await supabase
-            .from('invoices')
-            .select('invoice_number')
-            .order('created_at', { ascending: false })
-            .limit(1)
-
-        if (data && data.length > 0) {
-            const lastNum = parseInt(data[0].invoice_number)
-            if (!isNaN(lastNum)) {
-                setInvoiceNumber((lastNum + 1).toString().padStart(4, '0'))
-            } else {
-                setInvoiceNumber('0538')
-            }
-        } else {
+        try {
+            setInvoiceNumber(await getNextInvoiceNumber())
+        } catch (e) {
+            console.error(e)
             setInvoiceNumber('0538')
         }
     }
@@ -60,45 +48,20 @@ export function InvoiceModal({ open, onOpenChange, client, items, onSuccess }: I
         }
 
         setLoading(true)
-
         try {
-            // 1. Create Invoice Record
-            const { data: invoiceData, error: invoiceError } = await supabase
-                .from('invoices')
-                .insert({
-                    invoice_number: invoiceNumber,
-                    client_id: client.id,
-                    issue_date: issueDate,
-                    total_amount: totalAmount,
-                    status: 'draft'
-                })
-                .select()
-                .single()
-
-            if (invoiceError) throw invoiceError
-
-            // 2. Update Logs
-            const logIds = items.map(i => i.id)
-            const { error: logsError } = await supabase
-                .from('logs')
-                .update({
-                    invoice_id: invoiceData.id,
-                    status: 'billed'
-                })
-                .in('id', logIds)
-
-            if (logsError) throw logsError
-
-            // 3. Generate Docx
-            await generateInvoiceDoc(invoiceData, items, client)
-
-            toast.success(`Factura #${invoiceNumber} generada y descargada`)
+            const { invoice } = await createInvoice({
+                client_id: client.id,
+                log_ids: items.map((i) => i.id),
+                invoice_number: invoiceNumber,
+                issue_date: issueDate,
+            })
+            toast.success(`Factura #${invoice.invoice_number} generada`)
             onSuccess()
             onOpenChange(false)
-
-        } catch (error: any) {
+            await downloadInvoice(invoice.id, 'docx')
+        } catch (error) {
             console.error(error)
-            toast.error('Error al generar factura: ' + error.message)
+            toast.error(error instanceof Error ? error.message : 'Error al generar factura')
         } finally {
             setLoading(false)
         }

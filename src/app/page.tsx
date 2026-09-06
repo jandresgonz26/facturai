@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { History } from 'lucide-react'
+import { useDataChanged } from '@/lib/events'
 import { Feed } from '@/components/features/Feed'
 import { QuickEntry } from '@/components/features/QuickEntry'
 import { HourBagTracker } from '@/components/features/HourBagTracker'
@@ -15,6 +17,8 @@ export default function Home() {
     setRefreshTrigger(prev => prev + 1)
   }
 
+  useDataChanged(handleActivityChange)
+
   return (
     <div className="flex flex-col xl:flex-row gap-8">
       {/* Main Content */}
@@ -28,12 +32,6 @@ export default function Home() {
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Vista general de rendimiento y facturación.
             </p>
-          </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm">
-              <span className="material-symbols-rounded align-bottom text-lg mr-1">calendar_today</span>
-              Este Mes
-            </button>
           </div>
         </div>
 
@@ -50,7 +48,7 @@ export default function Home() {
               className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2"
               id="recent-activity-title"
             >
-              <span className="material-symbols-rounded text-teal-600">history_edu</span>
+              <History className="w-5 h-5 text-teal-600" />
               Auditoría de Actividad
             </h2>
             <a

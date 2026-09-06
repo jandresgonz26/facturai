@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Banknote, ClipboardList, Clock, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { QuoteItem, Quote } from '@/types'
@@ -215,12 +216,12 @@ export function QuoteForm({
 
     return (
         <section aria-labelledby="add-quote-title" className="relative z-10">
-            <div className="bg-white dark:bg-[#1E293B] rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="bg-card rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
                 {/* Dark gradient header */}
                 <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-1.5 bg-teal-500/20 rounded text-teal-400">
-                            <span className="material-symbols-rounded text-xl">request_quote</span>
+                            <ClipboardList className="w-5 h-5" />
                         </div>
                         <h2 className="text-base font-semibold text-white" id="add-quote-title">
                             {isEditing ? `Editar Cotización #${quoteToEdit?.quote_number}` : 'Nueva Cotización'}
@@ -232,7 +233,7 @@ export function QuoteForm({
                             onClick={() => onCancelEdit?.()}
                             className="text-xs text-gray-300 hover:text-white flex items-center gap-1"
                         >
-                            <span className="material-symbols-rounded text-base">close</span>
+                            <X className="w-4 h-4" />
                             Cancelar edición
                         </button>
                     )}
@@ -254,7 +255,7 @@ export function QuoteForm({
                                             : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
                                     }`}
                                 >
-                                    <span className="material-symbols-rounded text-base">payments</span>
+                                    <Banknote className="w-4 h-4" />
                                     Con importe
                                 </button>
                                 <button
@@ -266,7 +267,7 @@ export function QuoteForm({
                                             : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
                                     }`}
                                 >
-                                    <span className="material-symbols-rounded text-base">schedule</span>
+                                    <Clock className="w-4 h-4" />
                                     Solo horas
                                 </button>
                             </div>
@@ -376,7 +377,7 @@ export function QuoteForm({
                                     onClick={addItem}
                                     className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700"
                                 >
-                                    <span className="material-symbols-rounded text-base">add</span>
+                                    <Plus className="w-4 h-4" />
                                     Agregar tarea
                                 </button>
                             </div>
@@ -461,7 +462,7 @@ export function QuoteForm({
                                             className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent"
                                             title="Eliminar tarea"
                                         >
-                                            <span className="material-symbols-rounded text-lg">delete</span>
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>

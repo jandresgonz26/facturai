@@ -416,7 +416,7 @@ export function HourBagDetailModal({
                                             key={log.id}
                                             className={`rounded-lg border p-3 transition-all ${editingLogId === log.id
                                                 ? 'border-purple-400 bg-purple-50/50 dark:bg-purple-900/10'
-                                                : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1E293B]'
+                                                : 'border-gray-100 dark:border-gray-700 bg-card'
                                                 }`}
                                         >
                                             {editingLogId === log.id ? (
@@ -573,7 +573,7 @@ export function HourBagDetailModal({
                                 {selectedBag.logs.map((log) => (
                                     <div
                                         key={log.id}
-                                        className="rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1E293B] p-3 flex items-start justify-between gap-3"
+                                        className="rounded-lg border border-gray-100 dark:border-gray-700 bg-card p-3 flex items-start justify-between gap-3"
                                     >
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium text-gray-900 dark:text-white">{log.description}</p>
@@ -616,7 +616,7 @@ export function HourBagDetailModal({
                                         <button
                                             key={idx}
                                             onClick={() => setSelectedBag(bag)}
-                                            className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1E293B] p-4 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all group"
+                                            className="w-full text-left rounded-lg border border-gray-100 dark:border-gray-700 bg-card p-4 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all group"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <div>
