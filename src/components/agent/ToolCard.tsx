@@ -30,12 +30,21 @@ function describeInput(tool: string, raw: unknown): { title: string; rows: Row[]
             const rows: Row[] = [
                 { label: 'Cliente', value: client },
                 { label: 'Descripción', value: str(input.description) ?? '-' },
+                { label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` },
             ]
-            if (input.amount != null) rows.push({ label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` })
-            if (input.hours != null) rows.push({ label: 'Horas', value: `${num(input.hours)}h` })
             if (input.category) rows.push({ label: 'Categoría', value: str(input.category)! })
             rows.push({ label: 'Fecha', value: dateLabel(str(input.date)) })
             return { title: `Registrar actividad para ${client}`, rows, note: 'Se guardará como ítem puntual pendiente de facturar.' }
+        }
+        case 'add_hour_log': {
+            const rows: Row[] = [
+                { label: 'Cliente', value: client },
+                { label: 'Descripción', value: str(input.description) ?? '-' },
+                { label: 'Horas', value: `${num(input.hours)}h` },
+            ]
+            if (input.category) rows.push({ label: 'Categoría', value: str(input.category)! })
+            rows.push({ label: 'Fecha', value: dateLabel(str(input.date)) })
+            return { title: `Registrar horas para ${client}`, rows, note: 'Se suman a la bolsa de 10 horas; el cobro se genera al completarla.' }
         }
         case 'load_recurring_services':
             return {
@@ -88,11 +97,16 @@ function describeResult(tool: string, raw: unknown): { title: string; lines: str
             return {
                 title: 'Actividad registrada',
                 lines: [
-                    `${str(d.description)} · ${d.hours != null ? `${num(d.hours)}h` : fmtMoney(num(d.original_amount), str(d.currency))}${
+                    `${str(d.description)} · ${fmtMoney(num(d.original_amount), str(d.currency))}${
                         d.currency === 'EUR' && d.value_usd != null ? ` (≈ ${fmtUsd(num(d.value_usd))})` : ''
                     }`,
                     `${str(d.client_name) ?? ''} · ${dateLabel(str(d.date))}`,
                 ],
+            }
+        case 'add_hour_log':
+            return {
+                title: 'Horas registradas',
+                lines: [`${str(d.description)} · ${num(d.hours)}h`, `${str(d.client_name) ?? ''} · ${dateLabel(str(d.date))}`],
             }
         case 'load_recurring_services': {
             const loaded = Array.isArray(d.loaded) ? (d.loaded as Rec[]) : []

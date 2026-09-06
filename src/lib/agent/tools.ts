@@ -137,15 +137,18 @@ export const agentTools = {
     }),
 
     // ───────────── Escrituras (requieren confirmación del usuario) ─────────────
+    // add_log y add_hour_log están separadas a propósito: un cliente estándar se
+    // cobra por MONTO y uno de bolsa de horas por HORAS, nunca ambos a la vez
+    // (igual que el formulario de Registro Rápido, que solo muestra el campo que
+    // aplica). Separar las herramientas evita que el modelo mezcle los campos.
     add_log: tool({
         description:
-            'Registra UNA actividad puntual (no recurrente) para un cliente. Requiere confirmación. Para clientes estándar el monto es obligatorio; para subclientes por bolsa de horas, las horas son obligatorias. El monto va en la moneda del cliente.',
+            'Registra UNA actividad puntual (no recurrente) por un MONTO, para un cliente ESTÁNDAR (no de bolsa de horas). Requiere confirmación. El monto va en la moneda del cliente. Si el cliente es de bolsa de horas, usa add_hour_log en su lugar, nunca esta.',
         inputSchema: z.object({
             client_id: uuidSchema,
             client_name: clientNameField,
             description: z.string().min(3).describe('Descripción clara del trabajo realizado'),
-            amount: z.number().positive().optional().describe('Monto en la moneda del cliente. Obligatorio para clientes estándar.'),
-            hours: z.number().positive().optional().describe('SOLO para subclientes por bolsa de horas o si el usuario dice las horas. No lo inventes.'),
+            amount: z.number().positive().describe('Monto en la moneda del cliente'),
             category: optionalText.describe('SOLO si el usuario menciona la categoría; si no, omítelo y se usa la predeterminada'),
             date: optionalDate.describe('SOLO si el usuario indica una fecha distinta de hoy (YYYY-MM-DD)'),
         }),
@@ -159,6 +162,29 @@ export const agentTools = {
                     value_usd: log.value,
                     currency: log.currency,
                     original_amount: log.original_amount,
+                    date: log.created_at?.split('T')[0],
+                }
+            }),
+    }),
+
+    add_hour_log: tool({
+        description:
+            'Registra HORAS trabajadas para un subcliente de BOLSA DE HORAS (nunca para un cliente estándar). Requiere confirmación. No lleva monto: el cobro ocurre al empaquetar 10 horas. Si el cliente es estándar, usa add_log en su lugar, nunca esta.',
+        inputSchema: z.object({
+            client_id: uuidSchema,
+            client_name: clientNameField,
+            description: z.string().min(3).describe('Descripción clara del trabajo realizado'),
+            hours: z.number().positive().describe('Horas trabajadas'),
+            category: optionalText.describe('SOLO si el usuario menciona la categoría; si no, omítelo y se usa la predeterminada'),
+            date: optionalDate.describe('SOLO si el usuario indica una fecha distinta de hoy (YYYY-MM-DD)'),
+        }),
+        execute: async ({ client_name, ...input }) =>
+            run(async () => {
+                const log = await actions.addLog(input)
+                return {
+                    id: log.id,
+                    client_name,
+                    description: log.description,
                     hours: log.hours,
                     date: log.created_at?.split('T')[0],
                 }

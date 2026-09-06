@@ -4,6 +4,7 @@
  */
 export const WRITE_TOOLS = [
     'add_log',
+    'add_hour_log',
     'load_recurring_services',
     'bill_client_month',
     'mark_invoice_paid',
@@ -24,6 +25,7 @@ export const TOOL_LABELS: Record<string, string> = {
     get_invoice_items: 'Consultando el detalle de la factura',
     get_revenue_summary: 'Calculando ingresos y cobros',
     add_log: 'Registrar actividad',
+    add_hour_log: 'Registrar horas',
     load_recurring_services: 'Cargar servicios fijos',
     bill_client_month: 'Facturar el mes',
     mark_invoice_paid: 'Marcar factura como pagada',
