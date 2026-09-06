@@ -112,6 +112,16 @@ export function AgentPanel() {
         if (open) setTimeout(() => textareaRef.current?.focus(), 150)
     }, [open])
 
+    // Se recalcula con cualquier cambio del texto (tipeo, transcripción de voz,
+    // sugerencias), no solo con el evento de teclado, así crece también cuando
+    // el texto llega insertado en vez de tipeado.
+    useEffect(() => {
+        const el = textareaRef.current
+        if (!el) return
+        el.style.height = 'auto'
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+    }, [input])
+
     const send = (text: string) => {
         const t = text.trim()
         if (!t || busy) return
@@ -225,13 +235,7 @@ export function AgentPanel() {
                             onKeyDown={onKeyDown}
                             rows={1}
                             placeholder="Escribe o habla: «factúrale el mes a…»"
-                            className="flex-1 resize-none bg-transparent outline-none text-sm py-2 max-h-40 min-h-[36px] placeholder:text-muted-foreground"
-                            style={{ height: 'auto' }}
-                            onInput={(e) => {
-                                const el = e.currentTarget
-                                el.style.height = 'auto'
-                                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-                            }}
+                            className="flex-1 resize-none bg-transparent outline-none text-sm py-2 max-h-40 min-h-[36px] overflow-y-auto placeholder:text-muted-foreground"
                         />
                         {busy ? (
                             <button

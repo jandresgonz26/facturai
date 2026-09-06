@@ -20,6 +20,7 @@ export const TOOL_LABELS: Record<string, string> = {
     list_clients: 'Consultando clientes',
     get_billing_snapshot: 'Revisando pendientes y servicios fijos',
     get_pending_logs: 'Consultando ítems pendientes',
+    find_past_items: 'Revisando cómo se cobró antes',
     list_categories: 'Consultando categorías',
     list_invoices: 'Consultando facturas',
     get_invoice_items: 'Consultando el detalle de la factura',

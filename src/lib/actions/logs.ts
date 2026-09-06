@@ -102,3 +102,43 @@ export async function getLogsByIds(ids: string[]): Promise<Log[]> {
     if (error) throw new ActionError(`No se pudieron cargar los ítems: ${error.message}`)
     return (data || []) as Log[]
 }
+
+export interface PastItemMatch {
+    description: string
+    value_usd: number | null
+    original_amount: number | null
+    currency: string | null
+    date: string
+    /** 'pending' = todavía no facturado: una coincidencia aquí puede ser un duplicado, no solo un antecedente de estilo. */
+    status: 'pending' | 'billed'
+}
+
+/**
+ * Actividades pasadas de un cliente (y subclientes) cuya descripción contiene
+ * la palabra clave. Sirve para que un servicio nuevo se describa igual que
+ * las veces anteriores (ej. "Servicios SEO, App, WEB Pago 6 (junio)"), y para
+ * detectar si ya existe un ítem pendiente igual (posible duplicado) antes de
+ * registrar uno nuevo.
+ */
+export async function findPastItems(clientId: string, keyword: string, limit = 5): Promise<PastItemMatch[]> {
+    const safeKeyword = keyword.replace(/[%_]/g, '').trim()
+    if (safeKeyword.length < 2) return []
+    const ids = await getBillableClientIds(clientId)
+    const { data, error } = await supabase
+        .from('logs')
+        .select('description, value, original_amount, currency, created_at, status')
+        .in('client_id', ids)
+        .in('status', ['pending', 'billed'])
+        .ilike('description', `%${safeKeyword}%`)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+    if (error) throw new ActionError(`No se pudo buscar el historial: ${error.message}`)
+    return (data || []).map((l) => ({
+        description: l.description,
+        value_usd: l.value,
+        original_amount: l.original_amount ?? null,
+        currency: l.currency ?? null,
+        date: l.created_at?.split('T')[0] ?? '',
+        status: l.status as 'pending' | 'billed',
+    }))
+}

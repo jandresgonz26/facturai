@@ -73,6 +73,16 @@ export const agentTools = {
             }),
     }),
 
+    find_past_items: tool({
+        description:
+            'Busca cómo se describieron y cobraron actividades similares a un cliente (y sus subclientes) en el pasado, por palabra clave (ej. "SEO", "mantenimiento", "hosting"). Úsala ANTES de add_log/add_hour_log cuando el usuario pida cobrar algo que suene a un servicio que ya se le ha facturado antes a ese cliente, para reutilizar la misma redacción (actualizando solo el mes o número de pago) y para notar si el monto que menciona difiere del habitual.',
+        inputSchema: z.object({
+            client_id: uuidSchema,
+            keyword: z.string().min(2).describe('Palabra clave del servicio, ej. "SEO"'),
+        }),
+        execute: async ({ client_id, keyword }) => run(() => actions.findPastItems(client_id, keyword)),
+    }),
+
     list_categories: tool({
         description: 'Categorías de servicio disponibles para clasificar actividades.',
         inputSchema: z.object({}),
