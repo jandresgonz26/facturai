@@ -13,7 +13,9 @@ export function emitDataChanged() {
 /** Ejecuta `handler` cada vez que se emite el evento de cambio de datos. */
 export function useDataChanged(handler: () => void) {
     const ref = useRef(handler)
-    ref.current = handler
+    useEffect(() => {
+        ref.current = handler
+    })
     useEffect(() => {
         const listener = () => ref.current()
         window.addEventListener(DATA_CHANGED_EVENT, listener)

@@ -117,7 +117,9 @@ export async function loadRecurringServices(clientId: string, period: string): P
     let { data, error } = await supabase.from('logs').insert(rows).select(LOG_SELECT)
     if (error && isMissingColumn(error)) {
         // Sin migración: insertamos sin las columnas de trazabilidad.
-        const legacyRows = rows.map(({ recurring_service_id: _r, billing_period: _p, ...rest }) => rest)
+        const legacyRows = rows.map(({ client_id, description, value, original_amount, currency, category_id, status }) => ({
+            client_id, description, value, original_amount, currency, category_id, status,
+        }))
         ;({ data, error } = await supabase.from('logs').insert(legacyRows).select(LOG_SELECT))
     }
     if (error) throw new ActionError(`No se pudieron cargar los servicios fijos: ${error.message}`)

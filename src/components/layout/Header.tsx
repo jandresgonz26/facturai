@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { Moon, Settings, Sparkles, Sun } from 'lucide-react'
@@ -8,19 +7,18 @@ import { useAgent } from '@/components/agent/AgentProvider'
 
 function ThemeToggle() {
     const { resolvedTheme, setTheme } = useTheme()
-    const [mounted, setMounted] = useState(false)
-    useEffect(() => setMounted(true), [])
-    if (!mounted) return <div className="h-9 w-9" />
-    const dark = resolvedTheme === 'dark'
+    // Los dos iconos se renderizan siempre y CSS decide cuál se ve:
+    // así no hay desajuste de hidratación ni estado "mounted".
     return (
         <button
             type="button"
-            onClick={() => setTheme(dark ? 'light' : 'dark')}
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             className="h-9 w-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-            title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            title="Cambiar tema claro/oscuro"
             aria-label="Cambiar tema"
         >
-            {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <Sun className="w-5 h-5 hidden dark:block" />
+            <Moon className="w-5 h-5 dark:hidden" />
         </button>
     )
 }
