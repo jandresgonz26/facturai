@@ -104,6 +104,28 @@ export const agentTools = {
             }),
     }),
 
+    get_invoice_items: tool({
+        description:
+            'Ítems (descripción, categoría, monto) que componen UNA factura ya emitida. Resuelve primero el invoice_id con list_invoices (por cliente y rango de fechas) y luego llama a esta herramienta para ver el detalle. Úsala cuando el usuario pregunte qué se le cobró, el detalle o la descripción de una factura o de un periodo ya facturado.',
+        inputSchema: z.object({ invoice_id: uuidSchema }),
+        execute: async ({ invoice_id }) =>
+            run(async () => {
+                const { invoice, items } = await actions.getInvoiceWithItems(invoice_id)
+                return {
+                    invoice_number: invoice.invoice_number,
+                    client_name: invoice.clients?.name ?? null,
+                    issue_date: invoice.issue_date,
+                    total_amount: invoice.total_amount,
+                    items: items.map((l) => ({
+                        description: l.description,
+                        category: l.service_categories?.name ?? null,
+                        value_usd: l.value,
+                        hours: l.hours ?? null,
+                    })),
+                }
+            }),
+    }),
+
     get_revenue_summary: tool({
         description: 'Resumen de ingresos: total facturado, cobrado y por cobrar, desglosado por mes y por cliente, más la lista de facturas sin pagar con días transcurridos. Úsala para preguntas como "¿quién me debe?" o "¿cuánto facturé en X?".',
         inputSchema: z.object({

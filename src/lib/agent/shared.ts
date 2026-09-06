@@ -21,6 +21,7 @@ export const TOOL_LABELS: Record<string, string> = {
     get_pending_logs: 'Consultando ítems pendientes',
     list_categories: 'Consultando categorías',
     list_invoices: 'Consultando facturas',
+    get_invoice_items: 'Consultando el detalle de la factura',
     get_revenue_summary: 'Calculando ingresos y cobros',
     add_log: 'Registrar actividad',
     load_recurring_services: 'Cargar servicios fijos',
