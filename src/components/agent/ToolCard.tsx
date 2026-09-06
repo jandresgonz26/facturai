@@ -179,6 +179,24 @@ function findSnapshot(context: AnyToolPart[] | undefined, clientId: string | und
     return found
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <p className="text-muted-foreground text-[11px] uppercase tracking-wide mb-1">{title}</p>
+            {children}
+        </div>
+    )
+}
+
+function Line({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex justify-between gap-3 text-sm">
+            <span className="truncate">{label}</span>
+            <span className="font-mono shrink-0">{value}</span>
+        </div>
+    )
+}
+
 function BillingPreview({ input, snapshot }: { input: Rec; snapshot: Snapshot }) {
     const extras = Array.isArray(input.extra_items) ? (input.extra_items as Rec[]) : []
     const rate = snapshot.client.currency === 'EUR' ? snapshot.eur_usd_rate : 1
@@ -188,18 +206,6 @@ function BillingPreview({ input, snapshot }: { input: Rec; snapshot: Snapshot })
     const toLoadTotal = loadRecurring ? snapshot.recurring_services.to_load_total_usd : 0
     const total = snapshot.pending_total_usd + toLoadTotal + extrasUsd
     const sym = snapshot.client.currency === 'EUR' ? '€' : '$'
-    const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-        <div>
-            <p className="text-muted-foreground text-[11px] uppercase tracking-wide mb-1">{title}</p>
-            {children}
-        </div>
-    )
-    const Line = ({ label, value }: { label: string; value: string }) => (
-        <div className="flex justify-between gap-3 text-sm">
-            <span className="truncate">{label}</span>
-            <span className="font-mono shrink-0">{value}</span>
-        </div>
-    )
     return (
         <div className="space-y-3">
             <Section title="Servicios fijos">
