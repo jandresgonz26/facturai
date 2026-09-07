@@ -96,6 +96,12 @@ export const billClientMonthSchema = z.object({
     client_id: uuidSchema,
     period: periodSchema,
     load_recurring: z.boolean(),
+    expected_log_ids: z
+        .array(uuidSchema)
+        .optional()
+        .describe(
+            'IDs exactos de pending_logs devueltos por get_billing_snapshot (los que se le mostraron al usuario). Fija qué se factura: si entre la propuesta y la confirmación aparece un pendiente nuevo para este cliente que no estaba en esta lista, se excluye de la factura en vez de incluirse sin que el usuario lo haya visto.'
+        ),
     extra_items: z.array(extraItemSchema).default([]),
     issue_date: dateSchema.optional(),
     due_date: dateSchema.optional(),
@@ -107,7 +113,11 @@ export type BillClientMonthInput = z.infer<typeof billClientMonthSchema>
  * Flujo completo de facturación mensual:
  * 1) carga los servicios fijos que falten en el periodo (idempotente),
  * 2) registra los ítems adicionales dictados,
- * 3) crea la factura con TODOS los pendientes del cliente y subclientes.
+ * 3) crea la factura con los pendientes acordados: si se pasó expected_log_ids
+ *    (la lista exacta que vio el usuario en la tarjeta), se factura esa lista
+ *    más lo recién cargado en este mismo paso; cualquier otro pendiente que
+ *    haya aparecido mientras tanto se excluye y se reporta aparte, en vez de
+ *    colarse en el total sin que el usuario lo haya confirmado.
  */
 export async function billClientMonth(raw: BillClientMonthInput) {
     const input = parseInput(billClientMonthSchema, raw)
@@ -119,20 +129,35 @@ export async function billClientMonth(raw: BillClientMonthInput) {
     const recurring = input.load_recurring
         ? await loadRecurringServices(client.id, input.period)
         : { inserted: [], skipped: [] }
+    const recurringIds = new Set(recurring.inserted.map((l) => l.id))
 
     const extras: Log[] = []
     for (const item of input.extra_items) {
         extras.push(await addLog({ client_id: client.id, description: item.description, amount: item.amount, category: item.category }))
     }
+    const extraIds = new Set(extras.map((l) => l.id))
 
-    const pending = await getPendingLogs(client.id)
-    if (pending.length === 0) {
+    const currentPending = await getPendingLogs(client.id)
+    const hasBaseline = input.expected_log_ids !== undefined
+    const expectedIds = new Set(input.expected_log_ids ?? [])
+
+    const toBill = hasBaseline
+        ? currentPending.filter((l) => expectedIds.has(l.id) || recurringIds.has(l.id) || extraIds.has(l.id))
+        : currentPending
+    const excludedNew = hasBaseline
+        ? currentPending.filter((l) => !expectedIds.has(l.id) && !recurringIds.has(l.id) && !extraIds.has(l.id))
+        : []
+    const missingExpectedCount = hasBaseline
+        ? [...expectedIds].filter((id) => !currentPending.some((l) => l.id === id)).length
+        : 0
+
+    if (toBill.length === 0) {
         throw new ActionError(`No hay ítems pendientes para facturar a ${client.name}.`)
     }
 
     const { invoice, items } = await createInvoice({
         client_id: client.id,
-        log_ids: pending.map((l) => l.id),
+        log_ids: toBill.map((l) => l.id),
         invoice_number: input.invoice_number,
         issue_date: input.issue_date,
         due_date: input.due_date,
@@ -150,6 +175,8 @@ export async function billClientMonth(raw: BillClientMonthInput) {
         recurring_skipped: recurring.skipped.length,
         extras_added: extras.length,
         items: items.map(logSummary),
+        excluded_new_items: excludedNew.map(logSummary),
+        missing_expected_items_count: missingExpectedCount,
     }
 }
 

@@ -136,15 +136,25 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
                 ],
             }
         }
-        case 'bill_client_month':
+        case 'bill_client_month': {
+            const excluded = Array.isArray(d.excluded_new_items) ? (d.excluded_new_items as Rec[]) : []
+            const lines = [
+                `Total ${fmtUsd(num(d.total_amount))} · ${num(d.items_count)} ítems · emitida ${dateLabel(str(d.issue_date))}`,
+                `Fijos cargados: ${num(d.recurring_loaded) ?? 0} · Ítems nuevos: ${num(d.extras_added) ?? 0}`,
+            ]
+            if (excluded.length) {
+                lines.push(
+                    `⚠️ ${excluded.length} ítem${excluded.length === 1 ? '' : 's'} nuevo${excluded.length === 1 ? '' : 's'} apareció mientras tanto y NO se incluyó: ${excluded
+                        .map((l) => `${str(l.description)} (${fmtUsd(num(l.value_usd))})`)
+                        .join(', ')}`
+                )
+            }
             return {
                 title: `Factura #${str(d.invoice_number)} creada para ${str(d.client_name)}`,
-                lines: [
-                    `Total ${fmtUsd(num(d.total_amount))} · ${num(d.items_count)} ítems · emitida ${dateLabel(str(d.issue_date))}`,
-                    `Fijos cargados: ${num(d.recurring_loaded) ?? 0} · Ítems nuevos: ${num(d.extras_added) ?? 0}`,
-                ],
+                lines,
                 invoiceId: str(d.invoice_id),
             }
+        }
         case 'mark_invoice_paid':
             return {
                 title: `Factura #${str(d.invoice_number)} marcada como pagada`,

@@ -230,12 +230,18 @@ export const agentTools = {
 
     bill_client_month: tool({
         description:
-            'Flujo completo de facturación mensual para un cliente: carga los servicios fijos que falten (si load_recurring), registra los ítems adicionales dictados (extra_items), y crea la factura con TODOS los pendientes del cliente y sus subclientes. Requiere confirmación. Antes de llamarla debes haber consultado get_billing_snapshot y haber explicado al usuario el desglose y el total.',
+            'Flujo completo de facturación mensual para un cliente: carga los servicios fijos que falten (si load_recurring), registra los ítems adicionales dictados (extra_items), y crea la factura con los pendientes acordados (expected_log_ids) más lo recién cargado. Requiere confirmación. SIEMPRE debes haber llamado a get_billing_snapshot justo antes en esta misma respuesta y haber explicado al usuario el desglose y el total.',
         inputSchema: z.object({
             client_id: uuidSchema,
             client_name: clientNameField,
             period: periodSchema.describe('Periodo a facturar, YYYY-MM'),
             load_recurring: z.boolean().describe('true para cargar los servicios fijos que falten en el periodo'),
+            expected_log_ids: z
+                .array(uuidSchema)
+                .optional()
+                .describe(
+                    'IMPORTANTE, no lo omitas: copia aquí, tal cual, los ids del campo pending_logs que devolvió get_billing_snapshot para este cliente (array vacío si no había ninguno). Fija exactamente qué se factura: si aparece un pendiente nuevo entre la propuesta y la confirmación, se excluye en vez de facturarse sin que el usuario lo haya visto.'
+                ),
             extra_items: z
                 .array(
                     z.object({
