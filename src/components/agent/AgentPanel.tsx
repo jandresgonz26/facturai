@@ -10,7 +10,7 @@ import {
     type UIMessage,
 } from 'ai'
 import { toast } from 'sonner'
-import { Bot, LoaderCircle, RotateCcw, Send, Sparkles, Square, X } from 'lucide-react'
+import { Bot, LoaderCircle, RotateCcw, Send, Sparkles, Square, TriangleAlert, X } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { useAgent } from './AgentProvider'
@@ -104,6 +104,16 @@ export function AgentPanel() {
 
     const busy = status === 'submitted' || status === 'streaming'
 
+    // Si el último mensaje del asistente tiene una confirmación sin responder,
+    // no se puede mandar nada nuevo: el modelo exige que toda llamada a
+    // herramienta quede resuelta antes de seguir, y enviar otro mensaje encima
+    // rompería la conversación (mismo mecanismo que resolvimos para Telegram).
+    const hasPendingApproval = useMemo(() => {
+        const last = messages[messages.length - 1]
+        if (!last || last.role !== 'assistant') return false
+        return last.parts.some((p) => isToolUIPart(p) && p.state === 'approval-requested')
+    }, [messages])
+
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }, [messages, status])
@@ -124,7 +134,7 @@ export function AgentPanel() {
 
     const send = (text: string) => {
         const t = text.trim()
-        if (!t || busy) return
+        if (!t || busy || hasPendingApproval) return
         void sendMessage({ text: t })
         setInput('')
     }
@@ -226,16 +236,22 @@ export function AgentPanel() {
                 </div>
 
                 <div className="border-t px-3 py-3 bg-background">
+                    {hasPendingApproval && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 text-center mb-2 flex items-center justify-center gap-1.5">
+                            <TriangleAlert className="w-3.5 h-3.5" /> Confirma o cancela la acción de arriba para poder seguir
+                        </p>
+                    )}
                     <div className="flex items-end gap-2 rounded-2xl border bg-card px-2 py-1.5 focus-within:border-teal-500/60 transition-colors">
-                        <VoiceButton onTranscript={onTranscript} disabled={busy} />
+                        <VoiceButton onTranscript={onTranscript} disabled={busy || hasPendingApproval} />
                         <textarea
                             ref={textareaRef}
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={onKeyDown}
                             rows={1}
-                            placeholder="Escribe o habla: «factúrale el mes a…»"
-                            className="flex-1 resize-none bg-transparent outline-none text-sm py-2 max-h-40 min-h-[36px] overflow-y-auto placeholder:text-muted-foreground"
+                            disabled={hasPendingApproval}
+                            placeholder={hasPendingApproval ? 'Responde la confirmación de arriba primero…' : 'Escribe o habla: «factúrale el mes a…»'}
+                            className="flex-1 resize-none bg-transparent outline-none text-sm py-2 max-h-40 min-h-[36px] overflow-y-auto placeholder:text-muted-foreground disabled:cursor-not-allowed"
                         />
                         {busy ? (
                             <button
@@ -250,7 +266,7 @@ export function AgentPanel() {
                             <button
                                 type="button"
                                 onClick={() => send(input)}
-                                disabled={!input.trim()}
+                                disabled={!input.trim() || hasPendingApproval}
                                 className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 transition-colors"
                                 title="Enviar (Enter)"
                             >

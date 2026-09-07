@@ -1,5 +1,5 @@
 import { NextRequest, after } from 'next/server'
-import type { UIMessage } from 'ai'
+import { lastAssistantMessageIsCompleteWithApprovalResponses, type UIMessage } from 'ai'
 import { runAgentTurn } from '@/lib/agent/run'
 import { transcribeAudio } from '@/lib/agent/transcribe'
 import { getInvoiceWithItems, getQuote } from '@/lib/actions'
@@ -112,31 +112,45 @@ async function sendAttachments(chatId: string, tool: string, part: ToolPartLike)
     }
 }
 
-/** Busca, de más reciente a más antiguo, una confirmación de escritura sin responder. */
-function findPendingApproval(history: UIMessage[]): { idx: number; approvalId: string } | null {
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i]
-        if (msg.role !== 'assistant') continue
-        const pending = toolParts(msg).find((p) => p.state === 'approval-requested' && p.approval?.id)
-        if (pending) return { idx: i, approvalId: pending.approval!.id }
-    }
-    return null
+/**
+ * Confirmaciones sin responder en el ÚLTIMO mensaje del asistente (puede haber
+ * más de una: pedir dos cosas en la misma frase, ej. "registra esto y aquello",
+ * genera dos propuestas a la vez). Solo el último mensaje puede tenerlas: nunca
+ * se agrega nada después de un mensaje con aprobaciones pendientes sin resolver.
+ */
+function pendingApprovals(history: UIMessage[]): { idx: number; ids: string[] } | null {
+    const idx = history.length - 1
+    const last = history[idx]
+    if (!last || last.role !== 'assistant') return null
+    const ids = toolParts(last)
+        .filter((p) => p.state === 'approval-requested' && p.approval?.id)
+        .map((p) => p.approval!.id)
+    return ids.length ? { idx, ids } : null
 }
 
-/**
- * Resuelve (aprueba o cancela) una confirmación pendiente: se lo indica al
- * modelo (que cierra el ciclo de la herramienta) y se entrega su respuesta.
- * La usan tanto el botón de Telegram como el auto-cancelado por mensaje nuevo.
- */
-async function resolveApproval(chatId: string, history: UIMessage[], idx: number, approvalId: string, approved: boolean, reason?: string): Promise<UIMessage[]> {
-    const assistant = structuredClone(history[idx]) as UIMessage
-    for (const part of assistant.parts as unknown as ToolPartLike[]) {
+/** Marca una aprobación como respondida en el mensaje (mutación local, no llama al modelo). */
+function markApprovalResponded(message: UIMessage, approvalId: string, approved: boolean, reason?: string): void {
+    for (const part of message.parts as unknown as ToolPartLike[]) {
         if (part.approval?.id === approvalId && part.state === 'approval-requested') {
             part.state = 'approval-responded'
             part.approval = { id: approvalId, approved, ...(approved ? {} : { reason: reason ?? 'Cancelado' }) }
         }
     }
-    if (approved) await sendChatAction(chatId, 'typing')
+}
+
+/**
+ * Continúa la conversación tras resolver aprobaciones. Si el mensaje tiene más
+ * de una pendiente y aún falta alguna por responder, NO llama al modelo todavía
+ * (igual que el chat web con lastAssistantMessageIsCompleteWithApprovalResponses):
+ * solo se sigue cuando TODAS las de ese mensaje quedaron respondidas.
+ */
+async function continueIfComplete(chatId: string, history: UIMessage[], idx: number): Promise<UIMessage[]> {
+    if (!lastAssistantMessageIsCompleteWithApprovalResponses({ messages: history.slice(0, idx + 1) })) {
+        await saveSession(chatId, history)
+        return history
+    }
+    const assistant = history[idx]
+    await sendChatAction(chatId, 'typing')
     const before = structuredClone(assistant) as UIMessage
     // readUIMessageStream fusiona la continuación en el mismo objeto: antes de mutarlo guardamos una copia para saber qué es nuevo.
     const messages = [...history.slice(0, idx), assistant]
@@ -151,13 +165,16 @@ async function runTurn(chatId: string, text: string): Promise<void> {
     await sendChatAction(chatId, 'typing')
     try {
         let history = await loadSession(chatId)
-        const pending = findPendingApproval(history)
+        const pending = pendingApprovals(history)
         if (pending) {
-            // Un mensaje nuevo con una confirmación sin responder rompería la conversación
+            // Un mensaje nuevo con confirmaciones sin responder rompería la conversación
             // (el modelo exige que toda llamada a herramienta quede resuelta antes de seguir).
-            // La cancelamos y seguimos: el asistente ve la corrección en el mismo hilo y puede
-            // volver a proponer la acción ya ajustada.
-            history = await resolveApproval(chatId, history, pending.idx, pending.approvalId, false, 'Reemplazada por un nuevo mensaje')
+            // Las cancelamos todas y seguimos: el asistente ve la corrección en el mismo
+            // hilo y puede volver a proponer la acción ya ajustada.
+            const assistant = structuredClone(history[pending.idx]) as UIMessage
+            for (const id of pending.ids) markApprovalResponded(assistant, id, false, 'Reemplazada por un nuevo mensaje')
+            history = [...history.slice(0, pending.idx), assistant, ...history.slice(pending.idx + 1)]
+            history = await continueIfComplete(chatId, history, pending.idx)
         }
         const messages = [...history, newUserMessage(text)]
         const assistant = await runAgentTurn(messages)
@@ -177,8 +194,8 @@ async function handleApproval(cq: TgCallbackQuery): Promise<void> {
     const approved = flag === '1'
 
     const history = await loadSession(chatId)
-    const idx = history.findLastIndex((msg) => msg.role === 'assistant' && toolParts(msg).some((p) => p.state === 'approval-requested' && p.approval?.id === approvalId))
-    if (idx === -1) {
+    const pending = pendingApprovals(history)
+    if (!pending || !pending.ids.includes(approvalId)) {
         await answerCallbackQuery(cq.id, 'Esta confirmación ya no está vigente.')
         if (cq.message) await editMessageReplyMarkup(chatId, cq.message.message_id, null)
         return
@@ -191,7 +208,12 @@ async function handleApproval(cq: TgCallbackQuery): Promise<void> {
     }
 
     try {
-        await resolveApproval(chatId, history, idx, approvalId, approved, 'Cancelado por el usuario')
+        const assistant = structuredClone(history[pending.idx]) as UIMessage
+        markApprovalResponded(assistant, approvalId, approved, 'Cancelado por el usuario')
+        const newHistory = [...history.slice(0, pending.idx), assistant, ...history.slice(pending.idx + 1)]
+        // Si quedan otras confirmaciones del mismo mensaje sin responder, continueIfComplete
+        // solo guarda la sesión y espera; el modelo se llama cuando todas estén resueltas.
+        await continueIfComplete(chatId, newHistory, pending.idx)
     } catch (e) {
         console.error('[telegram] continuación fallida', e)
         await sendMessage(chatId, `⚠️ ${escapeHtml(e instanceof Error ? e.message : 'No se pudo completar la acción')}`)
@@ -240,6 +262,20 @@ async function handleMessage(msg: TgMessage): Promise<void> {
     await runTurn(chatId, text)
 }
 
+// Telegram puede reintentar la entrega de un update si no respondimos rápido o
+// hubo un corte (deploy, reinicio). Como respondemos 200 antes de procesar,
+// un reintento real llegaría con el MISMO update_id: lo descartamos para no
+// ejecutar dos veces la misma acción (ej. registrar el mismo cargo dos veces).
+const seenUpdateIds: number[] = []
+const seenUpdateIdSet = new Set<number>()
+function alreadyProcessed(updateId: number): boolean {
+    if (seenUpdateIdSet.has(updateId)) return true
+    seenUpdateIdSet.add(updateId)
+    seenUpdateIds.push(updateId)
+    if (seenUpdateIds.length > 500) seenUpdateIdSet.delete(seenUpdateIds.shift()!)
+    return false
+}
+
 export async function POST(req: NextRequest) {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET
     if (!secret || req.headers.get('x-telegram-bot-api-secret-token') !== secret) {
@@ -251,6 +287,7 @@ export async function POST(req: NextRequest) {
     } catch {
         return new Response('bad request', { status: 400 })
     }
+    if (alreadyProcessed(update.update_id)) return Response.json({ ok: true })
 
     const chatId = String(update.callback_query?.message?.chat.id ?? update.callback_query?.from.id ?? update.message?.chat.id ?? '')
     if (chatId) {
