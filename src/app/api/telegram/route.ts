@@ -58,14 +58,6 @@ function newUserMessage(text: string): UIMessage {
     return { id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, role: 'user', parts: [{ type: 'text', text }] }
 }
 
-function textOf(message: UIMessage): string {
-    return message.parts
-        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-        .map((p) => p.text)
-        .join('\n')
-        .trim()
-}
-
 /** Envía al chat solo lo nuevo de la respuesta del asistente respecto a la versión anterior del mismo mensaje. */
 async function deliver(chatId: string, assistant: UIMessage, previous?: UIMessage): Promise<void> {
     const prevParts = previous ? toolParts(previous) : []
@@ -120,11 +112,54 @@ async function sendAttachments(chatId: string, tool: string, part: ToolPartLike)
     }
 }
 
+/** Busca, de más reciente a más antiguo, una confirmación de escritura sin responder. */
+function findPendingApproval(history: UIMessage[]): { idx: number; approvalId: string } | null {
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i]
+        if (msg.role !== 'assistant') continue
+        const pending = toolParts(msg).find((p) => p.state === 'approval-requested' && p.approval?.id)
+        if (pending) return { idx: i, approvalId: pending.approval!.id }
+    }
+    return null
+}
+
+/**
+ * Resuelve (aprueba o cancela) una confirmación pendiente: se lo indica al
+ * modelo (que cierra el ciclo de la herramienta) y se entrega su respuesta.
+ * La usan tanto el botón de Telegram como el auto-cancelado por mensaje nuevo.
+ */
+async function resolveApproval(chatId: string, history: UIMessage[], idx: number, approvalId: string, approved: boolean, reason?: string): Promise<UIMessage[]> {
+    const assistant = structuredClone(history[idx]) as UIMessage
+    for (const part of assistant.parts as unknown as ToolPartLike[]) {
+        if (part.approval?.id === approvalId && part.state === 'approval-requested') {
+            part.state = 'approval-responded'
+            part.approval = { id: approvalId, approved, ...(approved ? {} : { reason: reason ?? 'Cancelado' }) }
+        }
+    }
+    if (approved) await sendChatAction(chatId, 'typing')
+    const before = structuredClone(assistant) as UIMessage
+    // readUIMessageStream fusiona la continuación en el mismo objeto: antes de mutarlo guardamos una copia para saber qué es nuevo.
+    const messages = [...history.slice(0, idx), assistant]
+    const updated = await runAgentTurn(messages, assistant)
+    const newHistory = [...history.slice(0, idx), updated, ...history.slice(idx + 1)]
+    await saveSession(chatId, newHistory)
+    await deliver(chatId, updated, before)
+    return newHistory
+}
+
 async function runTurn(chatId: string, text: string): Promise<void> {
     await sendChatAction(chatId, 'typing')
-    const history = await loadSession(chatId)
-    const messages = [...history, newUserMessage(text)]
     try {
+        let history = await loadSession(chatId)
+        const pending = findPendingApproval(history)
+        if (pending) {
+            // Un mensaje nuevo con una confirmación sin responder rompería la conversación
+            // (el modelo exige que toda llamada a herramienta quede resuelta antes de seguir).
+            // La cancelamos y seguimos: el asistente ve la corrección en el mismo hilo y puede
+            // volver a proponer la acción ya ajustada.
+            history = await resolveApproval(chatId, history, pending.idx, pending.approvalId, false, 'Reemplazada por un nuevo mensaje')
+        }
+        const messages = [...history, newUserMessage(text)]
         const assistant = await runAgentTurn(messages)
         await saveSession(chatId, [...messages, assistant])
         await deliver(chatId, assistant)
@@ -149,27 +184,14 @@ async function handleApproval(cq: TgCallbackQuery): Promise<void> {
         return
     }
 
-    const assistant = structuredClone(history[idx]) as UIMessage
-    for (const part of assistant.parts as unknown as ToolPartLike[]) {
-        if (part.approval?.id === approvalId && part.state === 'approval-requested') {
-            part.state = 'approval-responded'
-            part.approval = { id: approvalId, approved, ...(approved ? {} : { reason: 'Cancelado por el usuario' }) }
-        }
-    }
     await answerCallbackQuery(cq.id, approved ? 'Confirmado' : 'Cancelado')
     if (cq.message) {
         await editMessageReplyMarkup(chatId, cq.message.message_id, null)
         await editMessageText(chatId, cq.message.message_id, `${approved ? '✅ <b>Confirmado</b>' : '❌ <b>Cancelado</b>'}\n\n${escapeHtml((cq.message.text ?? '').replace(/^⚠️ Confirmar: /, ''))}`)
     }
-    if (approved) await sendChatAction(chatId, 'typing')
 
-    const messages = [...history.slice(0, idx), assistant]
-    // readUIMessageStream fusiona la continuación en el mismo objeto: guardamos una copia previa para saber qué es nuevo.
-    const before = structuredClone(assistant) as UIMessage
     try {
-        const updated = await runAgentTurn(messages, assistant)
-        await saveSession(chatId, [...history.slice(0, idx), updated, ...history.slice(idx + 1)])
-        await deliver(chatId, updated, before)
+        await resolveApproval(chatId, history, idx, approvalId, approved, 'Cancelado por el usuario')
     } catch (e) {
         console.error('[telegram] continuación fallida', e)
         await sendMessage(chatId, `⚠️ ${escapeHtml(e instanceof Error ? e.message : 'No se pudo completar la acción')}`)
