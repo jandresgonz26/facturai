@@ -1,3 +1,11 @@
+'use server'
+
+// Este módulo usa RESEND_API_KEY y otros secretos de servidor: 'use server' obliga a que
+// se ejecute en Node (Server Action), aunque EmailDialog (componente de cliente) lo llame
+// como una función normal. Sin esto, Next.js lo empaquetaba en el navegador, donde las
+// variables de entorno del servidor no existen (por eso el aviso de "falta RESEND_API_KEY"
+// aparecía siempre, sin importar lo que estuviera configurado en el servidor real).
+
 import { supabase } from '@/lib/supabase'
 import { Client, EmailKind, EmailLog, Invoice, Quote } from '@/types'
 import { getCompanySettings } from '@/lib/settings'
