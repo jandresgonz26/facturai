@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { Client, Invoice, Log } from '@/types'
 import { getClient, getBillableClientIds } from './clients'
 import { getLogsByIds } from './logs'
+import { promoteStageOnInvoice } from './crm'
 import { ActionError, dateSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
 export async function getNextInvoiceNumber(): Promise<string> {
@@ -90,6 +91,7 @@ export async function createInvoice(raw: CreateInvoiceInput): Promise<{ invoice:
         throw new ActionError(`No se pudieron marcar los ítems como facturados: ${logsError.message}`)
     }
 
+    await promoteStageOnInvoice(client.id).catch(() => undefined)
     const items = logs.map((l) => ({ ...l, status: 'billed' as const, invoice_id: invoice.id }))
     return { invoice: { ...(invoice as Invoice), clients: client }, items }
 }

@@ -11,6 +11,14 @@ export const WRITE_TOOLS = [
     'add_recurring_service',
     'add_service_category',
     'create_quote',
+    'send_invoice_email',
+    'send_quote_email',
+    'send_payment_thanks',
+    'update_client_email',
+    'create_lead',
+    'update_client_stage',
+    'add_client_note',
+    'set_next_action',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -25,6 +33,7 @@ export const TOOL_LABELS: Record<string, string> = {
     find_past_items: 'Revisando cómo se cobró antes',
     list_categories: 'Consultando categorías',
     list_invoices: 'Consultando facturas',
+    list_quotes: 'Consultando cotizaciones',
     get_invoice_items: 'Consultando el detalle de la factura',
     get_revenue_summary: 'Calculando ingresos y cobros',
     add_log: 'Registrar actividad',
@@ -36,6 +45,17 @@ export const TOOL_LABELS: Record<string, string> = {
     add_service_category: 'Crear categoría de servicio',
     create_quote: 'Crear cotización',
     get_briefing: 'Revisando qué hay pendiente',
+    preview_email: 'Preparando el correo',
+    list_pipeline: 'Consultando el pipeline',
+    get_client_timeline: 'Consultando el historial del cliente',
+    send_invoice_email: 'Enviar factura por correo',
+    send_quote_email: 'Enviar cotización por correo',
+    send_payment_thanks: 'Enviar agradecimiento de pago',
+    update_client_email: 'Guardar correo del cliente',
+    create_lead: 'Crear lead',
+    update_client_stage: 'Cambiar etapa del cliente',
+    add_client_note: 'Guardar nota',
+    set_next_action: 'Definir próxima acción',
 }
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']

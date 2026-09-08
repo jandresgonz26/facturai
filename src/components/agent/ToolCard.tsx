@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, CircleCheck, CircleX, Download, FileText, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { TOOL_LABELS, dateLabel, fmtUsd, isWriteTool } from '@/lib/agent/shared'
-import { describeInput, describeResult, num, str, type Rec } from '@/lib/agent/describe'
+import { describeInput, describeResult, findEmailPreview, num, str, type EmailPreviewLike, type Rec } from '@/lib/agent/describe'
 import { downloadInvoice, saveBlobToFile } from '@/lib/invoice-download'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
 import type { Quote } from '@/types'
@@ -173,6 +173,28 @@ function BillingPreview({ input, snapshot }: { input: Rec; snapshot: Snapshot })
     )
 }
 
+function EmailPreviewBlock({ preview, to }: { preview: EmailPreviewLike; to?: string }) {
+    return (
+        <div className="space-y-2">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">Para</dt>
+                <dd className="font-medium text-right break-all">{to ?? preview.to ?? '-'}</dd>
+                <dt className="text-muted-foreground">De</dt>
+                <dd className="text-right break-all text-xs">{preview.from}</dd>
+                <dt className="text-muted-foreground">Asunto</dt>
+                <dd className="font-medium text-right">{preview.subject}</dd>
+                <dt className="text-muted-foreground">Adjunto</dt>
+                <dd className="text-right font-mono text-xs">{preview.attachment_name}</dd>
+            </dl>
+            <pre className="whitespace-pre-wrap font-sans text-xs bg-muted/40 rounded-lg p-3 max-h-48 overflow-y-auto">{preview.text}</pre>
+            {preview.already_sent && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">Ya se envió el {preview.already_sent.sent_at.split('T')[0].split('-').reverse().join('/')} a {preview.already_sent.to}. Esto sería un reenvío.</p>
+            )}
+            {preview.test_mode_to && <p className="text-xs text-sky-700 dark:text-sky-300">Modo prueba: se desviará a {preview.test_mode_to}.</p>}
+        </div>
+    )
+}
+
 interface Props {
     toolName: string
     part: AnyToolPart
@@ -211,7 +233,8 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
         const responded = part.state === 'approval-responded'
         const approved = part.approval?.approved
         const snapshot = toolName === 'bill_client_month' ? findSnapshot(context, str((part.input as Rec | undefined)?.client_id)) : undefined
-        const isStandingCommitment = toolName === 'add_recurring_service'
+        const emailPreview = toolName.startsWith('send_') ? findEmailPreview(context, toolName, part.input) : undefined
+        const isStandingCommitment = toolName === 'add_recurring_service' || toolName.startsWith('send_')
         const accent = isStandingCommitment
             ? 'border-amber-500/50 [&_.tc-head]:bg-amber-500/15 [&_.tc-head]:border-amber-500/40 [&_.tc-head]:text-amber-700 dark:[&_.tc-head]:text-amber-300 [&_.tc-confirm]:bg-amber-600 [&_.tc-confirm]:hover:bg-amber-700'
             : 'border-teal-500/40 [&_.tc-head]:bg-teal-600/10 [&_.tc-head]:border-teal-500/30 [&_.tc-head]:text-teal-700 dark:[&_.tc-head]:text-teal-300 [&_.tc-confirm]:bg-teal-600 [&_.tc-confirm]:hover:bg-teal-700'
@@ -224,6 +247,8 @@ export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: P
                 <div className="px-4 py-3 space-y-2 text-sm">
                     {snapshot ? (
                         <BillingPreview input={(part.input ?? {}) as Rec} snapshot={snapshot} />
+                    ) : emailPreview ? (
+                        <EmailPreviewBlock preview={emailPreview} to={str((part.input as Rec | undefined)?.to)} />
                     ) : (
                     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                         {rows.map((r) => (

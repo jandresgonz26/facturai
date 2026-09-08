@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Client } from '@/types'
+import { Client, ClientStage } from '@/types'
+import { CLIENT_STAGES } from '@/lib/actions/crm'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,9 +22,11 @@ export type ClientFormValues = {
     postal_code: string
     city: string
     email: string
+    stage: ClientStage
+    source: string
 }
 
-export function clientToForm(c?: Client | null): ClientFormValues {
+export function clientToForm(c?: Client | null, defaultStage: ClientStage = 'active'): ClientFormValues {
     return {
         name: c?.name ?? '',
         preferred_input_currency: c?.preferred_input_currency ?? 'USD',
@@ -36,6 +39,8 @@ export function clientToForm(c?: Client | null): ClientFormValues {
         postal_code: c?.postal_code ?? '',
         city: c?.city ?? '',
         email: c?.email ?? '',
+        stage: c?.stage ?? defaultStage,
+        source: c?.source ?? '',
     }
 }
 
@@ -43,13 +48,14 @@ interface Props {
     clients: Client[]
     initial?: Client | null
     submitting?: boolean
+    defaultStage?: ClientStage
     onSubmit: (values: ClientInput) => Promise<void> | void
     onCancel?: () => void
 }
 
 /** Formulario único para crear y editar clientes. Solo muestra los campos que aplican. */
-export function ClientForm({ clients, initial, submitting, onSubmit, onCancel }: Props) {
-    const [v, setV] = useState<ClientFormValues>(() => clientToForm(initial))
+export function ClientForm({ clients, initial, submitting, defaultStage, onSubmit, onCancel }: Props) {
+    const [v, setV] = useState<ClientFormValues>(() => clientToForm(initial, defaultStage))
     const set = <K extends keyof ClientFormValues>(k: K, val: ClientFormValues[K]) => setV((s) => ({ ...s, [k]: val }))
     const isHourBag = v.billing_modality === 'hour_bag'
     const parentOptions = clients.filter((c) => c.id !== initial?.id && c.billing_modality !== 'hour_bag')
@@ -68,6 +74,8 @@ export function ClientForm({ clients, initial, submitting, onSubmit, onCancel }:
             postal_code: v.postal_code || undefined,
             city: v.city || undefined,
             email: v.email || undefined,
+            stage: v.stage,
+            source: v.source || undefined,
         })
     }
 
@@ -93,6 +101,21 @@ export function ClientForm({ clients, initial, submitting, onSubmit, onCancel }:
                     <div className="space-y-1">
                         <Label htmlFor="c-tax">ID fiscal (CIF/RIF/NIT)</Label>
                         <Input id="c-tax" placeholder="Ej: J-12345678-9" value={v.tax_id} onChange={(e) => set('tax_id', e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                        <Label>Etapa comercial</Label>
+                        <Select value={v.stage} onValueChange={(x: ClientStage) => set('stage', x)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {CLIENT_STAGES.map((st) => (
+                                    <SelectItem key={st.id} value={st.id}>{st.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="c-source">Origen</Label>
+                        <Input id="c-source" placeholder="Ej: referido, web, Instagram" value={v.source} onChange={(e) => set('source', e.target.value)} />
                     </div>
                 </div>
             </div>

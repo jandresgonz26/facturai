@@ -21,6 +21,9 @@ const clientNameField = z.string().min(1).describe('Nombre del cliente tal como 
 const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v)
 const optionalDate = z.preprocess(blankToUndefined, dateSchema.optional())
 const optionalText = z.preprocess(blankToUndefined, z.string().trim().min(1).optional())
+// El validador de correo de zod genera un JSON Schema con un patrón que la API de OpenAI rechaza en
+// silencio (respuesta vacía). Validamos el formato en las acciones y aquí solo pedimos texto.
+const emailField = z.string().trim().min(5)
 
 export const agentTools = {
     // ───────────── Lecturas (se ejecutan sin confirmación) ─────────────
@@ -90,6 +93,57 @@ export const agentTools = {
         execute: async () => run(() => actions.getBriefing()),
     }),
 
+    preview_email: tool({
+        description:
+            'Vista previa EXACTA del correo que se enviaría al cliente (destinatario, asunto, cuerpo, adjunto) para una factura (kind invoice), una cotización (kind quote) o un agradecimiento de pago (kind payment_thanks). Llámala SIEMPRE justo antes de send_invoice_email / send_quote_email / send_payment_thanks, en la misma respuesta. Si devuelve warnings (sin correo, sin configurar, ya enviado antes), resuélvelos o consúltalo con el usuario antes de proponer el envío. No manda nada.',
+        inputSchema: z.object({
+            kind: z.enum(['invoice', 'quote', 'payment_thanks']),
+            invoice_id: uuidSchema.optional().describe('Para invoice y payment_thanks'),
+            quote_id: uuidSchema.optional().describe('Para quote'),
+            to: optionalText.describe('SOLO si el usuario indica un correo distinto al de la ficha'),
+        }),
+        execute: async ({ kind, invoice_id, quote_id, to }) =>
+            run(async () => {
+                const id = kind === 'quote' ? quote_id : invoice_id
+                if (!id) throw new actions.ActionError(kind === 'quote' ? 'Falta quote_id' : 'Falta invoice_id')
+                const p = await actions.previewEmail(kind, id, to)
+                const { html: _html, ...rest } = p
+                void _html
+                return rest
+            }),
+    }),
+
+    list_pipeline: tool({
+        description:
+            'Pipeline comercial: clientes agrupados por etapa (lead, quoted, active, inactive) con cotizado, por cobrar, pendiente de facturar y días desde la última actividad. Úsala para "¿qué leads tengo?", "¿a quién debo hacer seguimiento?", "¿cómo va el pipeline?".',
+        inputSchema: z.object({}),
+        execute: async () =>
+            run(async () => {
+                const p = await actions.getPipeline()
+                const compact = (cards: Awaited<ReturnType<typeof actions.getPipeline>>['lead']) =>
+                    cards.map((c) => ({
+                        client_id: c.client.id,
+                        name: c.client.name,
+                        email: c.client.email ?? null,
+                        source: c.client.source ?? null,
+                        next_action: c.client.next_action ?? null,
+                        next_action_at: c.client.next_action_at ?? null,
+                        quoted_total: c.quoted_total,
+                        unpaid_total: c.unpaid_total,
+                        pending_total: c.pending_total,
+                        days_since_activity: c.days_since_activity,
+                        last_activity: c.last_activity_label,
+                    }))
+                return { lead: compact(p.lead), quoted: compact(p.quoted), active: compact(p.active), inactive: compact(p.inactive) }
+            }),
+    }),
+
+    get_client_timeline: tool({
+        description: 'Historial de un cliente: cotizaciones, facturas, pagos, correos enviados, notas y actividades, del más reciente al más antiguo.',
+        inputSchema: z.object({ client_id: uuidSchema, limit: z.number().int().min(1).max(50).optional() }),
+        execute: async ({ client_id, limit }) => run(async () => (await actions.getClientTimeline(client_id)).slice(0, limit ?? 25)),
+    }),
+
     list_categories: tool({
         description: 'Categorías de servicio disponibles para clasificar actividades.',
         inputSchema: z.object({}),
@@ -117,6 +171,31 @@ export const agentTools = {
                     total_amount: i.total_amount,
                     status: i.status,
                     paid_at: i.paid_at ?? null,
+                }))
+            }),
+    }),
+
+    list_quotes: tool({
+        description: 'Cotizaciones guardadas (id, número, cliente, total, fecha). Úsala para resolver "la cotización COT-0005" o "la cotización de X" a un quote_id antes de enviarla o consultarla.',
+        inputSchema: z.object({
+            query: z.string().optional().describe('Número (COT-0005) o nombre de cliente para filtrar'),
+            limit: z.number().int().min(1).max(50).optional(),
+        }),
+        execute: async ({ query, limit }) =>
+            run(async () => {
+                const all = await actions.listQuotes(limit ?? 30)
+                const q = query ? actions.normalizeText(query) : ''
+                const rows = q ? all.filter((x) => actions.normalizeText(x.quote_number).includes(q) || actions.normalizeText(x.client_name).includes(q)) : all
+                return rows.map((x) => ({
+                    id: x.id,
+                    quote_number: x.quote_number,
+                    client_name: x.client_name,
+                    client_id: x.client_id ?? null,
+                    quote_type: x.quote_type,
+                    currency: x.currency,
+                    total_amount: x.total_amount,
+                    total_hours: x.total_hours,
+                    issue_date: x.issue_date,
                 }))
             }),
     }),
@@ -310,8 +389,111 @@ export const agentTools = {
                 )
                 .min(1),
             issue_date: optionalDate.describe('SOLO si el usuario pide una fecha distinta de hoy'),
+            client_email: optionalText.describe('Correo del cliente si el usuario lo da (se guarda en su ficha si es nuevo)'),
         }),
         execute: async (input) => run(() => actions.createQuote(input)),
+    }),
+
+    send_invoice_email: tool({
+        description:
+            'Envía la factura por correo al cliente con el PDF adjunto, y la marca como enviada. Requiere confirmación. Antes llama a preview_email(kind invoice) en la misma respuesta y dile al usuario a quién va y con qué asunto.',
+        inputSchema: z.object({
+            invoice_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            to: emailField.describe('Correo de destino: el de la ficha del cliente, o el que indique el usuario'),
+        }),
+        execute: async ({ invoice_id, to }) => run(() => actions.sendDocumentEmail('invoice', invoice_id, to)),
+    }),
+
+    send_quote_email: tool({
+        description:
+            'Envía la cotización por correo con el PDF adjunto. Requiere confirmación. Antes llama a preview_email(kind quote) en la misma respuesta.',
+        inputSchema: z.object({
+            quote_id: uuidSchema,
+            quote_number: z.string().min(1),
+            client_name: clientNameField,
+            to: emailField.describe('Correo de destino'),
+        }),
+        execute: async ({ quote_id, to }) => run(() => actions.sendDocumentEmail('quote', quote_id, to)),
+    }),
+
+    send_payment_thanks: tool({
+        description:
+            'Envía al cliente el correo de agradecimiento por el pago de una factura (ya marcada como pagada), con la factura sellada como PAGADA adjunta. Requiere confirmación. Antes llama a preview_email(kind payment_thanks) en la misma respuesta.',
+        inputSchema: z.object({
+            invoice_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            to: emailField.describe('Correo de destino'),
+        }),
+        execute: async ({ invoice_id, to }) => run(() => actions.sendDocumentEmail('payment_thanks', invoice_id, to)),
+    }),
+
+    update_client_email: tool({
+        description: 'Guarda o corrige el correo electrónico de un cliente en su ficha. Requiere confirmación. Úsala cuando falte el correo para enviar un documento y el usuario te lo dicte.',
+        inputSchema: z.object({ client_id: uuidSchema, client_name: clientNameField, email: emailField }),
+        execute: async ({ client_id, client_name, email }) =>
+            run(async () => {
+                const c = await actions.setClientEmail(client_id, email)
+                return { client_name, email: c.email }
+            }),
+    }),
+
+    create_lead: tool({
+        description:
+            'Crea un prospecto (lead) nuevo en el CRM: un cliente en etapa "lead". Requiere confirmación. Úsala cuando el usuario mencione un cliente potencial que no está en la lista. No hace falta para cotizar: create_quote crea el lead solo si no existe.',
+        inputSchema: z.object({
+            name: z.string().min(2).describe('Nombre de la empresa o persona'),
+            email: optionalText.describe('Correo, si el usuario lo da'),
+            contact_name: optionalText,
+            source: optionalText.describe('De dónde salió: referido, web, Instagram…'),
+            note: optionalText.describe('Contexto que dio el usuario (qué necesita, presupuesto, etc.)'),
+        }),
+        execute: async (input) =>
+            run(async () => {
+                const c = await actions.createLead({ ...input, email: input.email as string | undefined })
+                return { client_id: c.id, name: c.name, email: c.email ?? null, stage: c.stage ?? 'lead' }
+            }),
+    }),
+
+    update_client_stage: tool({
+        description: 'Cambia la etapa comercial de un cliente: lead, quoted (cotizado), active (cliente activo) o inactive. Requiere confirmación.',
+        inputSchema: z.object({
+            client_id: uuidSchema,
+            client_name: clientNameField,
+            stage: z.enum(['lead', 'quoted', 'active', 'inactive']),
+        }),
+        execute: async ({ client_id, client_name, stage }) =>
+            run(async () => {
+                await actions.setClientStage(client_id, stage)
+                return { client_name, stage }
+            }),
+    }),
+
+    add_client_note: tool({
+        description: 'Guarda una nota en la ficha del cliente ("anota que…", "recuerda que…"). Requiere confirmación.',
+        inputSchema: z.object({ client_id: uuidSchema, client_name: clientNameField, body: z.string().min(2).max(2000) }),
+        execute: async ({ client_id, client_name, body }) =>
+            run(async () => {
+                const n = await actions.addClientNote(client_id, body)
+                return { client_name, body: n.body, created_at: n.created_at }
+            }),
+    }),
+
+    set_next_action: tool({
+        description: 'Define la próxima acción comercial con un cliente y para cuándo ("llamar el lunes", "enviar propuesta el 15"). Requiere confirmación. Aparece en el briefing cuando llega la fecha.',
+        inputSchema: z.object({
+            client_id: uuidSchema,
+            client_name: clientNameField,
+            next_action: z.string().min(2).max(200),
+            next_action_at: optionalDate.describe('Fecha YYYY-MM-DD si el usuario la indica'),
+        }),
+        execute: async ({ client_id, client_name, next_action, next_action_at }) =>
+            run(async () => {
+                await actions.setNextAction(client_id, { next_action, next_action_at: next_action_at ?? null })
+                return { client_name, next_action, next_action_at: next_action_at ?? null }
+            }),
     }),
 
     add_recurring_service: tool({

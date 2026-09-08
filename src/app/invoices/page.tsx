@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarDays, CheckCircle, Download, FileDown, FileText, RotateCcw, Send, Trash2 } from 'lucide-react'
-import { Client, Invoice } from '@/types'
+import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Client, EmailKind, EmailLog, Invoice } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pagination } from '@/components/ui/Pagination'
-import { deleteInvoice, listClients, listInvoices, markInvoicePaid, markInvoiceSent, revertInvoiceToDraft, updateInvoiceDueDate } from '@/lib/actions'
+import { deleteInvoice, getEmailStatusByInvoice, listClients, listInvoices, markInvoicePaid, markInvoiceSent, revertInvoiceToDraft, updateInvoiceDueDate } from '@/lib/actions'
+import { EmailDialog } from '@/components/features/EmailDialog'
 import { downloadInvoice } from '@/lib/invoice-download'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 import { periodLabel } from '@/lib/agent/shared'
@@ -40,12 +41,15 @@ export default function InvoicesPage() {
     const [toDownload, setToDownload] = useState<Invoice | null>(null)
     const [dueEdit, setDueEdit] = useState<Invoice | null>(null)
     const [dueValue, setDueValue] = useState('')
+    const [emailStatus, setEmailStatus] = useState<Record<string, { invoice?: EmailLog; payment_thanks?: EmailLog }>>({})
+    const [emailDialog, setEmailDialog] = useState<{ kind: EmailKind; id: string } | null>(null)
 
     const load = async () => {
         try {
-            const [inv, cl] = await Promise.all([listInvoices(), listClients()])
+            const [inv, cl, es] = await Promise.all([listInvoices(), listClients(), getEmailStatusByInvoice().catch(() => ({}))])
             setInvoices(inv)
             setClients(cl)
+            setEmailStatus(es)
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Error al cargar facturas')
         } finally {
@@ -172,9 +176,23 @@ export default function InvoicesPage() {
                                         {inv.due_date ? ` · vence ${fmt(inv.due_date)}` : ''}
                                         {inv.status === 'paid' && inv.paid_at ? ` · pagada ${fmt(inv.paid_at.split('T')[0])}` : ''}
                                     </p>
+                                    {(emailStatus[inv.id]?.invoice || emailStatus[inv.id]?.payment_thanks) && (
+                                        <p className="text-[11px] text-sky-700 dark:text-sky-300 flex flex-wrap gap-x-3">
+                                            {emailStatus[inv.id]?.invoice && <span>✉ Enviada {fmt(emailStatus[inv.id].invoice!.sent_at.split('T')[0])} a {emailStatus[inv.id].invoice!.to_email}</span>}
+                                            {emailStatus[inv.id]?.payment_thanks && <span>🙏 Agradecimiento {fmt(emailStatus[inv.id].payment_thanks!.sent_at.split('T')[0])}</span>}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="font-bold text-lg font-mono sm:text-right sm:w-28">{usd(inv.total_amount)}</div>
                                 <div className="flex items-center gap-1 flex-wrap">
+                                    <Button variant="outline" size="icon" title={inv.status === 'paid' ? 'Reenviar factura por correo' : 'Enviar factura por correo'} className="text-teal-600" onClick={() => setEmailDialog({ kind: 'invoice', id: inv.id })}>
+                                        <Mail />
+                                    </Button>
+                                    {inv.status === 'paid' && (
+                                        <Button variant="outline" size="icon" title="Enviar agradecimiento de pago" className="text-emerald-600" onClick={() => setEmailDialog({ kind: 'payment_thanks', id: inv.id })}>
+                                            <HeartHandshake />
+                                        </Button>
+                                    )}
                                     {inv.status === 'draft' && (
                                         <Button variant="outline" size="icon" title="Marcar como enviada" className="text-sky-600" onClick={() => setConfirm({ kind: 'sent', invoice: inv })}>
                                             <Send />
@@ -241,6 +259,14 @@ export default function InvoicesPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <EmailDialog
+                kind={emailDialog?.kind ?? 'invoice'}
+                id={emailDialog?.id ?? null}
+                open={!!emailDialog}
+                onOpenChange={(o) => !o && setEmailDialog(null)}
+                onSent={load}
+            />
 
             <Dialog open={!!toDownload} onOpenChange={(o) => !o && setToDownload(null)}>
                 <DialogContent>

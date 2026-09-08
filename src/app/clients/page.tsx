@@ -2,26 +2,36 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ArrowUpRight, Clock, Pencil, Plus, Search, Settings2, Trash2, UserRound } from 'lucide-react'
-import { Client } from '@/types'
+import { ArrowUpRight, Clock, History, Pencil, Plus, Search, Settings2, Trash2, UserRound } from 'lucide-react'
+import { Client, ClientStage } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ClientForm } from '@/components/features/ClientForm'
 import { RecurringServicesPanel } from '@/components/features/RecurringServicesPanel'
+import { ClientActivityPanel } from '@/components/features/ClientActivityPanel'
+import { CLIENT_STAGES } from '@/lib/actions/crm'
 import { createClient, deleteClient, getClientStats, listClients, updateClient, type ClientInput } from '@/lib/actions'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 import { normalizeText } from '@/lib/actions/validation'
 
 type Stats = Awaited<ReturnType<typeof getClientStats>>
-type Tab = 'datos' | 'fijos'
+type Tab = 'datos' | 'fijos' | 'actividad'
+const STAGE_CLASS: Record<ClientStage, string> = {
+    lead: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+    quoted: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    inactive: 'bg-muted text-muted-foreground',
+}
 
 export default function ClientsPage() {
     const [clients, setClients] = useState<Client[]>([])
     const [stats, setStats] = useState<Stats>({})
     const [loading, setLoading] = useState(true)
     const [query, setQuery] = useState('')
+    const [stageFilter, setStageFilter] = useState<'all' | ClientStage>('all')
+    const [defaultStage, setDefaultStage] = useState<ClientStage>('active')
     const [sheetOpen, setSheetOpen] = useState(false)
     const [editing, setEditing] = useState<Client | null>(null)
     const [tab, setTab] = useState<Tab>('datos')
@@ -46,12 +56,36 @@ export default function ClientsPage() {
     }, [])
     useDataChanged(load)
 
+    // Enlaces desde el pipeline: /clients?open=<id> abre la ficha; /clients?new=lead abre el alta como lead
+    useEffect(() => {
+        if (loading || typeof window === 'undefined') return
+        const params = new URLSearchParams(window.location.search)
+        const openId = params.get('open')
+        const isNew = params.get('new')
+        if (openId) {
+            const c = clients.find((x) => x.id === openId)
+            if (c) {
+                setEditing(c)
+                setTab('actividad')
+                setSheetOpen(true)
+            }
+        } else if (isNew === 'lead') {
+            setEditing(null)
+            setDefaultStage('lead')
+            setTab('datos')
+            setSheetOpen(true)
+        }
+        if (openId || isNew) window.history.replaceState({}, '', '/clients')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading])
+
     const byId = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
     const filtered = useMemo(() => {
         const q = normalizeText(query)
-        if (!q) return clients
-        return clients.filter((c) => normalizeText(c.name).includes(q) || normalizeText(c.contact_name ?? '').includes(q) || normalizeText(c.email ?? '').includes(q))
-    }, [clients, query])
+        const byStage = stageFilter === 'all' ? clients : clients.filter((c) => (c.stage ?? 'active') === stageFilter)
+        if (!q) return byStage
+        return byStage.filter((c) => normalizeText(c.name).includes(q) || normalizeText(c.contact_name ?? '').includes(q) || normalizeText(c.email ?? '').includes(q))
+    }, [clients, query, stageFilter])
     // Padres primero, con sus subclientes anidados debajo
     const grouped = useMemo(() => {
         const parents = filtered.filter((c) => !c.parent_client_id)
@@ -59,8 +93,9 @@ export default function ClientsPage() {
         return [...parents, ...orphans].map((p) => ({ client: p, children: filtered.filter((c) => c.parent_client_id === p.id) }))
     }, [filtered])
 
-    const openNew = () => {
+    const openNew = (stage: ClientStage = 'active') => {
         setEditing(null)
+        setDefaultStage(stage)
         setTab('datos')
         setSheetOpen(true)
     }
@@ -117,6 +152,9 @@ export default function ClientsPage() {
                 <button type="button" onClick={() => openEdit(c)} className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold truncate">{c.name}</span>
+                        {(c.stage ?? 'active') !== 'active' && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${STAGE_CLASS[c.stage ?? 'active']}`}>{CLIENT_STAGES.find((s) => s.id === c.stage)?.label}</span>
+                        )}
                         <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{c.preferred_input_currency}</span>
                         {isBag && (
                             <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
@@ -139,6 +177,9 @@ export default function ClientsPage() {
                     )}
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
+                    <Button size="icon-sm" variant="ghost" title="Actividad y notas" onClick={() => openEdit(c, 'actividad')}>
+                        <History className="text-muted-foreground" />
+                    </Button>
                     {!isBag && (
                         <Button size="icon-sm" variant="ghost" title="Servicios fijos" onClick={() => openEdit(c, 'fijos')}>
                             <Settings2 className="text-teal-600" />
@@ -167,10 +208,27 @@ export default function ClientsPage() {
                         <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
                         <Input placeholder="Buscar…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8 w-full sm:w-56" />
                     </div>
-                    <Button onClick={openNew} className="bg-teal-600 hover:bg-teal-700 text-white">
+                    <Button variant="outline" onClick={() => openNew('lead')}>
+                        <Plus /> Nuevo lead
+                    </Button>
+                    <Button onClick={() => openNew('active')} className="bg-teal-600 hover:bg-teal-700 text-white">
                         <Plus /> Nuevo cliente
                     </Button>
                 </div>
+            </div>
+
+            <div className="flex gap-1.5 flex-wrap mb-3">
+                {([['all', 'Todos'], ...CLIENT_STAGES.map((s) => [s.id, s.label])] as [string, string][]).map(([id, label]) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => setStageFilter(id as 'all' | ClientStage)}
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${stageFilter === id ? 'bg-teal-600 border-teal-600 text-white' : 'border-border text-muted-foreground hover:bg-muted'}`}
+                    >
+                        {label}
+                        {id !== 'all' && <span className="ml-1 opacity-70">{clients.filter((c) => (c.stage ?? 'active') === id).length}</span>}
+                    </button>
+                ))}
             </div>
 
             <div className="rounded-xl border bg-card shadow-sm divide-y">
@@ -206,16 +264,16 @@ export default function ClientsPage() {
                                 </SheetDescription>
                             </div>
                         </div>
-                        {editing && editing.billing_modality !== 'hour_bag' && (
+                        {editing && (
                             <div className="flex gap-1 pt-3">
-                                {(['datos', 'fijos'] as Tab[]).map((t) => (
+                                {(['datos', ...(editing.billing_modality !== 'hour_bag' ? ['fijos'] : []), 'actividad'] as Tab[]).map((t) => (
                                     <button
                                         key={t}
                                         type="button"
                                         onClick={() => setTab(t)}
                                         className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${tab === t ? 'bg-teal-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
                                     >
-                                        {t === 'datos' ? 'Datos' : 'Servicios fijos'}
+                                        {t === 'datos' ? 'Datos' : t === 'fijos' ? 'Servicios fijos' : 'Actividad'}
                                     </button>
                                 ))}
                             </div>
@@ -224,11 +282,14 @@ export default function ClientsPage() {
                     <div className="flex-1 overflow-y-auto px-5 py-5">
                         {tab === 'fijos' && editing ? (
                             <RecurringServicesPanel client={editing} />
+                        ) : tab === 'actividad' && editing ? (
+                            <ClientActivityPanel client={editing} onClientChanged={(c) => { setEditing(c); load() }} />
                         ) : (
                             <ClientForm
                                 key={editing?.id ?? 'new'}
                                 clients={clients}
                                 initial={editing}
+                                defaultStage={defaultStage}
                                 submitting={saving}
                                 onSubmit={handleSubmit}
                                 onCancel={() => setSheetOpen(false)}

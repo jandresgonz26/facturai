@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Quote } from '@/types'
+import { EmailLog, Quote } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, Pencil } from 'lucide-react'
+import { Download, Mail, Pencil, Trash2 } from 'lucide-react'
+import { EmailDialog } from '@/components/features/EmailDialog'
+import { getEmailStatusByQuote } from '@/lib/actions/email'
+import { saveBlobToFile } from '@/lib/invoice-download'
+import { useDataChanged } from '@/lib/events'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
 import { formatDate } from '@/lib/date-utils'
 import { toast } from 'sonner'
@@ -28,10 +32,30 @@ export default function QuotesPage() {
     const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
     const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null)
+    const [emailStatus, setEmailStatus] = useState<Record<string, EmailLog>>({})
+    const [emailQuoteId, setEmailQuoteId] = useState<string | null>(null)
+
+    const fetchQuotes = async () => {
+        const { data, error } = await supabase
+            .from('quotes')
+            .select('*')
+            .order('created_at', { ascending: false })
+
+        if (error) {
+            console.error(error)
+            toast.error('Error al cargar cotizaciones')
+        } else {
+            const es = await getEmailStatusByQuote().catch(() => ({}))
+            setQuotes((data as Quote[]) || [])
+            setEmailStatus(es)
+        }
+        setLoading(false)
+    }
 
     useEffect(() => {
         fetchQuotes()
     }, [])
+    useDataChanged(() => fetchQuotes())
 
     const startEdit = (quote: Quote) => {
         setQuoteToEdit(quote)
@@ -45,63 +69,13 @@ export default function QuotesPage() {
         fetchQuotes()
     }
 
-    const fetchQuotes = async () => {
-        setLoading(true)
-        const { data, error } = await supabase
-            .from('quotes')
-            .select('*')
-            .order('created_at', { ascending: false })
-
-        if (error) {
-            console.error(error)
-            toast.error('Error al cargar cotizaciones')
-        } else {
-            setQuotes((data as Quote[]) || [])
-        }
-        setLoading(false)
-    }
-
-    const saveBlobToFile = async (blob: Blob, fileName: string) => {
-        const fileType = { description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] } }
-        if ('showSaveFilePicker' in window) {
-            try {
-                const handle = await (window as any).showSaveFilePicker({
-                    suggestedName: fileName,
-                    types: [fileType],
-                })
-                const writable = await handle.createWritable()
-                await writable.write(blob)
-                await writable.close()
-                toast.dismiss()
-                toast.success('Cotización guardada')
-                return
-            } catch (pickerError: any) {
-                if (pickerError?.name === 'AbortError') {
-                    toast.dismiss()
-                    return
-                }
-            }
-        }
-        // Fallback
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = fileName
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => {
-            URL.revokeObjectURL(url)
-            document.body.removeChild(a)
-        }, 200)
-        toast.dismiss()
-        toast.success('Cotización descargada')
-    }
-
     const handleDownloadPdf = async (quote: Quote) => {
         toast.loading('Generando PDF...')
         try {
             const { blob, fileName } = await generateQuotePdf(quote)
-            await saveBlobToFile(blob, fileName)
+            const r = await saveBlobToFile(blob, fileName, { description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] } })
+            toast.dismiss()
+            if (r === 'saved') toast.success('Cotización guardada')
         } catch (e) {
             console.error(e)
             toast.dismiss()
@@ -171,6 +145,9 @@ export default function QuotesPage() {
                                         {quote.company_name && (
                                             <div className="text-xs text-muted-foreground">{quote.company_name}</div>
                                         )}
+                                        {emailStatus[quote.id] && (
+                                            <div className="text-[11px] text-sky-700 dark:text-sky-300">✉ Enviada {formatDate(emailStatus[quote.id].sent_at.split('T')[0])} a {emailStatus[quote.id].to_email}</div>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center gap-6">
@@ -191,6 +168,15 @@ export default function QuotesPage() {
                                         </div>
 
                                         <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="text-teal-600"
+                                                onClick={() => setEmailQuoteId(quote.id)}
+                                                title="Enviar por correo"
+                                            >
+                                                <Mail className="w-4 h-4" />
+                                            </Button>
                                             <Button
                                                 variant="outline"
                                                 size="icon"
@@ -237,6 +223,8 @@ export default function QuotesPage() {
                     />
                 </div>
             </div>
+
+            <EmailDialog kind="quote" id={emailQuoteId} open={!!emailQuoteId} onOpenChange={(o) => !o && setEmailQuoteId(null)} onSent={fetchQuotes} />
 
             <Dialog open={!!quoteToDelete} onOpenChange={(open) => !open && !isDeleting && setQuoteToDelete(null)}>
                 <DialogContent>

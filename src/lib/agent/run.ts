@@ -14,11 +14,20 @@ export async function createAgentStream(messages: UIMessage[]) {
         model: openai(modelId),
         system,
         messages: await convertToModelMessages(messages),
-        tools: agentTools,
+        tools: process.env.AGENT_TOOLS_EXCLUDE
+            ? (Object.fromEntries(Object.entries(agentTools).filter(([k]) => !process.env.AGENT_TOOLS_EXCLUDE!.split(',').includes(k))) as typeof agentTools)
+            : agentTools,
         toolApproval,
         stopWhen: stepCountIs(8),
         experimental_toolApprovalSecret: process.env.AGENT_APPROVAL_SECRET || undefined,
         onError: ({ error }) => console.error('[agent]', error),
+        includeRawChunks: process.env.AGENT_DEBUG_RAW === '1',
+        onChunk: process.env.AGENT_DEBUG_RAW === '1' ? ({ chunk }) => { if (chunk.type === 'raw') console.log('[agent raw]', JSON.stringify(chunk.rawValue).slice(0, 600)) } : undefined,
+        onFinish: ({ finishReason, usage, warnings }) => {
+            if (finishReason !== 'stop' && finishReason !== 'tool-calls') {
+                console.warn('[agent] finishReason', finishReason, JSON.stringify({ usage, warnings }))
+            }
+        },
     })
 }
 

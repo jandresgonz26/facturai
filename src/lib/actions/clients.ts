@@ -74,6 +74,8 @@ export const clientInputSchema = z.object({
     postal_code: optionalText,
     city: optionalText,
     email: z.preprocess(blank, z.email('Correo electrónico inválido').optional()),
+    stage: z.enum(['lead', 'quoted', 'active', 'inactive']).optional(),
+    source: optionalText,
 })
 export type ClientInput = z.infer<typeof clientInputSchema>
 
@@ -97,6 +99,8 @@ function toRow(input: ClientInput) {
         postal_code: input.postal_code ?? null,
         city: input.city ?? null,
         email: input.email ?? null,
+        ...(input.stage ? { stage: input.stage } : {}),
+        ...(input.source !== undefined ? { source: input.source ?? null } : {}),
     }
 }
 

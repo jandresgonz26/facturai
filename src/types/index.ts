@@ -1,7 +1,13 @@
+export type ClientStage = 'lead' | 'quoted' | 'active' | 'inactive'
+
 export interface Client {
     id: string
     name: string
     preferred_input_currency: 'USD' | 'EUR'
+    stage?: ClientStage
+    source?: string | null
+    next_action?: string | null
+    next_action_at?: string | null
     tax_id?: string
     contact_name?: string
     billing_address?: string
@@ -51,6 +57,7 @@ export interface Invoice {
     status: 'draft' | 'sent' | 'paid'
     paid_at?: string
     due_date?: string | null
+    sent_at?: string | null
     created_at: string
     clients?: Client
 }
@@ -80,6 +87,7 @@ export interface Quote {
     id: string
     quote_number: string
     client_name: string
+    client_id?: string | null
     company_name?: string | null
     doc_title?: string | null
     quote_type: 'amount' | 'hours'
@@ -103,4 +111,28 @@ export interface RecurringService {
     is_active: boolean
     created_at: string
     service_categories?: { name: string }
+}
+
+export type EmailKind = 'invoice' | 'quote' | 'payment_thanks'
+
+export interface EmailLog {
+    id: string
+    kind: EmailKind
+    invoice_id?: string | null
+    quote_id?: string | null
+    client_id?: string | null
+    to_email: string
+    subject: string
+    provider_id?: string | null
+    status: 'sent' | 'failed'
+    error?: string | null
+    redirected: boolean
+    sent_at: string
+}
+
+export interface ClientNote {
+    id: string
+    client_id: string
+    body: string
+    created_at: string
 }

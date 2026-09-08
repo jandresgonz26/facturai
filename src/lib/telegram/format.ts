@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { getToolName, isToolUIPart } from 'ai'
-import { describeInput, describeResult, num, str, type Rec } from '@/lib/agent/describe'
+import { describeInput, describeResult, findEmailPreview, num, str, type Rec } from '@/lib/agent/describe'
 import { TOOL_LABELS, fmtUsd, isWriteTool } from '@/lib/agent/shared'
 
 export function escapeHtml(s: string): string {
@@ -71,8 +71,17 @@ export function renderConfirmation(tool: string, input: unknown, siblings: ToolP
     const out: string[] = [`<b>⚠️ Confirmar: ${escapeHtml(title)}</b>`, '']
     const inp = (input ?? {}) as Rec
     const snapshot = tool === 'bill_client_month' ? findSnapshot(siblings, str(inp.client_id)) : undefined
+    const emailPreview = tool.startsWith('send_') ? findEmailPreview(siblings, tool, input) : undefined
 
-    if (snapshot) {
+    if (emailPreview) {
+        out.push(`<b>Para:</b> ${escapeHtml(str(inp.to) ?? emailPreview.to ?? '-')}`)
+        out.push(`<b>De:</b> ${escapeHtml(emailPreview.from)}`)
+        out.push(`<b>Asunto:</b> ${escapeHtml(emailPreview.subject)}`)
+        out.push(`<b>Adjunto:</b> ${escapeHtml(emailPreview.attachment_name)}`, '')
+        out.push(`<i>${escapeHtml(emailPreview.text.slice(0, 1200))}</i>`)
+        if (emailPreview.already_sent) out.push('', `⚠️ Ya se envió el ${emailPreview.already_sent.sent_at.split('T')[0].split('-').reverse().join('/')} a ${escapeHtml(emailPreview.already_sent.to)}. Esto sería un reenvío.`)
+        if (emailPreview.test_mode_to) out.push(`ℹ️ Modo prueba: se desviará a ${escapeHtml(emailPreview.test_mode_to)}.`)
+    } else if (snapshot) {
         const extras = Array.isArray(inp.extra_items) ? (inp.extra_items as Rec[]) : []
         const rate = snapshot.client.currency === 'EUR' ? snapshot.eur_usd_rate : 1
         const sym = snapshot.client.currency === 'EUR' ? '€' : '$'

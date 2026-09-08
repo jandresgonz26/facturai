@@ -102,9 +102,90 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 note: 'Se guardará en Cotizaciones y podrás descargar el PDF.',
             }
         }
+        case 'send_invoice_email':
+        case 'send_quote_email':
+        case 'send_payment_thanks': {
+            const doc = tool === 'send_quote_email' ? `Cotización ${str(input.quote_number) ?? ''}` : `Factura #${str(input.invoice_number) ?? ''}`
+            const what = tool === 'send_payment_thanks' ? 'Agradecimiento de pago' : tool === 'send_quote_email' ? 'Cotización' : 'Factura'
+            return {
+                title: `Enviar ${what.toLowerCase()} a ${client}`,
+                rows: [
+                    { label: 'Documento', value: doc },
+                    { label: 'Para', value: str(input.to) ?? '-' },
+                ],
+                note: 'Es un envío real al cliente y no se puede deshacer. Revisa el destinatario, el asunto y el cuerpo de la vista previa.',
+            }
+        }
+        case 'update_client_email':
+            return { title: `Guardar correo de ${client}`, rows: [{ label: 'Correo', value: str(input.email) ?? '-' }] }
+        case 'create_lead':
+            return {
+                title: `Crear lead: ${str(input.name) ?? ''}`,
+                rows: [
+                    ...(input.email ? [{ label: 'Correo', value: str(input.email)! }] : []),
+                    ...(input.contact_name ? [{ label: 'Contacto', value: str(input.contact_name)! }] : []),
+                    ...(input.source ? [{ label: 'Origen', value: str(input.source)! }] : []),
+                    ...(input.note ? [{ label: 'Nota', value: str(input.note)! }] : []),
+                ],
+                note: 'Queda en la etapa Lead del pipeline, con su propia ficha.',
+            }
+        case 'update_client_stage':
+            return {
+                title: `Cambiar etapa de ${client}`,
+                rows: [{ label: 'Nueva etapa', value: STAGE_LABELS[str(input.stage) ?? ''] ?? str(input.stage) ?? '-' }],
+            }
+        case 'add_client_note':
+            return { title: `Nota en la ficha de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }] }
+        case 'set_next_action':
+            return {
+                title: `Próxima acción con ${client}`,
+                rows: [
+                    { label: 'Acción', value: str(input.next_action) ?? '-' },
+                    { label: 'Para', value: input.next_action_at ? dateLabel(str(input.next_action_at)) : 'Sin fecha' },
+                ],
+            }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, rows: [] }
     }
+}
+
+export const STAGE_LABELS: Record<string, string> = { lead: 'Lead', quoted: 'Cotizado', active: 'Cliente activo', inactive: 'Inactivo' }
+
+/** Vista previa de correo (salida de preview_email) tal como la usan las tarjetas. */
+export interface EmailPreviewLike {
+    kind: string
+    to: string | null
+    subject: string
+    text: string
+    attachment_name: string
+    from: string
+    company: string
+    invoice_id?: string
+    quote_id?: string
+    already_sent: { sent_at: string; to: string } | null
+    warnings: string[]
+    test_mode_to: string | null
+    configured: boolean
+}
+
+/** Busca en la misma respuesta la vista previa que corresponde a un envío propuesto. */
+export function findEmailPreview(
+    parts: { type: string; state: string; output?: unknown }[] | undefined,
+    tool: string,
+    input: unknown
+): EmailPreviewLike | undefined {
+    if (!parts) return undefined
+    const inp = (input ?? {}) as Rec
+    const kind = tool === 'send_quote_email' ? 'quote' : tool === 'send_payment_thanks' ? 'payment_thanks' : 'invoice'
+    let found: EmailPreviewLike | undefined
+    for (const p of parts) {
+        if (p.type !== 'tool-preview_email' || p.state !== 'output-available') continue
+        const out = p.output as { ok?: boolean; data?: EmailPreviewLike } | undefined
+        const d = out?.data
+        if (!out?.ok || !d || d.kind !== kind) continue
+        if (kind === 'quote' ? d.quote_id === inp.quote_id : d.invoice_id === inp.invoice_id) found = d
+    }
+    return found
 }
 
 export function describeResult(tool: string, raw: unknown): { title: string; lines: string[]; invoiceId?: string; quote?: Quote } {
@@ -176,6 +257,25 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
                 quote: q,
             }
         }
+        case 'send_invoice_email':
+        case 'send_quote_email':
+        case 'send_payment_thanks': {
+            const doc = d.quote_number ? `Cotización ${str(d.quote_number)}` : `Factura #${str(d.invoice_number) ?? ''}`
+            return {
+                title: `Correo enviado a ${str(d.to) ?? ''}`,
+                lines: [`${doc} · ${str(d.client_name) ?? ''}`, `Asunto: ${str(d.subject) ?? ''}`, ...(d.redirected ? ['Modo prueba: se desvió a tu dirección de pruebas.'] : [])],
+            }
+        }
+        case 'update_client_email':
+            return { title: 'Correo guardado', lines: [`${str(d.client_name) ?? ''} · ${str(d.email) ?? ''}`] }
+        case 'create_lead':
+            return { title: 'Lead creado', lines: [`${str(d.name) ?? ''}${d.email ? ` · ${str(d.email)}` : ''} · etapa Lead`] }
+        case 'update_client_stage':
+            return { title: 'Etapa actualizada', lines: [`${str(d.client_name) ?? ''} → ${STAGE_LABELS[str(d.stage) ?? ''] ?? str(d.stage) ?? ''}`] }
+        case 'add_client_note':
+            return { title: 'Nota guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
+        case 'set_next_action':
+            return { title: 'Próxima acción guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.next_action) ?? ''}${d.next_action_at ? ` · ${dateLabel(str(d.next_action_at))}` : ''}`] }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, lines: [] }
     }

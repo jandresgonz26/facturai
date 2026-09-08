@@ -55,7 +55,8 @@ Variables de entorno:
 | `OPENAI_TRANSCRIBE_MODEL` | Modelo de transcripción del micrófono (por defecto `gpt-4o-mini-transcribe`) |
 | `AGENT_APPROVAL_SECRET` | Opcional. Firma HMAC de las confirmaciones del asistente |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ALLOWED_CHAT_IDS` | Bot de Telegram (opcional) |
-| `APP_BASE_URL` | URL pública de la app; el servidor la usa para cargar la cabecera de los PDF enviados por Telegram |
+| `APP_BASE_URL` | URL pública de la app; el servidor la usa para cargar la cabecera de los PDF enviados por Telegram o correo |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_TEST_TO`, `EMAIL_BCC` | Correos a clientes (ver sección) |
 
 ## Asistente
 
@@ -84,6 +85,18 @@ El bot usa el mismo asistente, las mismas herramientas y las mismas confirmacion
 5. Escríbele al bot: te responderá tu **chat id**. Ponlo en `TELEGRAM_ALLOWED_CHAT_IDS` y redespliega. Nadie más podrá usarlo.
 
 Desde Telegram puedes escribir o mandar **notas de voz**. Toda escritura llega como una tarjeta con botones **Confirmar / Cancelar**; nada se guarda hasta que confirmas. Al facturar o cotizar, el bot te manda el **PDF** al chat. Comandos: `/pendiente`, `/nuevo`, `/ayuda`.
+
+## Correos a clientes (Resend)
+
+Factura, cotización y agradecimiento de pago se envían desde la app con el PDF adjunto, siempre como JAM Tech. Nunca es automático: desde Facturas/Cotizaciones (botón de sobre) o por el asistente, ves la vista previa exacta (destinatario, asunto, cuerpo, adjunto) y confirmas. Cada envío queda en `email_log` y se muestra en la tarjeta ("Enviada el… a…", "Agradecimiento el…"); si repites, avisa que ya se envió. Enviar la factura la pasa a "Enviada".
+
+1. Crea una cuenta en [resend.com](https://resend.com), verifica el dominio `jamtechcorp.com` (SPF y DKIM, dos registros DNS) y crea una API key.
+2. Ejecuta `schema_update_crm.sql` en Supabase (crea `email_log`, notas, etapas; retira el aviso a n8n al marcar pagada).
+3. En el servidor: `RESEND_API_KEY`, `EMAIL_FROM` (remitente del dominio verificado) y, las primeras semanas, `EMAIL_TEST_TO=tu@correo` para que TODO se desvíe a ti. Opcional `EMAIL_BCC` para copia oculta de cada envío.
+
+## CRM
+
+Un lead es un cliente en etapa temprana: misma ficha, mismos datos. Etapas: **Lead → Cotizado → Cliente activo → Inactivo**. Cotizar a un nombre nuevo crea el lead solo; cotizar a un lead lo pasa a Cotizado; su primera factura lo pasa a Activo. Pantalla **Pipeline** (tablero, arrastrar para mover), pestaña **Actividad** en la ficha (etapa, próxima acción con fecha, notas, historial de cotizaciones/facturas/pagos/correos). El briefing y la campana avisan de próximas acciones vencidas, leads sin seguimiento (7 días) y cotizaciones sin respuesta (15 días). Por chat: «crea un lead para X», «anota que…», «recuérdame llamar a Y el lunes», «¿qué leads tengo?».
 
 ## Pantallas
 

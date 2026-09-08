@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { Quote, QuoteItem } from '@/types'
-import { ActionError, dateSchema, parseInput, round2 } from './validation'
+import { ActionError, dateSchema, parseInput, round2, uuidSchema } from './validation'
+import { findOrCreateLead, promoteStageOnQuote } from './crm'
 
 export const QUOTE_COMPANIES = [
     { name: 'JAM Tech, C.A.', template: 'jamtech' as const },
@@ -38,6 +39,8 @@ export const createQuoteSchema = z.object({
     doc_title: z.preprocess(blank, z.string().trim().max(60).optional()),
     items: z.array(quoteItemSchema).min(1, 'La cotización necesita al menos un ítem'),
     issue_date: z.preprocess(blank, dateSchema.optional()),
+    client_id: z.preprocess(blank, uuidSchema.optional()),
+    client_email: z.preprocess(blank, z.email('Correo electrónico inválido').optional()),
 })
 export type CreateQuoteInput = z.infer<typeof createQuoteSchema>
 
@@ -60,12 +63,32 @@ export async function createQuote(raw: CreateQuoteInput): Promise<Quote> {
     const total_amount = isHours ? 0 : round2(items.reduce((s, it) => s + it.quantity * it.unit_price, 0))
     const total_hours = isHours ? round2(items.reduce((s, it) => s + it.hours, 0)) : 0
     const template = QUOTE_COMPANIES.find((c) => c.name === input.company_name)?.template ?? 'jamtech'
+    // CRM: la cotización queda enlazada al cliente; si no existe, se crea como lead.
+    let clientId: string | null = null
+    let leadCreated = false
+    try {
+        if (input.client_id) {
+            clientId = input.client_id
+        } else {
+            const r = await findOrCreateLead(input.client_name, input.client_email ?? null)
+            clientId = r.client.id
+            leadCreated = r.created
+        }
+        await promoteStageOnQuote(clientId)
+    } catch (e) {
+        // Si aún no se ejecutó schema_update_crm.sql, seguimos sin enlazar.
+        console.warn('[quotes] no se pudo enlazar el cliente (¿falta schema_update_crm.sql?)', e instanceof Error ? e.message : e)
+        clientId = null
+    }
+    void leadCreated
+
     const quote_number = await getNextQuoteNumber()
     const { data, error } = await supabase
         .from('quotes')
         .insert({
             quote_number,
             client_name: input.client_name,
+            ...(clientId ? { client_id: clientId } : {}),
             company_name: input.company_name,
             doc_title: input.doc_title || 'COTIZACIÓN',
             quote_type: input.quote_type,

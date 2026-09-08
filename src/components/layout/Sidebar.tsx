@@ -10,6 +10,7 @@ import {
     Menu,
     ReceiptText,
     Settings,
+    SquareKanban,
     UserRound,
     Users,
     X,
@@ -19,6 +20,7 @@ import {
 const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/clients', label: 'Clientes', icon: Users },
+    { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
     { href: '/month-end', label: 'Facturación', icon: ReceiptText },
     { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
     { href: '/invoices', label: 'Facturas', icon: FileText },
