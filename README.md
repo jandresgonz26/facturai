@@ -90,7 +90,7 @@ Desde Telegram puedes escribir o mandar **notas de voz**. Toda escritura llega c
 
 Factura, cotización y agradecimiento de pago se envían desde la app con el PDF adjunto, siempre como JAM Tech. Nunca es automático: desde Facturas/Cotizaciones (botón de sobre) o por el asistente, ves la vista previa exacta (destinatario, asunto, cuerpo, adjunto) y confirmas. Cada envío queda en `email_log` y se muestra en la tarjeta ("Enviada el… a…", "Agradecimiento el…"); si repites, avisa que ya se envió. Enviar la factura la pasa a "Enviada".
 
-1. Crea una cuenta en [resend.com](https://resend.com), verifica el dominio `jamtechcorp.com` (SPF y DKIM, dos registros DNS) y crea una API key.
+1. Crea una cuenta en [resend.com](https://resend.com), verifica el dominio `jamtech.cloud` (SPF y DKIM, dos registros DNS) y crea una API key.
 2. Ejecuta `schema_update_crm.sql` en Supabase (crea `email_log`, notas, etapas; retira el aviso a n8n al marcar pagada).
 3. En el servidor: `RESEND_API_KEY`, `EMAIL_FROM` (remitente del dominio verificado) y, las primeras semanas, `EMAIL_TEST_TO=tu@correo` para que TODO se desvíe a ti. Opcional `EMAIL_BCC` para copia oculta de cada envío.
 
