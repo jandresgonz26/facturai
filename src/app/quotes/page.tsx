@@ -5,9 +5,12 @@ import { supabase } from '@/lib/supabase'
 import { EmailLog, Quote } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, Mail, Pencil, Trash2 } from 'lucide-react'
+import { Download, Mail, Pencil, Receipt, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { EmailDialog } from '@/components/features/EmailDialog'
 import { getEmailStatusByQuote } from '@/lib/actions/email'
+import { convertQuoteToInvoice } from '@/lib/actions/quotes'
+import { errorMessage } from '@/lib/actions/validation'
 import { saveBlobToFile } from '@/lib/invoice-download'
 import { useDataChanged } from '@/lib/events'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
@@ -34,8 +37,12 @@ export default function QuotesPage() {
     const [quoteToEdit, setQuoteToEdit] = useState<Quote | null>(null)
     const [emailStatus, setEmailStatus] = useState<Record<string, EmailLog>>({})
     const [emailQuoteId, setEmailQuoteId] = useState<string | null>(null)
+    // Número de la factura generada por cada cotización convertida (quote.id → "0577")
+    const [invoiceNumbers, setInvoiceNumbers] = useState<Record<string, string>>({})
+    const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null)
+    const [isConverting, setIsConverting] = useState(false)
 
-    const loadQuotes = async (): Promise<{ quotes: Quote[]; emailStatus: Record<string, EmailLog> } | null> => {
+    const loadQuotes = async (): Promise<{ quotes: Quote[]; emailStatus: Record<string, EmailLog>; invoiceNumbers: Record<string, string> } | null> => {
         const { data, error } = await supabase
             .from('quotes')
             .select('*')
@@ -45,8 +52,18 @@ export default function QuotesPage() {
             toast.error('Error al cargar cotizaciones')
             return null
         }
+        const quotes = (data as Quote[]) || []
         const emailStatus = await getEmailStatusByQuote().catch(() => ({}))
-        return { quotes: (data as Quote[]) || [], emailStatus }
+        // Se consulta aparte (y no con un join) para que la página siga funcionando
+        // aunque todavía no se haya ejecutado schema_update_quote_to_invoice.sql.
+        const invoiceNumbers: Record<string, string> = {}
+        const invoiceIds = quotes.map((q) => q.invoice_id).filter((id): id is string => !!id)
+        if (invoiceIds.length) {
+            const { data: invs } = await supabase.from('invoices').select('id, invoice_number').in('id', invoiceIds)
+            const byId = new Map((invs || []).map((i) => [i.id as string, i.invoice_number as string]))
+            for (const q of quotes) if (q.invoice_id && byId.has(q.invoice_id)) invoiceNumbers[q.id] = byId.get(q.invoice_id)!
+        }
+        return { quotes, emailStatus, invoiceNumbers }
     }
 
     const fetchQuotes = () =>
@@ -54,6 +71,7 @@ export default function QuotesPage() {
             if (r) {
                 setQuotes(r.quotes)
                 setEmailStatus(r.emailStatus)
+                setInvoiceNumbers(r.invoiceNumbers)
             }
             setLoading(false)
         })
@@ -65,6 +83,7 @@ export default function QuotesPage() {
             if (r) {
                 setQuotes(r.quotes)
                 setEmailStatus(r.emailStatus)
+                setInvoiceNumbers(r.invoiceNumbers)
             }
             setLoading(false)
         })
@@ -119,6 +138,22 @@ export default function QuotesPage() {
         }
     }
 
+    const executeConvert = async () => {
+        if (!quoteToConvert) return
+        setIsConverting(true)
+        try {
+            const r = await convertQuoteToInvoice({ quote_id: quoteToConvert.id })
+            toast.success(`Factura #${r.invoice.invoice_number} creada en borrador desde ${quoteToConvert.quote_number}`)
+            setQuoteToConvert(null)
+            await fetchQuotes()
+        } catch (e) {
+            console.error(e)
+            toast.error(errorMessage(e))
+        } finally {
+            setIsConverting(false)
+        }
+    }
+
     const totalPages = Math.ceil(quotes.length / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
     const currentQuotes = quotes.slice(startIndex, startIndex + itemsPerPage)
@@ -140,6 +175,7 @@ export default function QuotesPage() {
                     {currentQuotes.map((quote) => {
                         const isHours = quote.quote_type === 'hours'
                         const symbol = quote.currency === 'EUR' ? '€' : '$'
+                        const invoiced = !!quote.invoice_id && !!invoiceNumbers[quote.id]
                         return (
                             <Card key={quote.id}>
                                 <CardContent className="p-4 flex items-center justify-between">
@@ -166,6 +202,15 @@ export default function QuotesPage() {
                                         {emailStatus[quote.id] && (
                                             <div className="text-[11px] text-sky-700 dark:text-sky-300">✉ Enviada {formatDate(emailStatus[quote.id].sent_at.split('T')[0])} a {emailStatus[quote.id].to_email}</div>
                                         )}
+                                        {invoiced && (
+                                            <Link
+                                                href="/invoices"
+                                                className="inline-flex items-center gap-1 mt-1 text-[11px] font-semibold text-green-700 dark:text-green-400 hover:underline"
+                                                title="Ver en Facturas"
+                                            >
+                                                <Receipt className="w-3 h-3" /> Facturada · #{invoiceNumbers[quote.id]}
+                                            </Link>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center gap-6">
@@ -186,6 +231,18 @@ export default function QuotesPage() {
                                         </div>
 
                                         <div className="flex items-center gap-2">
+                                            {!isHours && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
+                                                    onClick={() => setQuoteToConvert(quote)}
+                                                    disabled={invoiced}
+                                                    title={invoiced ? `Ya convertida en la factura #${invoiceNumbers[quote.id]}` : 'Convertir en factura (cotización aprobada)'}
+                                                >
+                                                    <Receipt className="w-4 h-4" />
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="outline"
                                                 size="icon"
@@ -208,7 +265,8 @@ export default function QuotesPage() {
                                                 size="icon"
                                                 className="text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-900/20"
                                                 onClick={() => startEdit(quote)}
-                                                title="Editar cotización"
+                                                disabled={invoiced}
+                                                title={invoiced ? 'No se puede editar: ya se convirtió en factura' : 'Editar cotización'}
                                             >
                                                 <Pencil className="w-4 h-4" />
                                             </Button>
@@ -243,6 +301,38 @@ export default function QuotesPage() {
             </div>
 
             <EmailDialog kind="quote" id={emailQuoteId} open={!!emailQuoteId} onOpenChange={(o) => !o && setEmailQuoteId(null)} onSent={fetchQuotes} />
+
+            <Dialog open={!!quoteToConvert} onOpenChange={(open) => !open && !isConverting && setQuoteToConvert(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Convertir cotización en factura</DialogTitle>
+                        <DialogDescription>
+                            {quoteToConvert ? (
+                                <>
+                                    Se creará una factura <strong>en borrador</strong> para{' '}
+                                    <strong>{quoteToConvert.client_name}</strong> con los {quoteToConvert.items?.length ?? 0} ítems de la
+                                    cotización <strong>{quoteToConvert.quote_number}</strong> por un total de{' '}
+                                    <strong>
+                                        {quoteToConvert.currency === 'EUR' ? '€' : '$'}
+                                        {Number(quoteToConvert.total_amount).toFixed(2)}
+                                    </strong>
+                                    . No se enviará al cliente hasta que tú lo hagas desde Facturas.
+                                </>
+                            ) : (
+                                ''
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setQuoteToConvert(null)} disabled={isConverting}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={executeConvert} disabled={isConverting}>
+                            {isConverting ? 'Creando factura...' : 'Crear factura'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={!!quoteToDelete} onOpenChange={(open) => !open && !isDeleting && setQuoteToDelete(null)}>
                 <DialogContent>

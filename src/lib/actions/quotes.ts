@@ -1,8 +1,12 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { Quote, QuoteItem } from '@/types'
+import { Invoice, Log, Quote, QuoteItem } from '@/types'
+import { getEurToUsdRate } from '@/lib/currency'
 import { ActionError, dateSchema, parseInput, round2, uuidSchema } from './validation'
 import { findOrCreateLead, promoteStageOnQuote } from './crm'
+import { getClient } from './clients'
+import { resolveCategoryId } from './categories'
+import { createInvoice, getInvoice } from './invoices'
 
 export const QUOTE_COMPANIES = [
     { name: 'JAM Tech, C.A.', template: 'jamtech' as const },
@@ -116,4 +120,110 @@ export async function getQuote(id: string): Promise<Quote> {
     if (error) throw new ActionError(`No se pudo consultar la cotización: ${error.message}`)
     if (!data) throw new ActionError('La cotización no existe', 'NOT_FOUND')
     return data as Quote
+}
+
+export const convertQuoteSchema = z.object({
+    quote_id: uuidSchema,
+    /** Cliente al que facturar; si se omite se usa el enlazado a la cotización o se busca/crea por nombre. */
+    client_id: uuidSchema.optional(),
+    issue_date: dateSchema.optional(),
+    due_date: dateSchema.optional(),
+})
+export type ConvertQuoteInput = z.infer<typeof convertQuoteSchema>
+
+/**
+ * Convierte una cotización aprobada en una factura en borrador: crea un ítem
+ * por cada línea de la cotización (con su monto en la moneda original y su
+ * equivalente en USD) y emite la factura con ellos, reutilizando todas las
+ * validaciones de createInvoice. La cotización queda enlazada a la factura
+ * para que no se pueda convertir dos veces. Si algo falla después de crear
+ * los ítems, se eliminan para no dejar pendientes fantasma.
+ */
+export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ invoice: Invoice; items: Log[]; quote: Quote }> {
+    const input = parseInput(convertQuoteSchema, raw)
+    const quote = await getQuote(input.quote_id)
+
+    if (!('invoice_id' in quote)) {
+        throw new ActionError('Falta ejecutar schema_update_quote_to_invoice.sql en Supabase antes de convertir cotizaciones en facturas.')
+    }
+    if (quote.invoice_id) {
+        const existing = await getInvoice(quote.invoice_id).catch(() => null)
+        if (existing) {
+            throw new ActionError(`La cotización ${quote.quote_number} ya se convirtió en la factura #${existing.invoice_number}.`)
+        }
+        // La factura se eliminó: se permite volver a convertir.
+    }
+    if (quote.quote_type !== 'amount') {
+        throw new ActionError(`La cotización ${quote.quote_number} es solo de horas (sin importes): no se puede convertir en factura tal cual.`)
+    }
+    if (!Array.isArray(quote.items) || quote.items.length === 0) {
+        throw new ActionError(`La cotización ${quote.quote_number} no tiene ítems.`)
+    }
+
+    // Resolver el cliente a facturar.
+    let clientId = input.client_id ?? quote.client_id ?? null
+    if (!clientId) {
+        const r = await findOrCreateLead(quote.client_name, null)
+        clientId = r.client.id
+    }
+    const client = await getClient(clientId)
+    if (client.billing_modality === 'hour_bag') {
+        throw new ActionError(`${client.name} se factura por bolsa de horas: no se puede convertir una cotización en factura para este cliente.`)
+    }
+
+    // Un ítem por línea de la cotización.
+    const rate = quote.currency === 'EUR' ? await getEurToUsdRate() : 1
+    const defaultCategory = await resolveCategoryId()
+    const now = new Date().toISOString()
+    const rows = []
+    for (const it of quote.items) {
+        const amount = round2((Number(it.quantity) || 1) * (Number(it.unit_price) || 0))
+        const qty = Number(it.quantity) || 1
+        const description = qty > 1 ? `${it.description} (x${qty})` : it.description
+        const category_id = it.service ? await resolveCategoryId(it.service).catch(() => defaultCategory) : defaultCategory
+        rows.push({
+            client_id: client.id,
+            description,
+            value: quote.currency === 'EUR' ? round2(amount * rate) : amount,
+            original_amount: amount,
+            currency: quote.currency,
+            category_id,
+            hours: null,
+            created_at: now,
+            status: 'pending',
+        })
+    }
+    if (rows.every((r) => r.original_amount <= 0)) {
+        throw new ActionError(`La cotización ${quote.quote_number} no tiene importes: indica los precios antes de convertirla.`)
+    }
+
+    const { data: created, error: logsError } = await supabase.from('logs').insert(rows).select('id')
+    if (logsError) throw new ActionError(`No se pudieron crear los ítems de la factura: ${logsError.message}`)
+    const logIds = (created || []).map((l) => l.id as string)
+
+    let result: { invoice: Invoice; items: Log[] }
+    try {
+        result = await createInvoice({
+            client_id: client.id,
+            log_ids: logIds,
+            issue_date: input.issue_date,
+            due_date: input.due_date,
+        })
+    } catch (e) {
+        await supabase.from('logs').delete().in('id', logIds)
+        throw e
+    }
+
+    const { data: updatedQuote, error: quoteError } = await supabase
+        .from('quotes')
+        .update({ invoice_id: result.invoice.id, invoiced_at: now })
+        .eq('id', quote.id)
+        .select('*')
+        .single()
+    if (quoteError) {
+        // La factura ya existe y es válida; solo falló el enlace. Se informa sin deshacer.
+        console.warn('[quotes] factura creada pero no se pudo enlazar a la cotización', quoteError.message)
+    }
+
+    return { invoice: result.invoice, items: result.items, quote: (updatedQuote as Quote) ?? { ...quote, invoice_id: result.invoice.id, invoiced_at: now } }
 }

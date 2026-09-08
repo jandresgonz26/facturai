@@ -99,6 +99,9 @@ export interface Quote {
     total_amount: number
     total_hours: number
     issue_date: string
+    /** Factura generada a partir de esta cotización (null si aún no se convirtió). */
+    invoice_id?: string | null
+    invoiced_at?: string | null
     created_at: string
 }
 

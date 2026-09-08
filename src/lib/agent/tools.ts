@@ -196,6 +196,8 @@ export const agentTools = {
                     total_amount: x.total_amount,
                     total_hours: x.total_hours,
                     issue_date: x.issue_date,
+                    // Si ya se convirtió en factura, aquí viene el id de esa factura.
+                    invoice_id: x.invoice_id ?? null,
                 }))
             }),
     }),
@@ -396,6 +398,33 @@ export const agentTools = {
             client_email: optionalText.describe('Correo del cliente si el usuario lo da (se guarda en su ficha si es nuevo)'),
         }),
         execute: async (input) => run(() => actions.createQuote(input)),
+    }),
+
+    convert_quote_to_invoice: tool({
+        description:
+            'Convierte una cotización APROBADA por el cliente en una factura en borrador: crea un ítem por cada línea de la cotización y emite la factura con ellos (sin enviarla). Requiere confirmación. Resuelve antes el quote_id con list_quotes; si esa cotización ya trae invoice_id, ya fue convertida: dilo y no la conviertas de nuevo. Solo sirve para cotizaciones con importe (quote_type amount), no para las de solo horas.',
+        inputSchema: z.object({
+            quote_id: uuidSchema,
+            quote_number: z.string().min(1).describe('Número de la cotización (ej. COT-0005), para la confirmación'),
+            client_name: clientNameField,
+            total_amount: z.number().min(0).describe('Total de la cotización tal como lo devolvió list_quotes, para la confirmación'),
+            currency: z.enum(['USD', 'EUR']).default('USD'),
+            issue_date: optionalDate.describe('SOLO si el usuario pide una fecha de emisión distinta de hoy'),
+            due_date: optionalDate.describe('SOLO si el usuario indica fecha de vencimiento'),
+        }),
+        execute: async ({ quote_id, quote_number, client_name, issue_date, due_date }) =>
+            run(async () => {
+                const r = await actions.convertQuoteToInvoice({ quote_id, issue_date, due_date })
+                return {
+                    quote_number,
+                    client_name,
+                    invoice_id: r.invoice.id,
+                    invoice_number: r.invoice.invoice_number,
+                    total_amount: r.invoice.total_amount,
+                    issue_date: r.invoice.issue_date,
+                    items: r.items.map((l) => ({ description: l.description, value: l.value })),
+                }
+            }),
     }),
 
     send_invoice_email: tool({

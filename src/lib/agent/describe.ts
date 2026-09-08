@@ -84,6 +84,17 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 rows: [{ label: 'Nombre', value: str(input.name) ?? '-' }],
                 note: 'Quedará disponible para clasificar actividades y servicios fijos.',
             }
+        case 'convert_quote_to_invoice':
+            return {
+                title: `Convertir la cotización ${str(input.quote_number) ?? ''} en factura`,
+                rows: [
+                    { label: 'Cliente', value: client },
+                    { label: 'Total', value: fmtMoney(num(input.total_amount), str(input.currency)) },
+                    { label: 'Fecha de emisión', value: dateLabel(str(input.issue_date)) },
+                    ...(input.due_date ? [{ label: 'Vence', value: dateLabel(str(input.due_date)) }] : []),
+                ],
+                note: 'Se crea una factura en borrador con un ítem por cada línea de la cotización. No se envía al cliente hasta que lo pidas.',
+            }
         case 'create_quote': {
             const items = Array.isArray(input.items) ? (input.items as Rec[]) : []
             const isHours = input.quote_type === 'hours'
@@ -258,6 +269,14 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             }
         case 'add_service_category':
             return { title: 'Categoría creada', lines: [str(d.name) ?? ''] }
+        case 'convert_quote_to_invoice': {
+            const items = Array.isArray(d.items) ? (d.items as Rec[]) : []
+            return {
+                title: `Factura #${str(d.invoice_number) ?? ''} creada desde la cotización ${str(d.quote_number) ?? ''}`,
+                lines: [`${str(d.client_name) ?? ''} · ${fmtUsd(num(d.total_amount))} · ${items.length} ítem${items.length === 1 ? '' : 's'} · en borrador`],
+                invoiceId: str(d.invoice_id),
+            }
+        }
         case 'create_quote': {
             const q = d as unknown as Quote
             const sym = q.currency === 'EUR' ? '€' : '$'
