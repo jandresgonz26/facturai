@@ -35,27 +35,45 @@ export default function QuotesPage() {
     const [emailStatus, setEmailStatus] = useState<Record<string, EmailLog>>({})
     const [emailQuoteId, setEmailQuoteId] = useState<string | null>(null)
 
-    const fetchQuotes = async () => {
+    const loadQuotes = async (): Promise<{ quotes: Quote[]; emailStatus: Record<string, EmailLog> } | null> => {
         const { data, error } = await supabase
             .from('quotes')
             .select('*')
             .order('created_at', { ascending: false })
-
         if (error) {
             console.error(error)
             toast.error('Error al cargar cotizaciones')
-        } else {
-            const es = await getEmailStatusByQuote().catch(() => ({}))
-            setQuotes((data as Quote[]) || [])
-            setEmailStatus(es)
+            return null
         }
-        setLoading(false)
+        const emailStatus = await getEmailStatusByQuote().catch(() => ({}))
+        return { quotes: (data as Quote[]) || [], emailStatus }
     }
 
+    const fetchQuotes = () =>
+        loadQuotes().then((r) => {
+            if (r) {
+                setQuotes(r.quotes)
+                setEmailStatus(r.emailStatus)
+            }
+            setLoading(false)
+        })
+
     useEffect(() => {
-        fetchQuotes()
+        let active = true
+        loadQuotes().then((r) => {
+            if (!active) return
+            if (r) {
+                setQuotes(r.quotes)
+                setEmailStatus(r.emailStatus)
+            }
+            setLoading(false)
+        })
+        return () => {
+            active = false
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
-    useDataChanged(() => fetchQuotes())
+    useDataChanged(() => void fetchQuotes())
 
     const startEdit = (quote: Quote) => {
         setQuoteToEdit(quote)
