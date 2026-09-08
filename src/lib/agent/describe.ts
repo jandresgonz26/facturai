@@ -62,7 +62,11 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
         case 'mark_invoice_paid':
             return {
                 title: `Marcar como pagada la factura #${str(input.invoice_number) ?? ''}`,
-                rows: [{ label: 'Cliente', value: client }],
+                rows: [
+                    { label: 'Cliente', value: client },
+                    { label: 'Fecha de pago', value: input.paid_at ? dateLabel(str(input.paid_at)) : 'Hoy' },
+                ],
+                note: input.paid_at ? 'Esta fecha queda impresa en el recibo y en el correo de agradecimiento.' : undefined,
             }
         case 'add_recurring_service':
             return {
@@ -245,7 +249,7 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         case 'mark_invoice_paid':
             return {
                 title: `Factura #${str(d.invoice_number)} marcada como pagada`,
-                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))}`],
+                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
             }
         case 'add_recurring_service':
             return {

@@ -43,6 +43,7 @@ export default function InvoicesPage() {
     const [dueValue, setDueValue] = useState('')
     const [emailStatus, setEmailStatus] = useState<Record<string, { invoice?: EmailLog; payment_thanks?: EmailLog }>>({})
     const [emailDialog, setEmailDialog] = useState<{ kind: EmailKind; id: string } | null>(null)
+    const [paidDate, setPaidDate] = useState('')
 
     const load = async () => {
         try {
@@ -97,7 +98,7 @@ export default function InvoicesPage() {
     const executeConfirm = () => {
         if (!confirm) return
         const { kind, invoice } = confirm
-        if (kind === 'paid') return run(() => markInvoicePaid(invoice.id), 'Factura marcada como pagada')
+        if (kind === 'paid') return run(() => markInvoicePaid(invoice.id, paidDate || undefined), 'Factura marcada como pagada')
         if (kind === 'sent') return run(() => markInvoiceSent(invoice.id), 'Factura marcada como enviada')
         if (kind === 'revert') return run(() => revertInvoiceToDraft(invoice.id), 'Factura devuelta a borrador')
         if (kind === 'delete') return run(() => deleteInvoice(invoice.id), 'Factura eliminada; sus ítems vuelven a pendientes')
@@ -111,7 +112,7 @@ export default function InvoicesPage() {
     }
 
     const confirmCopy: Record<NonNullable<Confirm>['kind'], { title: string; body: string; cta: string; cls: string }> = {
-        paid: { title: 'Confirmar pago', body: '¿Marcar la factura como pagada con fecha de hoy?', cta: 'Marcar pagada', cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+        paid: { title: 'Confirmar pago', body: 'Indica cuándo pagó el cliente: esta fecha queda en el recibo y en el correo de agradecimiento.', cta: 'Marcar pagada', cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
         sent: { title: 'Marcar como enviada', body: '¿Ya le enviaste esta factura al cliente?', cta: 'Sí, enviada', cls: 'bg-sky-600 hover:bg-sky-700 text-white' },
         revert: { title: 'Revertir a borrador', body: 'Se eliminará la fecha de pago.', cta: 'Revertir', cls: 'bg-amber-600 hover:bg-amber-700 text-white' },
         delete: { title: 'Eliminar factura', body: 'Sus ítems volverán a estar pendientes en Facturación. Esta acción no se puede deshacer.', cta: 'Eliminar', cls: 'bg-destructive hover:bg-destructive/90 text-white' },
@@ -199,7 +200,7 @@ export default function InvoicesPage() {
                                         </Button>
                                     )}
                                     {inv.status !== 'paid' ? (
-                                        <Button variant="outline" size="icon" title="Marcar como pagada" className="text-emerald-600" onClick={() => setConfirm({ kind: 'paid', invoice: inv })}>
+                                        <Button variant="outline" size="icon" title="Marcar como pagada" className="text-emerald-600" onClick={() => { setPaidDate(today); setConfirm({ kind: 'paid', invoice: inv }) }}>
                                             <CheckCircle />
                                         </Button>
                                     ) : (
@@ -234,6 +235,12 @@ export default function InvoicesPage() {
                             Factura <strong>#{confirm?.invoice.invoice_number}</strong> · {confirm?.invoice.clients?.name} · {confirm ? usd(confirm.invoice.total_amount) : ''}. {confirm ? confirmCopy[confirm.kind].body : ''}
                         </DialogDescription>
                     </DialogHeader>
+                    {confirm?.kind === 'paid' && (
+                        <div className="space-y-1">
+                            <Label htmlFor="paid-date">Fecha de pago</Label>
+                            <Input id="paid-date" type="date" max={today} value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                        </div>
+                    )}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setConfirm(null)} disabled={working}>Cancelar</Button>
                         <Button className={confirm ? confirmCopy[confirm.kind].cls : ''} onClick={executeConfirm} disabled={working}>

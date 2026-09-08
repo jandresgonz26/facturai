@@ -90,7 +90,7 @@ export function paymentThanksEmail(invoice: Invoice, client: Client, identity: E
     const title = `Pago recibido · Factura #${invoice.invoice_number}`
     const paragraphs = [
         greeting(client),
-        `Le confirmamos que hemos recibido el pago de la factura #${invoice.invoice_number}. Adjuntamos la factura con sello de pagada para sus registros.`,
+        `Le confirmamos que hemos recibido el pago de la factura #${invoice.invoice_number}. Adjuntamos su recibo de pago.`,
     ]
     const details: [string, string][] = [
         ['Número de factura', `#${invoice.invoice_number}`],

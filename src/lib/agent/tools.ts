@@ -344,15 +344,19 @@ export const agentTools = {
     }),
 
     mark_invoice_paid: tool({
-        description: 'Marca una factura como pagada (fecha de pago = hoy). Requiere confirmación. Resuelve antes el invoice_id con list_invoices.',
+        description:
+            'Marca una factura como pagada. Por defecto la fecha de pago es hoy. Requiere confirmación. Resuelve antes el invoice_id con list_invoices.',
         inputSchema: z.object({
             invoice_id: uuidSchema,
             invoice_number: z.string().min(1),
             client_name: clientNameField,
+            paid_at: optionalDate.describe(
+                'SOLO si el usuario indica que el pago fue en una fecha distinta de hoy (ej. "pagó hace 3 días", "pagó el 5 de septiembre"). Formato YYYY-MM-DD. Si el usuario solo dice "ya me pagó" sin más contexto, omite el campo.'
+            ),
         }),
-        execute: async ({ invoice_id, invoice_number, client_name }) =>
+        execute: async ({ invoice_id, invoice_number, client_name, paid_at }) =>
             run(async () => {
-                const inv = await actions.markInvoicePaid(invoice_id)
+                const inv = await actions.markInvoicePaid(invoice_id, paid_at)
                 return { invoice_number, client_name, total_amount: inv.total_amount, paid_at: inv.paid_at }
             }),
     }),

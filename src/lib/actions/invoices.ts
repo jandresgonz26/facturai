@@ -138,10 +138,23 @@ export async function getInvoiceWithItems(id: string): Promise<{ invoice: Invoic
     return { invoice, items: (data || []) as Log[], client: invoice.clients }
 }
 
-export async function markInvoicePaid(id: string): Promise<Invoice> {
+/**
+ * Marca una factura como pagada. Por defecto la fecha de pago es ahora mismo,
+ * pero si el cliente pagó en otro momento y se confirma después (ej. "pagó
+ * hace unos días"), se puede indicar la fecha real con paidAt para que el
+ * correo de agradecimiento y el sello de la factura reflejen cuándo pagó de
+ * verdad, no cuándo se registró en el sistema.
+ */
+export async function markInvoicePaid(id: string, paidAt?: string | null): Promise<Invoice> {
     const invoice = await getInvoice(id)
     if (invoice.status === 'paid') throw new ActionError(`La factura #${invoice.invoice_number} ya está marcada como pagada.`)
-    const paid_at = new Date().toISOString()
+    let paid_at = new Date().toISOString()
+    if (paidAt) {
+        const date = parseInput(dateSchema, paidAt)
+        if (date > todayISO()) throw new ActionError('La fecha de pago no puede ser futura.')
+        // Se preserva la hora actual del día indicado, para no perder precisión si es hoy.
+        paid_at = date === todayISO() ? paid_at : `${date}T12:00:00.000Z`
+    }
     const { data, error } = await supabase
         .from('invoices')
         .update({ status: 'paid', paid_at })
