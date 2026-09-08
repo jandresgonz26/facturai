@@ -6,6 +6,7 @@ import { CLIENT_STAGES } from '@/lib/actions/crm'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ClientInput } from '@/lib/actions/clients'
 import { LoaderCircle } from 'lucide-react'
@@ -24,6 +25,7 @@ export type ClientFormValues = {
     email: string
     stage: ClientStage
     source: string
+    payment_terms: string
 }
 
 export function clientToForm(c?: Client | null, defaultStage: ClientStage = 'active'): ClientFormValues {
@@ -41,6 +43,7 @@ export function clientToForm(c?: Client | null, defaultStage: ClientStage = 'act
         email: c?.email ?? '',
         stage: c?.stage ?? defaultStage,
         source: c?.source ?? '',
+        payment_terms: c?.payment_terms ?? '',
     }
 }
 
@@ -76,6 +79,7 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
             email: v.email || undefined,
             stage: v.stage,
             source: v.source || undefined,
+            payment_terms: v.payment_terms || undefined,
         })
     }
 
@@ -178,6 +182,23 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
                         <Label htmlFor="c-city">Ciudad</Label>
                         <Input id="c-city" placeholder="Ej: Caracas" value={v.city} onChange={(e) => set('city', e.target.value)} />
                     </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Facturación y cobro</p>
+                <div className="space-y-1">
+                    <Label htmlFor="c-terms">Condiciones de pago</Label>
+                    <Textarea
+                        id="c-terms"
+                        placeholder="Ej: Pagar en los primeros 10 días de cada mes."
+                        value={v.payment_terms}
+                        onChange={(e) => set('payment_terms', e.target.value.slice(0, 300))}
+                        rows={2}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                        Sale impreso en cada factura (PDF y DOCX) y en el correo que se le envíe a este cliente. {v.payment_terms.length}/300
+                    </p>
                 </div>
             </div>
 

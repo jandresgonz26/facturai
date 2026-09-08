@@ -8,6 +8,7 @@ export interface Client {
     source?: string | null
     next_action?: string | null
     next_action_at?: string | null
+    payment_terms?: string | null
     tax_id?: string
     contact_name?: string
     billing_address?: string

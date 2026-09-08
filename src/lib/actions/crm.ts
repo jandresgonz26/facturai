@@ -215,3 +215,13 @@ export async function setClientEmail(clientId: string, email: string): Promise<C
     if (error) throw new ActionError(`No se pudo guardar el correo: ${error.message}`)
     return data as Client
 }
+
+/** Condiciones de pago visibles para el cliente: se imprimen en la factura y en el correo. */
+export async function setClientPaymentTerms(clientId: string, paymentTerms: string | null): Promise<Client> {
+    const text = paymentTerms?.trim() || null
+    if (text && text.length > 300) throw new ActionError('Las condiciones de pago son demasiado largas (máximo 300 caracteres).')
+    await getClient(clientId)
+    const { data, error } = await supabase.from('clients').update({ payment_terms: text }).eq('id', clientId).select('*').single()
+    if (error) throw new ActionError(`No se pudieron guardar las condiciones de pago: ${error.message}`)
+    return data as Client
+}

@@ -440,6 +440,17 @@ export const agentTools = {
             }),
     }),
 
+    set_client_payment_terms: tool({
+        description:
+            'Guarda o corrige las condiciones de pago de un cliente (ej. "Pagar en los primeros 10 días de cada mes"). Es un texto VISIBLE para el cliente: sale impreso en cada factura (PDF y DOCX) y en el correo que se le envíe, no es una nota interna. Requiere confirmación. Máximo 300 caracteres. Pasa payment_terms vacío ("") para quitarlas.',
+        inputSchema: z.object({ client_id: uuidSchema, client_name: clientNameField, payment_terms: z.string().max(300) }),
+        execute: async ({ client_id, client_name, payment_terms }) =>
+            run(async () => {
+                const c = await actions.setClientPaymentTerms(client_id, payment_terms || null)
+                return { client_name, payment_terms: c.payment_terms ?? null }
+            }),
+    }),
+
     create_lead: tool({
         description:
             'Crea un prospecto (lead) nuevo en el CRM: un cliente en etapa "lead". Requiere confirmación. Úsala cuando el usuario mencione un cliente potencial que no está en la lista. No hace falta para cotizar: create_quote crea el lead solo si no existe.',

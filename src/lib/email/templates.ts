@@ -76,6 +76,7 @@ export function invoiceEmail(invoice: Invoice, items: Log[], client: Client, ide
         ['Total', money(invoice.total_amount)],
     ]
     if (invoice.due_date) details.push(['Pagar antes de', fmtDate(invoice.due_date)])
+    if (client.payment_terms) details.push(['Condiciones de pago', client.payment_terms])
     const closing = 'Ante cualquier consulta sobre este documento, quedamos a su entera disposición. Gracias por su confianza.'
     return {
         subject: `Factura #${invoice.invoice_number} · ${identity.name}`,

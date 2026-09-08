@@ -118,6 +118,12 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
         }
         case 'update_client_email':
             return { title: `Guardar correo de ${client}`, rows: [{ label: 'Correo', value: str(input.email) ?? '-' }] }
+        case 'set_client_payment_terms':
+            return {
+                title: input.payment_terms ? `Condiciones de pago de ${client}` : `Quitar condiciones de pago de ${client}`,
+                rows: [{ label: 'Texto', value: str(input.payment_terms) ?? '(vacío)' }],
+                note: 'Es visible para el cliente: sale impreso en sus facturas y en el correo que se le envíe, no es una nota interna.',
+            }
         case 'create_lead':
             return {
                 title: `Crear lead: ${str(input.name) ?? ''}`,
@@ -268,6 +274,8 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         }
         case 'update_client_email':
             return { title: 'Correo guardado', lines: [`${str(d.client_name) ?? ''} · ${str(d.email) ?? ''}`] }
+        case 'set_client_payment_terms':
+            return { title: d.payment_terms ? 'Condiciones de pago guardadas' : 'Condiciones de pago eliminadas', lines: [`${str(d.client_name) ?? ''}${d.payment_terms ? ` · ${str(d.payment_terms)}` : ''}`] }
         case 'create_lead':
             return { title: 'Lead creado', lines: [`${str(d.name) ?? ''}${d.email ? ` · ${str(d.email)}` : ''} · etapa Lead`] }
         case 'update_client_stage':

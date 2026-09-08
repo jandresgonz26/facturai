@@ -167,6 +167,19 @@ export const generateInvoicePdf = async (
     doc.text('Total', totalsX, y, { align: 'right' })
     doc.text(`$${invoice.total_amount.toFixed(2)}`, pageWidth - margin, y, { align: 'right' })
 
+    // ── Condiciones de pago (por cliente) ──
+    if (client.payment_terms) {
+        y += 10
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.text('Condiciones de pago:', margin, y)
+        y += 4.5
+        doc.setFont('helvetica', 'normal')
+        const termsLines = doc.splitTextToSize(client.payment_terms, pageWidth - margin * 2)
+        doc.text(termsLines, margin, y)
+        y += termsLines.length * 4.5
+    }
+
     // ── Footer ──
     y += 20
     doc.setFont('helvetica', 'bold')

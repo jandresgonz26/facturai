@@ -237,6 +237,18 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                         ]
                     }),
 
+                    ...(client.payment_terms
+                        ? [
+                              new Paragraph({ text: "", spacing: { after: 200 } }),
+                              new Paragraph({
+                                  children: [
+                                      new TextRun({ text: "Condiciones de pago: ", bold: true, size: 18 }),
+                                      new TextRun({ text: client.payment_terms, size: 18 }),
+                                  ],
+                              }),
+                          ]
+                        : []),
+
                     new Paragraph({ text: "", spacing: { after: 800 } }),
 
                     // Footer
