@@ -71,19 +71,37 @@ async function resolveQuoteClient(quote: Quote): Promise<Client | null> {
  * Vista previa EXACTA de lo que se enviaría (mismo generador que el envío).
  * No manda nada. Sirve para la tarjeta de confirmación y el diálogo de la web.
  */
+/**
+ * El modelo a veces manda un valor de relleno en campos opcionales que
+ * debería omitir (ya visto con horas, categorías, montos...). Si lo que llega
+ * como "to" no tiene ni forma de correo (sin arroba), lo tratamos como si no
+ * se hubiera indicado y usamos el de la ficha, en vez de intentar enviar a un
+ * destinatario inventado. Si sí parece un intento real de correo pero está
+ * mal escrito, avisamos para que el usuario lo corrija.
+ */
+function resolveOverride(toOverride: string | null | undefined): { override: string | null; malformedAttempt: string | null } {
+    const raw = toOverride?.trim()
+    if (!raw) return { override: null, malformedAttempt: null }
+    const valid: boolean = isValidEmail(raw)
+    if (valid) return { override: raw, malformedAttempt: null }
+    return raw.includes('@') ? { override: null, malformedAttempt: raw } : { override: null, malformedAttempt: null }
+}
+
 export async function previewEmail(kind: EmailKind, id: string, toOverride?: string | null): Promise<EmailPreview> {
     const warnings: string[] = []
     const testTo = process.env.EMAIL_TEST_TO?.trim() || null
     if (!isEmailConfigured()) warnings.push('Falta configurar RESEND_API_KEY en el servidor: el envío fallará.')
     if (testTo) warnings.push(`Modo prueba activo: todos los correos se desvían a ${testTo}.`)
+    const { override, malformedAttempt } = resolveOverride(toOverride)
+    if (malformedAttempt) warnings.push(`El correo "${malformedAttempt}" no parece válido; se usará el de la ficha si lo tiene.`)
 
     if (kind === 'quote') {
         const quote = await getQuote(id)
         const client = await resolveQuoteClient(quote)
         const who = await identity()
-        const to = (toOverride?.trim() || client?.email || null) ?? null
+        const to = (override || client?.email || null) ?? null
         if (!to) warnings.push(`No hay correo para ${quote.client_name}. Indícalo o agrégalo en la ficha del cliente.`)
-        else if (!isValidEmail(to)) warnings.push(`El correo "${to}" no parece válido.`)
+        else if (!isValidEmail(to)) warnings.push(`El correo guardado "${to}" no parece válido. Corrígelo en la ficha del cliente.`)
         const content = quoteEmail(quote, client ?? { name: quote.client_name }, who, `${quote.quote_number}.pdf`)
         const sent = await lastSent('quote', { quote_id: quote.id })
         return { kind, to, ...content, from: who.from, reply_to: who.email, company: who.name, client_id: client?.id ?? null, client_name: quote.client_name, quote_id: quote.id, configured: isEmailConfigured(), test_mode_to: testTo, already_sent: sent ? { sent_at: sent.sent_at, to: sent.to_email } : null, warnings }
@@ -91,9 +109,9 @@ export async function previewEmail(kind: EmailKind, id: string, toOverride?: str
 
     const { invoice, items, client } = await getInvoiceWithItems(id)
     const who = await identity()
-    const to = (toOverride?.trim() || client.email || null) ?? null
+    const to = (override || client.email || null) ?? null
     if (!to) warnings.push(`${client.name} no tiene correo. Indícalo o agrégalo en su ficha.`)
-    else if (!isValidEmail(to)) warnings.push(`El correo "${to}" no parece válido.`)
+    else if (!isValidEmail(to)) warnings.push(`El correo guardado "${to}" no parece válido. Corrígelo en la ficha del cliente.`)
     if (kind === 'payment_thanks' && invoice.status !== 'paid') warnings.push('La factura aún no está marcada como pagada.')
     const attachment = `Factura_${invoice.invoice_number}.pdf`
     const content: EmailContent = kind === 'payment_thanks' ? paymentThanksEmail(invoice, client, who, attachment) : invoiceEmail(invoice, items, client, who, attachment)
