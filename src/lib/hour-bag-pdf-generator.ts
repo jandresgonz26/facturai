@@ -25,7 +25,7 @@ export const generateHourBagPdf = async (data: HourBagPdfData): Promise<{ blob: 
     const companyName = settings?.company_name || 'JAMTech C.A.'
     const companyRif = settings?.rif || 'J-40505911-0'
     const companyPhone = settings?.phone || '+58(424)922-5108'
-    const companyEmail = settings?.email || 'hello@jamtechcorp.com'
+    const companyEmail = settings?.email || 'info@jamtech.cloud'
 
     const formatDate = (dateString: string) => {
         if (!dateString) return ''

@@ -22,7 +22,7 @@ import { ActionError } from './validation'
 async function identity(): Promise<EmailIdentity> {
     const s = await getCompanySettings()
     const name = s?.company_name || 'JAM Tech, C.A.'
-    const email = s?.email || 'hello@jamtechcorp.com'
+    const email = s?.email || 'info@jamtech.cloud'
     return {
         name,
         email,

@@ -27,7 +27,7 @@ const renderJamtechTemplate = async (quote: Quote, settings: CompanySettings | n
     const companyName = quote.company_name || settings?.company_name || 'JAMTech C.A.'
     const companyRif = settings?.rif || 'J-40505911-0'
     const companyPhone = settings?.phone || '+58(424)922-5108'
-    const companyEmail = settings?.email || 'hello@jamtechcorp.com'
+    const companyEmail = settings?.email || 'info@jamtech.cloud'
 
     const isHours = quote.quote_type === 'hours'
     const currencySymbol = quote.currency === 'EUR' ? '€' : '$'
