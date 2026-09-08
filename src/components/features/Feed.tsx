@@ -56,6 +56,39 @@ function getDateKey(dateStr: string): string {
     return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`
 }
 
+function getBillingBadge(log: Log): { label: string; className: string } {
+    if (log.status === 'packaged') {
+        return {
+            label: 'EMPAQUETADO',
+            className: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-100 dark:border-purple-800',
+        }
+    }
+    if (log.status === 'billed') {
+        const invoiceStatus = log.invoices?.status
+        if (invoiceStatus === 'paid') {
+            return {
+                label: 'COBRADO',
+                className: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-100 dark:border-green-800',
+            }
+        }
+        if (invoiceStatus === 'sent') {
+            return {
+                label: 'FACTURADO',
+                className: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-100 dark:border-blue-800',
+            }
+        }
+        // Borrador (o factura sin cargar aún): en factura pero no enviada ni cobrada.
+        return {
+            label: 'EN BORRADOR',
+            className: 'bg-gray-50 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400 border-gray-200 dark:border-gray-700',
+        }
+    }
+    return {
+        label: 'PENDIENTE',
+        className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-100 dark:border-amber-800',
+    }
+}
+
 export function Feed({
     refreshTrigger = 0,
     onActivityChanged
@@ -96,7 +129,8 @@ export function Feed({
             .from('logs')
             .select(`
                 *,
-                clients (name, billing_modality, parent_client_id)
+                clients (name, billing_modality, parent_client_id),
+                invoices (status)
             `)
             .order('created_at', { ascending: false })
             .limit(50)
@@ -331,13 +365,8 @@ export function Feed({
                                                             {log.hours}h
                                                         </span>
                                                     )}
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${log.status === 'billed'
-                                                        ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-100 dark:border-green-800'
-                                                        : log.status === 'packaged'
-                                                            ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-100 dark:border-purple-800'
-                                                            : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-100 dark:border-amber-800'
-                                                        }`}>
-                                                        {log.status === 'billed' ? 'COBRADO' : log.status === 'packaged' ? 'EMPAQUETADO' : 'PENDIENTE'}
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${getBillingBadge(log).className}`}>
+                                                        {getBillingBadge(log).label}
                                                     </span>
                                                 </div>
                                                 {log.status === 'pending' && (

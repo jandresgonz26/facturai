@@ -47,6 +47,7 @@ export interface Log {
     created_at: string
     clients?: { name: string; billing_modality?: string; parent_client_id?: string | null }
     service_categories?: { name: string }
+    invoices?: { status: 'draft' | 'sent' | 'paid' } | null
 }
 
 export interface Invoice {
