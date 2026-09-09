@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { EmailLog, Quote } from '@/types'
+import { Client, EmailLog, Quote } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Mail, Pencil, Receipt, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { EmailDialog } from '@/components/features/EmailDialog'
+import { ClientForm } from '@/components/features/ClientForm'
 import { getEmailStatusByQuote } from '@/lib/actions/email'
 import { convertQuoteToInvoice } from '@/lib/actions/quotes'
-import { errorMessage } from '@/lib/actions/validation'
+import { getClient, listClients, updateClient, type ClientInput } from '@/lib/actions/clients'
+import { ActionError, errorMessage } from '@/lib/actions/validation'
 import { saveBlobToFile } from '@/lib/invoice-download'
 import { useDataChanged } from '@/lib/events'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
@@ -41,6 +43,12 @@ export default function QuotesPage() {
     const [invoiceNumbers, setInvoiceNumbers] = useState<Record<string, string>>({})
     const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null)
     const [isConverting, setIsConverting] = useState(false)
+    // Cuando convertir se topa con un cliente sin ficha completa (lead/cotizado), se le pide
+    // completarla aquí y, al guardar, se reintenta la conversión de esta cotización pendiente.
+    const [clientToComplete, setClientToComplete] = useState<Client | null>(null)
+    const [pendingQuote, setPendingQuote] = useState<Quote | null>(null)
+    const [allClients, setAllClients] = useState<Client[]>([])
+    const [isSavingClient, setIsSavingClient] = useState(false)
 
     const loadQuotes = async (): Promise<{ quotes: Quote[]; emailStatus: Record<string, EmailLog>; invoiceNumbers: Record<string, string> } | null> => {
         const { data, error } = await supabase
@@ -138,19 +146,51 @@ export default function QuotesPage() {
         }
     }
 
-    const executeConvert = async () => {
-        if (!quoteToConvert) return
+    const runConvert = async (quote: Quote) => {
         setIsConverting(true)
         try {
-            const r = await convertQuoteToInvoice({ quote_id: quoteToConvert.id })
-            toast.success(`Factura #${r.invoice.invoice_number} creada en borrador desde ${quoteToConvert.quote_number}`)
+            const r = await convertQuoteToInvoice({ quote_id: quote.id })
+            toast.success(`Factura #${r.invoice.invoice_number} creada en borrador desde ${quote.quote_number}`)
             setQuoteToConvert(null)
             await fetchQuotes()
+        } catch (e) {
+            if (e instanceof ActionError && e.code === 'CLIENT_NEEDS_REVIEW' && quote.client_id) {
+                const [client, list] = await Promise.all([
+                    getClient(quote.client_id).catch(() => null),
+                    listClients().catch(() => []),
+                ])
+                setAllClients(list)
+                // Se fuerza "cliente activo" como punto de partida del formulario: viene de una
+                // cotización (lead/cotizado) y esta pantalla existe justo para revisarlo y confirmarlo.
+                setClientToComplete(client ? { ...client, stage: 'active' } : null)
+                setPendingQuote(quote)
+                setQuoteToConvert(null)
+            } else {
+                console.error(e)
+                toast.error(errorMessage(e))
+            }
+        } finally {
+            setIsConverting(false)
+        }
+    }
+
+    const executeConvert = () => quoteToConvert && runConvert(quoteToConvert)
+
+    const handleCompleteClient = async (values: ClientInput) => {
+        if (!clientToComplete) return
+        setIsSavingClient(true)
+        try {
+            await updateClient(clientToComplete.id, values)
+            toast.success('Ficha del cliente actualizada')
+            const quote = pendingQuote
+            setClientToComplete(null)
+            setPendingQuote(null)
+            if (quote) await runConvert(quote)
         } catch (e) {
             console.error(e)
             toast.error(errorMessage(e))
         } finally {
-            setIsConverting(false)
+            setIsSavingClient(false)
         }
     }
 
@@ -331,6 +371,39 @@ export default function QuotesPage() {
                             {isConverting ? 'Creando factura...' : 'Crear factura'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={!!clientToComplete}
+                onOpenChange={(open) => {
+                    if (!open && !isSavingClient) {
+                        setClientToComplete(null)
+                        setPendingQuote(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Completa la ficha de {clientToComplete?.name}</DialogTitle>
+                        <DialogDescription>
+                            Este cliente viene de una cotización y todavía no se revisó como cliente real. Completa y
+                            guarda sus datos (o al menos confirma la etapa como &quot;Cliente activo&quot;) para poder
+                            facturarlo. La factura se creará automáticamente al guardar.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {clientToComplete && (
+                        <ClientForm
+                            clients={allClients}
+                            initial={clientToComplete}
+                            submitting={isSavingClient}
+                            onSubmit={handleCompleteClient}
+                            onCancel={() => {
+                                setClientToComplete(null)
+                                setPendingQuote(null)
+                            }}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
 

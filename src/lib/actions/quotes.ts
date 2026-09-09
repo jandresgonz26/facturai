@@ -170,6 +170,15 @@ export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ i
     if (client.billing_modality === 'hour_bag') {
         throw new ActionError(`${client.name} se factura por bolsa de horas: no se puede convertir una cotización en factura para este cliente.`)
     }
+    // El cliente viene de una cotización (o de un nombre escrito a mano) y todavía no se
+    // revisó como cliente real: exigimos completar su ficha antes de emitirle una factura,
+    // para no arrastrar un nombre mal escrito o datos a medias a un documento formal.
+    if (client.stage === 'lead' || client.stage === 'quoted') {
+        throw new ActionError(
+            `${client.name} todavía no tiene ficha de cliente completa (está como "${client.stage === 'lead' ? 'lead' : 'cotizado'}"). Revisa y guarda sus datos antes de convertir la cotización en factura.`,
+            'CLIENT_NEEDS_REVIEW'
+        )
+    }
 
     // Un ítem por línea de la cotización.
     const rate = quote.currency === 'EUR' ? await getEurToUsdRate() : 1

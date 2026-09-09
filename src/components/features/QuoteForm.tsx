@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Banknote, ClipboardList, Clock, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { QuoteItem, Quote } from '@/types'
+import { QuoteItem, Quote, Client } from '@/types'
+import { createQuote, findOrCreateLead, listClients } from '@/lib/actions'
 
 type QuoteType = 'amount' | 'hours'
 type QuoteTemplate = 'jamtech' | 'asiri'
@@ -26,6 +27,82 @@ type EditableItem = {
     hours: string
 }
 
+const STAGE_HINT: Record<string, string> = {
+    lead: 'lead',
+    quoted: 'cotizado',
+    active: 'cliente activo',
+    inactive: 'inactivo',
+}
+
+/** Buscador de clientes: sugiere coincidencias de la lista o permite escribir uno nuevo. */
+function ClientPicker({
+    clients,
+    name,
+    onSelect,
+    onTypeNew,
+    inputCls,
+}: {
+    clients: Client[]
+    name: string
+    onSelect: (client: Client) => void
+    onTypeNew: (name: string) => void
+    inputCls: string
+}) {
+    const [open, setOpen] = useState(false)
+    const boxRef = useRef<HTMLDivElement>(null)
+
+    const q = name.trim().toLowerCase()
+    const matches = q ? clients.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8) : clients.slice(0, 8)
+    const exactMatch = clients.some((c) => c.name.toLowerCase() === q)
+
+    return (
+        <div className="relative" ref={boxRef}>
+            <input
+                className={inputCls}
+                placeholder="Buscar cliente o escribir uno nuevo..."
+                type="text"
+                value={name}
+                onChange={(e) => {
+                    onTypeNew(e.target.value)
+                    setOpen(true)
+                }}
+                onFocus={() => setOpen(true)}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                autoComplete="off"
+            />
+            {open && (matches.length > 0 || (q.length >= 2 && !exactMatch)) && (
+                <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-card shadow-lg max-h-56 overflow-auto py-1">
+                    {matches.map((c) => (
+                        <button
+                            type="button"
+                            key={c.id}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                                onSelect(c)
+                                setOpen(false)
+                            }}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-left hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                        >
+                            <span className="truncate">{c.name}</span>
+                            <span className="text-[10px] uppercase text-gray-400 shrink-0">{STAGE_HINT[c.stage ?? 'active']}</span>
+                        </button>
+                    ))}
+                    {q.length >= 2 && !exactMatch && (
+                        <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setOpen(false)}
+                            className="w-full px-3 py-1.5 text-sm text-left font-semibold text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                        >
+                            + Crear cliente nuevo: &quot;{name.trim()}&quot;
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
 const emptyItem = (): EditableItem => ({
     service: '',
     description: '',
@@ -33,21 +110,6 @@ const emptyItem = (): EditableItem => ({
     unit_price: '',
     hours: '',
 })
-
-const generateQuoteNumber = async (): Promise<string> => {
-    const { data } = await supabase
-        .from('quotes')
-        .select('quote_number')
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-    let next = 1
-    if (data && data.length > 0) {
-        const match = String(data[0].quote_number).match(/(\d+)\s*$/)
-        if (match) next = parseInt(match[1], 10) + 1
-    }
-    return `COT-${String(next).padStart(4, '0')}`
-}
 
 export function QuoteForm({
     onSaved,
@@ -61,6 +123,8 @@ export function QuoteForm({
     const isEditing = !!quoteToEdit
 
     const [clientName, setClientName] = useState('')
+    const [clientId, setClientId] = useState('')
+    const [clients, setClients] = useState<Client[]>([])
     const [companyName, setCompanyName] = useState(COMPANIES[0].name)
     const [docTitle, setDocTitle] = useState('COTIZACIÓN')
     const [quoteType, setQuoteType] = useState<QuoteType>('amount')
@@ -73,10 +137,16 @@ export function QuoteForm({
     const symbol = currency === 'EUR' ? '€' : '$'
     const template = templateForCompany(companyName)
 
+    // Lista de clientes existentes, para buscar/seleccionar en vez de escribir el nombre a mano.
+    useEffect(() => {
+        listClients().then(setClients).catch(() => undefined)
+    }, [])
+
     // Load the quote being edited into the form
     useEffect(() => {
         if (!quoteToEdit) return
         setClientName(quoteToEdit.client_name || '')
+        setClientId(quoteToEdit.client_id || '')
         setDocTitle(quoteToEdit.doc_title || 'COTIZACIÓN')
         // Use the saved company if it matches a known one; otherwise default by template
         const matched = COMPANIES.find((c) => c.name === quoteToEdit.company_name)
@@ -123,6 +193,7 @@ export function QuoteForm({
 
     const resetForm = () => {
         setClientName('')
+        setClientId('')
         setCompanyName(COMPANIES[0].name)
         setDocTitle('COTIZACIÓN')
         setQuoteType('amount')
@@ -162,37 +233,46 @@ export function QuoteForm({
             return
         }
 
-        const payload = {
-            client_name: clientName.trim(),
-            company_name: companyName,
-            doc_title: docTitle.trim() || 'COTIZACIÓN',
-            quote_type: quoteType,
-            template,
-            currency,
-            items: validItems,
-            total_amount: isHours ? 0 : parseFloat(totalAmount.toFixed(2)),
-            total_hours: isHours ? parseFloat(totalHours.toFixed(2)) : 0,
-            issue_date: date,
-        }
-
         setLoading(true)
         try {
             if (isEditing && quoteToEdit) {
+                // Si no se eligió un cliente de la lista, se busca por nombre exacto o se crea
+                // como lead nuevo, igual que hace el agente al crear una cotización.
+                let resolvedClientId = clientId
+                if (!resolvedClientId) {
+                    const r = await findOrCreateLead(clientName.trim(), null)
+                    resolvedClientId = r.client.id
+                }
                 const { error } = await supabase
                     .from('quotes')
-                    .update(payload)
+                    .update({
+                        client_name: clientName.trim(),
+                        client_id: resolvedClientId,
+                        company_name: companyName,
+                        doc_title: docTitle.trim() || 'COTIZACIÓN',
+                        quote_type: quoteType,
+                        template,
+                        currency,
+                        items: validItems,
+                        total_amount: isHours ? 0 : parseFloat(totalAmount.toFixed(2)),
+                        total_hours: isHours ? parseFloat(totalHours.toFixed(2)) : 0,
+                        issue_date: date,
+                    })
                     .eq('id', quoteToEdit.id)
                 if (error) throw error
                 toast.success(`Cotización ${quoteToEdit.quote_number} actualizada`)
             } else {
-                const quoteNumber = await generateQuoteNumber()
-                const { error } = await supabase.from('quotes').insert({
-                    ...payload,
-                    quote_number: quoteNumber,
-                    created_at: new Date().toISOString(),
+                const created = await createQuote({
+                    client_name: clientName.trim(),
+                    client_id: clientId || undefined,
+                    company_name: companyName as 'JAM Tech, C.A.' | 'Asiri Marketing',
+                    doc_title: docTitle.trim() || 'COTIZACIÓN',
+                    quote_type: quoteType,
+                    currency,
+                    items: validItems,
+                    issue_date: date,
                 })
-                if (error) throw error
-                toast.success(`Cotización ${quoteNumber} creada`)
+                toast.success(`Cotización ${created.quote_number} creada`)
                 resetForm()
             }
             onSaved?.()
@@ -298,14 +378,24 @@ export function QuoteForm({
                                 <label className={labelCls} htmlFor="quote-client">
                                     Cliente
                                 </label>
-                                <input
-                                    className={inputCls}
-                                    id="quote-client"
-                                    placeholder="Nombre del cliente..."
-                                    type="text"
-                                    value={clientName}
-                                    onChange={(e) => setClientName(e.target.value)}
+                                <ClientPicker
+                                    clients={clients}
+                                    name={clientName}
+                                    onSelect={(c) => {
+                                        setClientName(c.name)
+                                        setClientId(c.id)
+                                    }}
+                                    onTypeNew={(v) => {
+                                        setClientName(v)
+                                        setClientId('')
+                                    }}
+                                    inputCls={inputCls}
                                 />
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    {clientId
+                                        ? 'Cliente existente seleccionado.'
+                                        : 'Si no aparece en la lista, se creará como cliente nuevo.'}
+                                </p>
                             </div>
                             <div className="md:col-span-6 space-y-1">
                                 <label className={labelCls} htmlFor="quote-company">
