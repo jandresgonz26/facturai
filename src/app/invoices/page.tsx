@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react'
-import { Client, EmailKind, EmailLog, Invoice, Log } from '@/types'
+import { Client, EmailKind, EmailLog, Invoice, Log, ServiceCategory } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,13 +14,14 @@ import {
     deleteInvoice,
     getEmailStatusByInvoice,
     getInvoiceWithItems,
+    listCategories,
     listClients,
     listInvoices,
     markInvoicePaid,
     markInvoiceSent,
     revertInvoiceToDraft,
     updateInvoiceDueDate,
-    updateInvoiceItemDescription,
+    updateInvoiceItem,
 } from '@/lib/actions'
 import { EmailDialog } from '@/components/features/EmailDialog'
 import { downloadInvoice } from '@/lib/invoice-download'
@@ -58,6 +59,8 @@ export default function InvoicesPage() {
     const [itemsEdit, setItemsEdit] = useState<Invoice | null>(null)
     const [itemsToEdit, setItemsToEdit] = useState<Log[]>([])
     const [itemDescriptions, setItemDescriptions] = useState<Record<string, string>>({})
+    const [itemCategories, setItemCategories] = useState<Record<string, string>>({})
+    const [categories, setCategories] = useState<ServiceCategory[]>([])
     const [loadingItems, setLoadingItems] = useState(false)
     const [savingItems, setSavingItems] = useState(false)
 
@@ -131,9 +134,11 @@ export default function InvoicesPage() {
         setItemsEdit(inv)
         setLoadingItems(true)
         try {
-            const { items } = await getInvoiceWithItems(inv.id)
+            const [{ items }, cats] = await Promise.all([getInvoiceWithItems(inv.id), listCategories()])
             setItemsToEdit(items)
+            setCategories(cats)
             setItemDescriptions(Object.fromEntries(items.map((it) => [it.id, it.description])))
+            setItemCategories(Object.fromEntries(items.map((it) => [it.id, it.category_id ?? ''])))
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Error al cargar los ítems')
             setItemsEdit(null)
@@ -144,15 +149,24 @@ export default function InvoicesPage() {
 
     const saveItemDescriptions = async () => {
         if (!itemsEdit) return
-        const changed = itemsToEdit.filter((it) => (itemDescriptions[it.id] ?? '').trim() !== it.description)
+        const changed = itemsToEdit
+            .map((it) => {
+                const updates: { description?: string; category_id?: string | null } = {}
+                const newDesc = (itemDescriptions[it.id] ?? '').trim()
+                if (newDesc !== it.description) updates.description = newDesc
+                const newCat = itemCategories[it.id] || null
+                if (newCat !== (it.category_id ?? null)) updates.category_id = newCat
+                return { id: it.id, updates }
+            })
+            .filter((c) => Object.keys(c.updates).length > 0)
         if (changed.length === 0) {
             setItemsEdit(null)
             return
         }
         setSavingItems(true)
         try {
-            await Promise.all(changed.map((it) => updateInvoiceItemDescription(it.id, itemDescriptions[it.id])))
-            toast.success(changed.length === 1 ? 'Concepto corregido' : `${changed.length} conceptos corregidos`)
+            await Promise.all(changed.map((c) => updateInvoiceItem(c.id, c.updates)))
+            toast.success(changed.length === 1 ? 'Ítem corregido' : `${changed.length} ítems corregidos`)
             setItemsEdit(null)
             emitDataChanged()
             await load()
@@ -335,17 +349,35 @@ export default function InvoicesPage() {
                     {loadingItems ? (
                         <p className="text-sm text-muted-foreground py-4 text-center">Cargando…</p>
                     ) : (
-                        <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                        <div className="space-y-4 max-h-[50vh] overflow-y-auto">
                             {itemsToEdit.map((it) => (
-                                <div key={it.id} className="space-y-1">
+                                <div key={it.id} className="space-y-2 pb-3 border-b last:border-0">
                                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                        <span>Concepto</span>
+                                        <span>Ítem</span>
                                         <span className="font-mono font-semibold">{usd(Number(it.value ?? 0))}</span>
                                     </div>
-                                    <Input
-                                        value={itemDescriptions[it.id] ?? ''}
-                                        onChange={(e) => setItemDescriptions((prev) => ({ ...prev, [it.id]: e.target.value }))}
-                                    />
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Concepto (descripción)</Label>
+                                        <Input
+                                            value={itemDescriptions[it.id] ?? ''}
+                                            onChange={(e) => setItemDescriptions((prev) => ({ ...prev, [it.id]: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Categoría (PRODUCTO / SERVICIO en el documento)</Label>
+                                        <Select
+                                            value={itemCategories[it.id] || 'none'}
+                                            onValueChange={(v) => setItemCategories((prev) => ({ ...prev, [it.id]: v === 'none' ? '' : v }))}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder="Servicio Profesional" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Servicio Profesional (sin categoría)</SelectItem>
+                                                {categories.map((c) => (
+                                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             ))}
                         </div>

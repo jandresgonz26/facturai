@@ -198,14 +198,25 @@ export async function markInvoiceSent(id: string): Promise<Invoice> {
     return data as Invoice
 }
 
+export interface InvoiceItemUpdate {
+    description?: string
+    /** Categoría del servicio (columna "PRODUCTO / SERVICIO" en el documento). null = sin categoría. */
+    category_id?: string | null
+}
+
 /**
- * Corrige el concepto (descripción) de un ítem ya facturado. Solo se permite
- * mientras la factura siga en borrador: una vez enviada o pagada, el
- * documento ya salió con ese texto y corregirlo aquí desalinearía el registro
- * de lo que realmente recibió el cliente.
+ * Corrige el concepto y/o la categoría de servicio de un ítem ya facturado.
+ * Solo se permite mientras la factura siga en borrador: una vez enviada o
+ * pagada, el documento ya salió con ese texto y corregirlo aquí desalinearía
+ * el registro de lo que realmente recibió el cliente. El monto no se toca,
+ * así que el total de la factura nunca se desincroniza.
  */
-export async function updateInvoiceItemDescription(logId: string, description: string): Promise<Log> {
-    const desc = parseInput(descriptionSchema, description)
+export async function updateInvoiceItem(logId: string, updates: InvoiceItemUpdate): Promise<Log> {
+    const patch: Record<string, unknown> = {}
+    if (updates.description !== undefined) patch.description = parseInput(descriptionSchema, updates.description)
+    if (updates.category_id !== undefined) patch.category_id = updates.category_id
+    if (Object.keys(patch).length === 0) throw new ActionError('No hay cambios que guardar.')
+
     const { data: log, error: readError } = await supabase
         .from('logs')
         .select('id, status, invoice_id, invoices(status)')
@@ -218,10 +229,10 @@ export async function updateInvoiceItemDescription(logId: string, description: s
     }
     const invoiceStatus = (log.invoices as { status?: string } | null)?.status
     if (invoiceStatus !== 'draft') {
-        throw new ActionError('Solo se puede corregir el concepto mientras la factura esté en borrador; ya se envió o se pagó.')
+        throw new ActionError('Solo se puede corregir un ítem mientras la factura esté en borrador; ya se envió o se pagó.')
     }
-    const { data, error } = await supabase.from('logs').update({ description: desc }).eq('id', logId).select(LOG_SELECT).single()
-    if (error) throw new ActionError(`No se pudo actualizar el concepto: ${error.message}`)
+    const { data, error } = await supabase.from('logs').update(patch).eq('id', logId).select(LOG_SELECT).single()
+    if (error) throw new ActionError(`No se pudo actualizar el ítem: ${error.message}`)
     return data as Log
 }
 

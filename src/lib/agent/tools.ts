@@ -226,20 +226,33 @@ export const agentTools = {
             }),
     }),
 
-    update_invoice_item_description: tool({
+    update_invoice_item: tool({
         description:
-            'Corrige el concepto (descripción) de un ítem de una factura que TODAVÍA ESTÁ EN BORRADOR. Requiere confirmación. Resuelve antes el invoice_id con list_invoices y el id del ítem (log_id) con get_invoice_items; get_invoice_items también te dice invoice_status, así que revisa que sea "draft" antes de proponerlo. Si la factura ya se envió o se pagó, esta herramienta falla: explícale al usuario que ya no se puede corregir porque el documento ya salió con ese texto.',
+            'Corrige el concepto (descripción) y/o la categoría de servicio ("PRODUCTO / SERVICIO" en el documento) de un ítem de una factura que TODAVÍA ESTÁ EN BORRADOR. Requiere confirmación. Resuelve antes el invoice_id con list_invoices y el id del ítem (log_id) con get_invoice_items; get_invoice_items también te dice invoice_status, así que revisa que sea "draft" antes de proponerlo. Para cambiar la categoría, resuelve el nombre con list_categories (no inventes una que no exista). Si la factura ya se envió o se pagó, esta herramienta falla: explícale al usuario que ya no se puede corregir porque el documento ya salió así. El monto del ítem nunca cambia con esta herramienta.',
         inputSchema: z.object({
             log_id: uuidSchema,
             invoice_number: z.string().min(1),
             client_name: clientNameField,
             old_description: z.string().min(1).describe('Concepto actual del ítem, tal como lo devolvió get_invoice_items, para mostrarlo en la confirmación'),
-            new_description: z.string().trim().min(3).max(300).describe('Nuevo concepto'),
+            new_description: optionalText.describe('Nuevo concepto. Omite si solo se cambia la categoría.'),
+            old_category: optionalText.describe('Categoría actual del ítem, tal como la devolvió get_invoice_items, para mostrarla en la confirmación'),
+            new_category_id: uuidSchema.optional().describe('id de la nueva categoría, resuelto con list_categories. Omite si solo se cambia el concepto.'),
+            new_category: optionalText.describe('Nombre EXACTO de la nueva categoría (el mismo cuyo id pasaste en new_category_id), para mostrarlo en la confirmación'),
         }),
-        execute: async ({ log_id, invoice_number, client_name, old_description, new_description }) =>
+        execute: async ({ log_id, invoice_number, client_name, old_description, new_description, old_category, new_category_id }) =>
             run(async () => {
-                const log = await actions.updateInvoiceItemDescription(log_id, new_description)
-                return { invoice_number, client_name, old_description, description: log.description }
+                const log = await actions.updateInvoiceItem(log_id, {
+                    ...(new_description ? { description: new_description } : {}),
+                    ...(new_category_id ? { category_id: new_category_id } : {}),
+                })
+                return {
+                    invoice_number,
+                    client_name,
+                    old_description,
+                    description: log.description,
+                    old_category: old_category ?? null,
+                    category: log.service_categories?.name ?? null,
+                }
             }),
     }),
 
