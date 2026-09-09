@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, StickyNote, Trash2 } from 'lucide-react'
 import { Client, EmailKind, EmailLog, Invoice, Log, ServiceCategory } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +22,9 @@ import {
     revertInvoiceToDraft,
     updateInvoiceDueDate,
     updateInvoiceItem,
+    updateInvoicePaymentNote,
 } from '@/lib/actions'
+import { Textarea } from '@/components/ui/textarea'
 import { EmailDialog } from '@/components/features/EmailDialog'
 import { downloadInvoice } from '@/lib/invoice-download'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
@@ -63,6 +65,10 @@ export default function InvoicesPage() {
     const [categories, setCategories] = useState<ServiceCategory[]>([])
     const [loadingItems, setLoadingItems] = useState(false)
     const [savingItems, setSavingItems] = useState(false)
+    const [noteEdit, setNoteEdit] = useState<Invoice | null>(null)
+    const [noteMode, setNoteMode] = useState<'default' | 'custom' | 'none'>('default')
+    const [noteText, setNoteText] = useState('')
+    const [savingNote, setSavingNote] = useState(false)
 
     const load = async () => {
         try {
@@ -177,6 +183,40 @@ export default function InvoicesPage() {
         }
     }
 
+    const openNoteEdit = (inv: Invoice) => {
+        setNoteEdit(inv)
+        if (inv.payment_note == null) {
+            setNoteMode('default')
+            setNoteText('')
+        } else if (inv.payment_note === '') {
+            setNoteMode('none')
+            setNoteText('')
+        } else {
+            setNoteMode('custom')
+            setNoteText(inv.payment_note)
+        }
+    }
+
+    const saveNote = async () => {
+        if (!noteEdit) return
+        if (noteMode === 'custom' && !noteText.trim()) {
+            toast.error('Escribe la nota o elige otra opción')
+            return
+        }
+        const value = noteMode === 'default' ? null : noteMode === 'none' ? '' : noteText.trim()
+        setSavingNote(true)
+        try {
+            await updateInvoicePaymentNote(noteEdit.id, value)
+            toast.success('Nota de pago guardada')
+            setNoteEdit(null)
+            await load()
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Error al guardar')
+        } finally {
+            setSavingNote(false)
+        }
+    }
+
     const confirmCopy: Record<NonNullable<Confirm>['kind'], { title: string; body: string; cta: string; cls: string }> = {
         paid: { title: 'Confirmar pago', body: 'Indica cuándo pagó el cliente: esta fecha queda en el recibo y en el correo de agradecimiento.', cta: 'Marcar pagada', cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
         sent: { title: 'Marcar como enviada', body: '¿Ya le enviaste esta factura al cliente?', cta: 'Sí, enviada', cls: 'bg-sky-600 hover:bg-sky-700 text-white' },
@@ -265,6 +305,15 @@ export default function InvoicesPage() {
                                             <Pencil />
                                         </Button>
                                     )}
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        title="Nota de pago de esta factura"
+                                        className={inv.payment_note != null ? 'text-fuchsia-600' : ''}
+                                        onClick={() => openNoteEdit(inv)}
+                                    >
+                                        <StickyNote />
+                                    </Button>
                                     {inv.status === 'draft' && (
                                         <Button variant="outline" size="icon" title="Marcar como enviada" className="text-sky-600" onClick={() => setConfirm({ kind: 'sent', invoice: inv })}>
                                             <Send />
@@ -334,6 +383,51 @@ export default function InvoicesPage() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDueEdit(null)}>Cancelar</Button>
                         <Button onClick={saveDue} disabled={working}>Guardar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!noteEdit} onOpenChange={(o) => !o && !savingNote && setNoteEdit(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Nota de pago · Factura #{noteEdit?.invoice_number}</DialogTitle>
+                        <DialogDescription>
+                            Sale impresa en el PDF/DOCX y en el correo de esta factura, en vez de la condición
+                            estándar del cliente. Útil para casos puntuales (ej. &quot;50% ahora, 50% al finalizar&quot;)
+                            que no deben quedar como norma permanente.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={noteMode} onValueChange={(v) => setNoteMode(v as typeof noteMode)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="default">Usar la condición del cliente (por defecto)</SelectItem>
+                                <SelectItem value="custom">Nota personalizada para esta factura</SelectItem>
+                                <SelectItem value="none">Sin nota en esta factura</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {noteMode === 'default' && (
+                            <p className="text-xs text-muted-foreground">
+                                {noteEdit?.clients?.payment_terms
+                                    ? `Se imprimirá: "${noteEdit.clients.payment_terms}"`
+                                    : 'Este cliente no tiene condición de pago configurada, así que no saldrá ninguna nota.'}
+                            </p>
+                        )}
+                        {noteMode === 'custom' && (
+                            <Textarea
+                                placeholder="Ej: Se cobra el 50% de adelanto; el otro 50% se cancela al finalizar el desarrollo."
+                                value={noteText}
+                                onChange={(e) => setNoteText(e.target.value.slice(0, 300))}
+                                rows={3}
+                            />
+                        )}
+                        {noteMode === 'none' && (
+                            <p className="text-xs text-muted-foreground">No se imprimirá ninguna nota de pago en esta factura.</p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setNoteEdit(null)} disabled={savingNote}>Cancelar</Button>
+                        <Button onClick={saveNote} disabled={savingNote}>{savingNote ? 'Guardando…' : 'Guardar'}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

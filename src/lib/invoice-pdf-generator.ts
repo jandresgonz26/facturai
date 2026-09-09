@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
+import { resolvePaymentNote } from './payment-note'
 
 export const generateInvoicePdf = async (
     invoice: Invoice,
@@ -167,15 +168,16 @@ export const generateInvoicePdf = async (
     doc.text('Total', totalsX, y, { align: 'right' })
     doc.text(`$${invoice.total_amount.toFixed(2)}`, pageWidth - margin, y, { align: 'right' })
 
-    // ── Condiciones de pago (por cliente) ──
-    if (client.payment_terms) {
+    // ── Condiciones de pago (nota de la factura, o la del cliente si no hay override) ──
+    const paymentNote = resolvePaymentNote(invoice, client)
+    if (paymentNote) {
         y += 10
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(9)
         doc.text('Condiciones de pago:', margin, y)
         y += 4.5
         doc.setFont('helvetica', 'normal')
-        const termsLines = doc.splitTextToSize(client.payment_terms, pageWidth - margin * 2)
+        const termsLines = doc.splitTextToSize(paymentNote, pageWidth - margin * 2)
         doc.text(termsLines, margin, y)
         y += termsLines.length * 4.5
     }

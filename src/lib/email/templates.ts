@@ -1,4 +1,5 @@
 import type { Client, Invoice, Log, Quote } from '@/types'
+import { resolvePaymentNote } from '../payment-note'
 
 /** Identidad de la empresa que firma el correo. */
 export interface EmailIdentity {
@@ -76,7 +77,8 @@ export function invoiceEmail(invoice: Invoice, items: Log[], client: Client, ide
         ['Total', money(invoice.total_amount)],
     ]
     if (invoice.due_date) details.push(['Pagar antes de', fmtDate(invoice.due_date)])
-    if (client.payment_terms) details.push(['Condiciones de pago', client.payment_terms])
+    const paymentNote = resolvePaymentNote(invoice, client)
+    if (paymentNote) details.push(['Condiciones de pago', paymentNote])
     const closing = 'Ante cualquier consulta sobre este documento, quedamos a su entera disposición. Gracias por su confianza.'
     return {
         subject: `Factura #${invoice.invoice_number} · ${identity.name}`,

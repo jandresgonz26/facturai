@@ -171,6 +171,10 @@ export const agentTools = {
                     total_amount: i.total_amount,
                     status: i.status,
                     paid_at: i.paid_at ?? null,
+                    // Nota de pago: undefined/null = usa la del cliente (client_payment_terms);
+                    // '' = override explícito "sin nota"; texto = nota propia de esta factura.
+                    payment_note: i.payment_note ?? null,
+                    client_payment_terms: i.clients?.payment_terms ?? null,
                 }))
             }),
     }),
@@ -392,6 +396,25 @@ export const agentTools = {
             run(async () => {
                 const inv = await actions.markInvoicePaid(invoice_id, paid_at)
                 return { invoice_number, client_name, total_amount: inv.total_amount, paid_at: inv.paid_at }
+            }),
+    }),
+
+    set_invoice_payment_note: tool({
+        description:
+            'Fija la nota de condiciones de pago de UNA factura puntual, distinta de la nota estándar del cliente (set_client_payment_terms). Requiere confirmación. Resuelve antes el invoice_id con list_invoices (trae payment_note actual y client_payment_terms del cliente). mode "client_default" borra el override y vuelve a usar la condición del cliente; "custom" imprime el texto de note en vez de la del cliente (ej. "50% ahora, 50% al finalizar"); "none" fuerza que NO salga ninguna nota en esta factura aunque el cliente tenga una configurada. Usa esto, no set_client_payment_terms, cuando el usuario hable de UNA factura específica y no de una condición permanente del cliente.',
+        inputSchema: z.object({
+            invoice_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            mode: z.enum(['client_default', 'custom', 'none']),
+            note: optionalText.describe('Texto de la nota. Obligatorio (y solo se usa) si mode es "custom".'),
+        }),
+        execute: async ({ invoice_id, invoice_number, client_name, mode, note }) =>
+            run(async () => {
+                if (mode === 'custom' && !note) throw new actions.ActionError('Falta el texto de la nota personalizada.')
+                const value = mode === 'client_default' ? null : mode === 'none' ? '' : note!
+                const inv = await actions.updateInvoicePaymentNote(invoice_id, value)
+                return { invoice_number, client_name, mode, payment_note: inv.payment_note ?? null }
             }),
     }),
 

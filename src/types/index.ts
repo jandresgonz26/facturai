@@ -60,6 +60,13 @@ export interface Invoice {
     paid_at?: string
     due_date?: string | null
     sent_at?: string | null
+    /**
+     * Override por factura de la condición de pago que se imprime en el documento y el correo.
+     * undefined/null = usa clients.payment_terms (el default permanente del cliente).
+     * ''             = override explícito "sin nota", aunque el cliente tenga una.
+     * 'texto...'     = nota propia de esta factura puntual.
+     */
+    payment_note?: string | null
     created_at: string
     clients?: Client
 }

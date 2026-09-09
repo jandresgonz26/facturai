@@ -3,6 +3,7 @@ import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, Align
 import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
+import { resolvePaymentNote } from './payment-note'
 
 export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client: Client): Promise<{ base64: string; fileName: string }> => {
     // Fetch company settings
@@ -24,6 +25,7 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
     }
 
     const formattedDate = formatDate(invoice.issue_date)
+    const paymentNote = resolvePaymentNote(invoice, client)
 
     const tableHeaderShading = { fill: "F0F0F0", type: ShadingType.CLEAR, color: "auto" }
     const cellMargin = { top: 100, bottom: 100, left: 100, right: 100 }
@@ -237,13 +239,13 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                         ]
                     }),
 
-                    ...(client.payment_terms
+                    ...(paymentNote
                         ? [
                               new Paragraph({ text: "", spacing: { after: 200 } }),
                               new Paragraph({
                                   children: [
                                       new TextRun({ text: "Condiciones de pago: ", bold: true, size: 18 }),
-                                      new TextRun({ text: client.payment_terms, size: 18 }),
+                                      new TextRun({ text: paymentNote, size: 18 }),
                                   ],
                               }),
                           ]

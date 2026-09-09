@@ -84,6 +84,20 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 note: 'Solo funciona mientras la factura siga en borrador.',
             }
         }
+        case 'set_invoice_payment_note': {
+            const modeLabel = input.mode === 'client_default' ? 'Usar la condición del cliente' : input.mode === 'none' ? 'Sin nota en esta factura' : 'Nota personalizada'
+            const rows: Row[] = [
+                { label: 'Cliente', value: client },
+                { label: 'Factura', value: `#${str(input.invoice_number) ?? ''}` },
+                { label: 'Modo', value: modeLabel },
+            ]
+            if (input.mode === 'custom') rows.push({ label: 'Nota', value: str(input.note) ?? '-' })
+            return {
+                title: `Nota de pago de la factura #${str(input.invoice_number) ?? ''}`,
+                rows,
+                note: 'No cambia la condición de pago permanente del cliente, solo esta factura.',
+            }
+        }
         case 'add_recurring_service':
             return {
                 title: `Nuevo servicio FIJO para ${client}`,
@@ -283,6 +297,13 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
                 title: `Ítem corregido en la factura #${str(d.invoice_number)}`,
                 lines: [`${str(d.client_name)} · "${str(d.description)}"${d.category ? ` · ${str(d.category)}` : ''}`],
             }
+        case 'set_invoice_payment_note': {
+            const modeLine = d.mode === 'client_default' ? 'usa la condición del cliente' : d.mode === 'none' ? 'sin nota' : `"${str(d.payment_note)}"`
+            return {
+                title: `Nota de pago actualizada en la factura #${str(d.invoice_number)}`,
+                lines: [`${str(d.client_name)} · ${modeLine}`],
+            }
+        }
         case 'add_recurring_service':
             return {
                 title: 'Servicio fijo creado',

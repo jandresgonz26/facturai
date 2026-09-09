@@ -236,6 +236,22 @@ export async function updateInvoiceItem(logId: string, updates: InvoiceItemUpdat
     return data as Log
 }
 
+/**
+ * Guarda el override de condición de pago de UNA factura puntual (ej. "50%
+ * ahora, 50% al finalizar"). null revierte al comportamiento por defecto
+ * (usar la condición estándar del cliente); '' fuerza que no se imprima
+ * ninguna nota aunque el cliente tenga una configurada. Se puede editar en
+ * cualquier estado de la factura, incluida ya enviada, para corregir
+ * reenvíos o descargas futuras.
+ */
+export async function updateInvoicePaymentNote(id: string, payment_note: string | null): Promise<Invoice> {
+    await getInvoice(id)
+    const note = payment_note === null ? null : payment_note.slice(0, 300)
+    const { data, error } = await supabase.from('invoices').update({ payment_note: note }).eq('id', id).select('*, clients(*)').single()
+    if (error) throw new ActionError(`No se pudo guardar la nota de pago: ${error.message}`)
+    return data as Invoice
+}
+
 export async function updateInvoiceDueDate(id: string, due_date: string | null): Promise<Invoice> {
     await getInvoice(id)
     if (due_date) parseInput(dateSchema, due_date)
