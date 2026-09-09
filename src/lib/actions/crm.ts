@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { Client, ClientNote, ClientStage, EmailLog } from '@/types'
 import { createClient, getClient, listClients } from './clients'
-import { ActionError, dateSchema, normalizeText, parseInput, round2 } from './validation'
+import { ActionError, normalizeText, parseInput, round2 } from './validation'
 
 export const CLIENT_STAGES: { id: ClientStage; label: string; hint: string }[] = [
     { id: 'lead', label: 'Lead', hint: 'Contacto nuevo, aún sin propuesta' },
@@ -88,17 +88,8 @@ export async function deleteClientNote(id: string): Promise<void> {
     if (error) throw new ActionError(`No se pudo eliminar la nota: ${error.message}`)
 }
 
-export const nextActionSchema = z.object({
-    next_action: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.string().trim().max(200).nullable()),
-    next_action_at: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), dateSchema.nullable()),
-})
-export async function setNextAction(clientId: string, raw: z.infer<typeof nextActionSchema>): Promise<Client> {
-    const input = parseInput(nextActionSchema, raw)
-    await getClient(clientId)
-    const { data, error } = await supabase.from('clients').update({ next_action: input.next_action, next_action_at: input.next_action_at }).eq('id', clientId).select('*').single()
-    if (error) throw new ActionError(`No se pudo guardar la próxima acción: ${error.message}`)
-    return data as Client
-}
+// La "próxima acción" por cliente se reemplazó por el tablero de tareas
+// (src/lib/actions/tasks.ts): permite varias por cliente, con estados e historial.
 
 // ───────────── Línea de tiempo por cliente ─────────────
 export interface TimelineEvent {

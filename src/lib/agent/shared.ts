@@ -22,7 +22,9 @@ export const WRITE_TOOLS = [
     'create_lead',
     'update_client_stage',
     'add_client_note',
-    'set_next_action',
+    'create_task',
+    'complete_task',
+    'register_task_as_log',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -63,7 +65,10 @@ export const TOOL_LABELS: Record<string, string> = {
     create_lead: 'Crear lead',
     update_client_stage: 'Cambiar etapa del cliente',
     add_client_note: 'Guardar nota',
-    set_next_action: 'Definir próxima acción',
+    list_tasks: 'Consultando tus tareas',
+    create_task: 'Crear tarea',
+    complete_task: 'Marcar tarea como hecha',
+    register_task_as_log: 'Registrar tarea para facturar',
 }
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']

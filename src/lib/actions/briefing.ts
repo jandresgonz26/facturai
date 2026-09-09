@@ -9,7 +9,7 @@ import { ActionError, currentPeriod, round2 } from './validation'
 export type AlertSeverity = 'high' | 'medium' | 'low'
 
 export interface BriefingAlert {
-    kind: 'overdue' | 'unpaid' | 'recurring_not_loaded' | 'pending_to_bill' | 'hour_bag_full' | 'hour_bag_near' | 'next_action' | 'lead_followup' | 'quote_followup'
+    kind: 'overdue' | 'unpaid' | 'recurring_not_loaded' | 'pending_to_bill' | 'hour_bag_full' | 'hour_bag_near' | 'task_due' | 'lead_followup' | 'quote_followup'
     severity: AlertSeverity
     title: string
     detail: string
@@ -25,7 +25,9 @@ export interface Briefing {
     clients_with_pending: { client_id: string; client_name: string; pending_count: number; pending_total: number }[]
     recurring_not_loaded: { client_id: string; client_name: string; count: number; total_usd: number }[]
     hour_bags: { client_id: string; client_name: string; parent_name: string | null; hours: number }[]
-    followups: { client_id: string; client_name: string; stage: string; days_since_activity: number | null; next_action: string | null; next_action_at: string | null }[]
+    followups: { client_id: string; client_name: string; stage: string; days_since_activity: number | null }[]
+    /** Tareas del tablero que ya llegaron a su fecha (o se pasaron) y siguen sin terminar. */
+    tasks_due: { id: string; title: string; client_name: string | null; due_date: string; overdue: boolean }[]
     alerts: BriefingAlert[]
 }
 
@@ -104,26 +106,54 @@ export async function getBriefing(): Promise<Briefing> {
         }
     }
 
-    // 4) Seguimiento comercial (CRM): próximas acciones vencidas, leads y cotizaciones sin movimiento
+    // 4) Seguimiento comercial (CRM): leads y cotizaciones sin movimiento
     const followups: Briefing['followups'] = []
     try {
         const pipeline = await getPipeline()
         for (const c of [...pipeline.lead, ...pipeline.quoted, ...pipeline.active]) {
             const stage = c.client.stage ?? 'active'
-            const dueAction = !!c.client.next_action && !!c.client.next_action_at && c.client.next_action_at <= todayStr
             const stale = (stage === 'lead' && (c.days_since_activity ?? 0) >= 7) || (stage === 'quoted' && (c.days_since_activity ?? 0) >= 15)
-            if (dueAction || stale) {
-                followups.push({ client_id: c.client.id, client_name: c.client.name, stage, days_since_activity: c.days_since_activity, next_action: c.client.next_action ?? null, next_action_at: c.client.next_action_at ?? null })
+            if (stale) {
+                followups.push({ client_id: c.client.id, client_name: c.client.name, stage, days_since_activity: c.days_since_activity })
             }
         }
     } catch (e) {
         console.warn('[briefing] pipeline no disponible (¿falta schema_update_crm.sql?)', e instanceof Error ? e.message : e)
     }
 
+    // 4b) Tareas del tablero que ya tocan (vencidas o para hoy) y siguen abiertas
+    let tasksDue: Briefing['tasks_due'] = []
+    try {
+        const { data: dueTasks, error: taskError } = await supabase
+            .from('tasks')
+            .select('id, title, due_date, client_id, clients(name)')
+            .neq('status', 'done')
+            .not('due_date', 'is', null)
+            .lte('due_date', todayStr)
+            .order('due_date')
+        if (taskError) throw new Error(taskError.message)
+        tasksDue = ((dueTasks || []) as unknown as { id: string; title: string; due_date: string; clients: { name: string } | null }[]).map((t) => ({
+            id: t.id,
+            title: t.title,
+            client_name: t.clients?.name ?? null,
+            due_date: t.due_date,
+            overdue: t.due_date < todayStr,
+        }))
+    } catch (e) {
+        // Sin schema_update_tasks.sql el tablero aún no existe: el resto del briefing sigue igual.
+        console.warn('[briefing] tareas no disponibles (¿falta schema_update_tasks.sql?)', e instanceof Error ? e.message : e)
+    }
+
     // 5) Alertas
     const alerts: BriefingAlert[] = []
-    for (const f of followups.filter((x) => x.next_action && x.next_action_at && x.next_action_at <= todayStr)) {
-        alerts.push({ kind: 'next_action', severity: 'high', title: `${f.client_name}: ${f.next_action}`, detail: `Programado para ${f.next_action_at!.split('-').reverse().join('/')}`, href: `/clients?open=${f.client_id}` })
+    for (const t of tasksDue) {
+        alerts.push({
+            kind: 'task_due',
+            severity: 'high',
+            title: t.client_name ? `${t.client_name}: ${t.title}` : t.title,
+            detail: t.overdue ? `Vencía el ${t.due_date.split('-').reverse().join('/')}` : 'Para hoy',
+            href: '/tasks',
+        })
     }
     for (const i of unpaid.filter((u) => u.overdue)) {
         alerts.push({ kind: 'overdue', severity: 'high', title: `Factura #${i.invoice_number} vencida`, detail: `${i.client_name} · $${i.total_amount.toFixed(2)} · ${i.days_since_issue} días`, href: '/invoices' })
@@ -140,7 +170,7 @@ export async function getBriefing(): Promise<Briefing> {
     for (const i of unpaid.filter((u) => !u.overdue)) {
         alerts.push({ kind: 'unpaid', severity: 'low', title: `Factura #${i.invoice_number} por cobrar`, detail: `${i.client_name} · $${i.total_amount.toFixed(2)} · ${i.days_since_issue} días`, href: '/invoices' })
     }
-    for (const f of followups.filter((x) => !(x.next_action && x.next_action_at && x.next_action_at <= todayStr))) {
+    for (const f of followups) {
         const isLead = f.stage === 'lead'
         alerts.push({ kind: isLead ? 'lead_followup' : 'quote_followup', severity: 'medium', title: isLead ? `Lead sin seguimiento: ${f.client_name}` : `Cotización sin respuesta: ${f.client_name}`, detail: `${f.days_since_activity ?? 0} días sin actividad`, href: `/clients?open=${f.client_id}` })
     }
@@ -158,6 +188,7 @@ export async function getBriefing(): Promise<Briefing> {
         recurring_not_loaded: recurringNotLoaded,
         hour_bags: hourBags,
         followups,
+        tasks_due: tasksDue,
         alerts,
     }
 }

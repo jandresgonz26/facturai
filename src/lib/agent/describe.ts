@@ -187,13 +187,24 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'add_client_note':
             return { title: `Nota en la ficha de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }] }
-        case 'set_next_action':
+        case 'create_task': {
+            const rows: Row[] = [{ label: 'Tarea', value: str(input.title) ?? '-' }]
+            if (input.client_name) rows.push({ label: 'Cliente', value: str(input.client_name)! })
+            rows.push({ label: 'Para', value: input.due_date ? dateLabel(str(input.due_date)) : 'Sin fecha' })
+            if (input.hours != null) rows.push({ label: 'Horas', value: `${num(input.hours)}h` })
+            if (input.amount != null) rows.push({ label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` })
+            return { title: 'Nueva tarea', rows, note: 'Queda en el tablero, en "Por hacer".' }
+        }
+        case 'complete_task':
+            return { title: 'Marcar tarea como hecha', rows: [{ label: 'Tarea', value: str(input.title) ?? '-' }] }
+        case 'register_task_as_log':
             return {
-                title: `Próxima acción con ${client}`,
+                title: 'Registrar tarea para facturar',
                 rows: [
-                    { label: 'Acción', value: str(input.next_action) ?? '-' },
-                    { label: 'Para', value: input.next_action_at ? dateLabel(str(input.next_action_at)) : 'Sin fecha' },
+                    { label: 'Tarea', value: str(input.title) ?? '-' },
+                    { label: 'Cliente', value: client },
                 ],
+                note: 'Se crea como ítem pendiente y entrará en la próxima factura de ese cliente.',
             }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, rows: [] }
@@ -347,8 +358,17 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Etapa actualizada', lines: [`${str(d.client_name) ?? ''} → ${STAGE_LABELS[str(d.stage) ?? ''] ?? str(d.stage) ?? ''}`] }
         case 'add_client_note':
             return { title: 'Nota guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
-        case 'set_next_action':
-            return { title: 'Próxima acción guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.next_action) ?? ''}${d.next_action_at ? ` · ${dateLabel(str(d.next_action_at))}` : ''}`] }
+        case 'create_task': {
+            const bits = [str(d.client_name), d.due_date ? dateLabel(str(d.due_date)) : null, d.hours != null ? `${num(d.hours)}h` : null, d.amount != null ? fmtUsd(num(d.amount)) : null].filter(Boolean)
+            return { title: 'Tarea creada', lines: [str(d.title) ?? '', bits.join(' · ')].filter(Boolean) }
+        }
+        case 'complete_task':
+            return { title: 'Tarea completada', lines: [`${str(d.title) ?? ''}${d.client_name ? ` · ${str(d.client_name)}` : ''}`] }
+        case 'register_task_as_log':
+            return {
+                title: 'Tarea registrada para facturar',
+                lines: [`${str(d.title) ?? ''} · ${str(d.client_name) ?? ''}${d.hours != null ? ` · ${num(d.hours)}h` : ` · ${fmtUsd(num(d.amount_usd))}`}`],
+            }
         default:
             return { title: TOOL_LABELS[tool] ?? tool, lines: [] }
     }

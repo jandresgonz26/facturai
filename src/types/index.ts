@@ -148,3 +148,23 @@ export interface ClientNote {
     body: string
     created_at: string
 }
+
+export type TaskStatus = 'todo' | 'doing' | 'done'
+
+export interface Task {
+    id: string
+    title: string
+    notes?: string | null
+    status: TaskStatus
+    position: number
+    /** Cliente relacionado (opcional): habilita registrar la tarea como ítem facturable. */
+    client_id?: string | null
+    due_date?: string | null
+    hours?: number | null
+    amount?: number | null
+    /** Ítem facturable ya generado desde esta tarea; si existe, no se puede registrar de nuevo. */
+    log_id?: string | null
+    completed_at?: string | null
+    created_at: string
+    clients?: { name: string; billing_modality?: string; preferred_input_currency?: string } | null
+}

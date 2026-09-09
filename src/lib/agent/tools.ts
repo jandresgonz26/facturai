@@ -581,18 +581,74 @@ export const agentTools = {
             }),
     }),
 
-    set_next_action: tool({
-        description: 'Define la próxima acción comercial con un cliente y para cuándo ("llamar el lunes", "enviar propuesta el 15"). Requiere confirmación. Aparece en el briefing cuando llega la fecha.',
+    list_tasks: tool({
+        description:
+            'Tareas del tablero (id, título, estado, cliente, fecha, horas/monto). Estados: todo (por hacer), doing (en curso), done (hecha). Úsala para "¿qué tengo pendiente?", "mis tareas", o para resolver el id de una tarea antes de completarla.',
         inputSchema: z.object({
-            client_id: uuidSchema,
-            client_name: clientNameField,
-            next_action: z.string().min(2).max(200),
-            next_action_at: optionalDate.describe('Fecha YYYY-MM-DD si el usuario la indica'),
+            client_id: uuidSchema.optional().describe('Filtrar por cliente'),
+            open_only: z.boolean().optional().describe('true para excluir las ya hechas'),
         }),
-        execute: async ({ client_id, client_name, next_action, next_action_at }) =>
+        execute: async ({ client_id, open_only }) =>
             run(async () => {
-                await actions.setNextAction(client_id, { next_action, next_action_at: next_action_at ?? null })
-                return { client_name, next_action, next_action_at: next_action_at ?? null }
+                const rows = await actions.listTasks({ client_id, open_only })
+                return rows.map((t) => ({
+                    id: t.id,
+                    title: t.title,
+                    status: t.status,
+                    client_name: t.clients?.name ?? null,
+                    due_date: t.due_date ?? null,
+                    hours: t.hours ?? null,
+                    amount: t.amount ?? null,
+                    already_registered: !!t.log_id,
+                }))
+            }),
+    }),
+
+    create_task: tool({
+        description:
+            'Crea una tarea en el tablero ("recuérdame llamar a X el lunes", "anota que tengo que hacer Y"). Requiere confirmación. El cliente, la fecha, las horas y el monto son opcionales: pásalos SOLO si el usuario los menciona. Si indica horas o un monto y un cliente, luego esa tarea se puede registrar como ítem facturable.',
+        inputSchema: z.object({
+            title: z.string().min(3).max(300).describe('Qué hay que hacer'),
+            notes: optionalText.describe('Detalle adicional, solo si lo da'),
+            client_id: uuidSchema.optional().describe('SOLO si la tarea es de un cliente concreto'),
+            client_name: optionalText.describe('Nombre del cliente, para la confirmación'),
+            due_date: optionalDate.describe('SOLO si el usuario indica para cuándo'),
+            hours: z.number().positive().optional().describe('SOLO si el usuario dice cuántas horas de trabajo son'),
+            amount: z.number().positive().optional().describe('SOLO si el usuario dice cuánto se cobra por la tarea'),
+        }),
+        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount }) =>
+            run(async () => {
+                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount })
+                return { id: task.id, title: task.title, client_name: task.clients?.name ?? client_name ?? null, due_date: task.due_date ?? null, hours: task.hours ?? null, amount: task.amount ?? null }
+            }),
+    }),
+
+    complete_task: tool({
+        description: 'Marca una tarea del tablero como hecha. Requiere confirmación. Resuelve antes el task_id con list_tasks.',
+        inputSchema: z.object({
+            task_id: uuidSchema,
+            title: z.string().min(1).describe('Título de la tarea, para la confirmación'),
+        }),
+        execute: async ({ task_id, title }) =>
+            run(async () => {
+                const task = await actions.moveTask(task_id, 'done')
+                return { title, client_name: task.clients?.name ?? null }
+            }),
+    }),
+
+    register_task_as_log: tool({
+        description:
+            'Registra una tarea del tablero como ítem PENDIENTE DE FACTURAR del cliente, para que entre en la facturación normal. Requiere confirmación. La tarea necesita cliente y monto (u horas si el cliente es de bolsa de horas). Resuelve antes el task_id con list_tasks; si already_registered es true, ya se registró y no debes repetirlo.',
+        inputSchema: z.object({
+            task_id: uuidSchema,
+            title: z.string().min(1).describe('Título de la tarea, para la confirmación'),
+            client_name: clientNameField,
+            category: optionalText.describe('Categoría de servicio SOLO si el usuario la menciona'),
+        }),
+        execute: async ({ task_id, title, client_name, category }) =>
+            run(async () => {
+                const log = await actions.registerTaskAsLog(task_id, category)
+                return { title, client_name, amount_usd: log.value, hours: log.hours ?? null }
             }),
     }),
 

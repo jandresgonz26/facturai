@@ -7,6 +7,7 @@ import {
     ClipboardList,
     FileText,
     LayoutDashboard,
+    ListTodo,
     Menu,
     ReceiptText,
     Settings,
@@ -19,6 +20,7 @@ import {
 
 const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/tasks', label: 'Tareas', icon: ListTodo },
     { href: '/clients', label: 'Clientes', icon: Users },
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
     { href: '/month-end', label: 'Facturación', icon: ReceiptText },

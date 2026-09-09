@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CalendarClock, FileText, HeartHandshake, LoaderCircle, Mail, Plus, ReceiptText, StickyNote, Trash2, Wrench } from 'lucide-react'
-import type { Client, ClientNote, ClientStage } from '@/types'
+import Link from 'next/link'
+import type { Client, ClientNote, ClientStage, Task } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { CLIENT_STAGES, addClientNote, deleteClientNote, getClientTimeline, listClientNotes, setClientStage, setNextAction, type TimelineEvent } from '@/lib/actions/crm'
+import { CLIENT_STAGES, addClientNote, deleteClientNote, getClientTimeline, listClientNotes, setClientStage, type TimelineEvent } from '@/lib/actions/crm'
+import { createTask, listTasks, moveTask } from '@/lib/actions/tasks'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 
 const ICONS: Record<TimelineEvent['type'], React.ComponentType<{ className?: string }>> = {
@@ -32,8 +34,9 @@ const fmt = (iso: string) => iso.split('T')[0].split('-').reverse().join('/')
 /** Pestaña "Actividad" de la ficha: etapa, próxima acción, notas e historial. */
 export function ClientActivityPanel({ client, onClientChanged }: { client: Client; onClientChanged?: (c: Client) => void }) {
     const [stage, setStage] = useState<ClientStage>(client.stage ?? 'active')
-    const [nextAction, setNextActionText] = useState(client.next_action ?? '')
-    const [nextAt, setNextAt] = useState(client.next_action_at ?? '')
+    const [tasks, setTasks] = useState<Task[]>([])
+    const [taskTitle, setTaskTitle] = useState('')
+    const [taskDue, setTaskDue] = useState('')
     const [notes, setNotes] = useState<ClientNote[]>([])
     const [timeline, setTimeline] = useState<TimelineEvent[]>([])
     const [note, setNote] = useState('')
@@ -41,21 +44,23 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
     const [saving, setSaving] = useState(false)
 
     const load = () => {
-        Promise.all([listClientNotes(client.id), getClientTimeline(client.id)])
-            .then(([n, t]) => {
+        Promise.all([listClientNotes(client.id), getClientTimeline(client.id), listTasks({ client_id: client.id, open_only: true })])
+            .then(([n, t, tk]) => {
                 setNotes(n)
                 setTimeline(t)
+                setTasks(tk)
             })
             .catch((e) => toast.error(e instanceof Error ? e.message : 'No se pudo cargar la actividad'))
             .finally(() => setLoading(false))
     }
     useEffect(() => {
         let active = true
-        Promise.all([listClientNotes(client.id), getClientTimeline(client.id)])
-            .then(([n, t]) => {
+        Promise.all([listClientNotes(client.id), getClientTimeline(client.id), listTasks({ client_id: client.id, open_only: true })])
+            .then(([n, t, tk]) => {
                 if (!active) return
                 setNotes(n)
                 setTimeline(t)
+                setTasks(tk)
             })
             .catch((e) => toast.error(e instanceof Error ? e.message : 'No se pudo cargar la actividad'))
             .finally(() => active && setLoading(false))
@@ -77,17 +82,31 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
         }
     }
 
-    const saveNext = async () => {
+    const addTask = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (taskTitle.trim().length < 3) return
         setSaving(true)
         try {
-            const c = await setNextAction(client.id, { next_action: nextAction || null, next_action_at: nextAt || null })
-            toast.success('Próxima acción guardada')
-            onClientChanged?.(c)
+            await createTask({ title: taskTitle.trim(), client_id: client.id, due_date: taskDue || null })
+            setTaskTitle('')
+            setTaskDue('')
+            toast.success('Tarea creada')
+            load()
             emitDataChanged()
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'No se pudo guardar')
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo crear la tarea')
         } finally {
             setSaving(false)
+        }
+    }
+
+    const completeTask = async (id: string) => {
+        try {
+            await moveTask(id, 'done')
+            setTasks((prev) => prev.filter((t) => t.id !== id))
+            emitDataChanged()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo completar')
         }
     }
 
@@ -138,13 +157,44 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
             </section>
 
             <section className="rounded-lg border p-3 space-y-2 bg-muted/30">
-                <Label className="flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-teal-600" /> Próxima acción</Label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                    <Input placeholder="Ej: llamar para cerrar la propuesta" value={nextAction} onChange={(e) => setNextActionText(e.target.value)} className="flex-1" />
-                    <Input type="date" value={nextAt} onChange={(e) => setNextAt(e.target.value)} className="sm:w-40" />
-                    <Button variant="outline" onClick={saveNext} disabled={saving}>Guardar</Button>
+                <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-teal-600" /> Tareas pendientes</Label>
+                    <Link href="/tasks" className="text-xs text-teal-600 hover:underline">Ver tablero</Link>
                 </div>
-                <p className="text-xs text-muted-foreground">Aparece en el briefing del dashboard y en la campana cuando llega la fecha.</p>
+
+                {tasks.length > 0 && (
+                    <ul className="space-y-1.5">
+                        {tasks.map((t) => {
+                            const overdue = !!t.due_date && t.due_date < new Date().toISOString().split('T')[0]
+                            return (
+                                <li key={t.id} className="flex items-center gap-2 text-sm rounded-lg border bg-card px-3 py-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => completeTask(t.id)}
+                                        title="Marcar como hecha"
+                                        className="w-4 h-4 rounded border-2 border-muted-foreground/40 hover:border-emerald-500 hover:bg-emerald-500/10 shrink-0"
+                                    />
+                                    <span className="flex-1">{t.title}</span>
+                                    {t.due_date && (
+                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${overdue ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-muted text-muted-foreground'}`}>
+                                            {fmt(t.due_date)}
+                                        </span>
+                                    )}
+                                    {t.status === 'doing' && (
+                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">En curso</span>
+                                    )}
+                                </li>
+                            )
+                        })}
+                    </ul>
+                )}
+
+                <form onSubmit={addTask} className="flex flex-col sm:flex-row gap-2">
+                    <Input placeholder="Ej: llamar para cerrar la propuesta" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="flex-1" />
+                    <Input type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} className="sm:w-40" />
+                    <Button type="submit" variant="outline" disabled={saving || taskTitle.trim().length < 3}>Agregar</Button>
+                </form>
+                <p className="text-xs text-muted-foreground">Aparecen en el tablero de Tareas y te avisan en la campana cuando llega la fecha.</p>
             </section>
 
             <section className="space-y-2">
