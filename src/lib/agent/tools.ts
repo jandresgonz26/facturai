@@ -477,6 +477,7 @@ export const agentTools = {
                     invoice_number: r.invoice.invoice_number,
                     total_amount: r.invoice.total_amount,
                     issue_date: r.invoice.issue_date,
+                    payment_note: r.invoice.payment_note ?? null,
                     items: r.items.map((l) => ({ description: l.description, value: l.value })),
                 }
             }),

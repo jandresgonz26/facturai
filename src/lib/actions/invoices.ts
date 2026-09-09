@@ -64,6 +64,12 @@ export async function createInvoice(raw: CreateInvoiceInput): Promise<{ invoice:
 
     const total_amount = round2(logs.reduce((sum, l) => sum + Number(l.value || 0), 0))
     const issue_date = input.issue_date ?? todayISO()
+    // Si TODOS los ítems vienen de servicios fijos (cargados por loadRecurringServices,
+    // con recurring_service_id), es una facturación mensual habitual: se deja heredar la
+    // condición de pago permanente del cliente (payment_note sin definir). Si hay algún
+    // ítem puntual —o son todos puntuales—, por defecto NO debe salir esa nota fija, porque
+    // no aplica a lo que se está cobrando; queda sin nota hasta que se agregue una a mano.
+    const isFixedServiceInvoice = logs.every((l) => !!l.recurring_service_id)
 
     const row: Record<string, unknown> = {
         invoice_number,
@@ -71,6 +77,7 @@ export async function createInvoice(raw: CreateInvoiceInput): Promise<{ invoice:
         issue_date,
         total_amount,
         status: 'draft',
+        ...(isFixedServiceInvoice ? {} : { payment_note: '' }),
     }
     if (input.due_date) row.due_date = input.due_date
 
@@ -78,6 +85,11 @@ export async function createInvoice(raw: CreateInvoiceInput): Promise<{ invoice:
     if (invError && input.due_date && (invError.code === '42703' || /due_date/.test(invError.message))) {
         // Migración pendiente: la columna due_date aún no existe.
         delete row.due_date
+        ;({ data: invoice, error: invError } = await supabase.from('invoices').insert(row).select('*').single())
+    }
+    if (invError && 'payment_note' in row && (invError.code === '42703' || /payment_note/.test(invError.message))) {
+        // Migración pendiente: la columna payment_note aún no existe.
+        delete row.payment_note
         ;({ data: invoice, error: invError } = await supabase.from('invoices').insert(row).select('*').single())
     }
     if (invError) throw new ActionError(`No se pudo crear la factura: ${invError.message}`)
