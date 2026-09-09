@@ -214,13 +214,32 @@ export const agentTools = {
                     client_name: invoice.clients?.name ?? null,
                     issue_date: invoice.issue_date,
                     total_amount: invoice.total_amount,
+                    invoice_status: invoice.status,
                     items: items.map((l) => ({
+                        id: l.id,
                         description: l.description,
                         category: l.service_categories?.name ?? null,
                         value_usd: l.value,
                         hours: l.hours ?? null,
                     })),
                 }
+            }),
+    }),
+
+    update_invoice_item_description: tool({
+        description:
+            'Corrige el concepto (descripción) de un ítem de una factura que TODAVÍA ESTÁ EN BORRADOR. Requiere confirmación. Resuelve antes el invoice_id con list_invoices y el id del ítem (log_id) con get_invoice_items; get_invoice_items también te dice invoice_status, así que revisa que sea "draft" antes de proponerlo. Si la factura ya se envió o se pagó, esta herramienta falla: explícale al usuario que ya no se puede corregir porque el documento ya salió con ese texto.',
+        inputSchema: z.object({
+            log_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            old_description: z.string().min(1).describe('Concepto actual del ítem, tal como lo devolvió get_invoice_items, para mostrarlo en la confirmación'),
+            new_description: z.string().trim().min(3).max(300).describe('Nuevo concepto'),
+        }),
+        execute: async ({ log_id, invoice_number, client_name, old_description, new_description }) =>
+            run(async () => {
+                const log = await actions.updateInvoiceItemDescription(log_id, new_description)
+                return { invoice_number, client_name, old_description, description: log.description }
             }),
     }),
 

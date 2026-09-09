@@ -2,15 +2,26 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, RotateCcw, Send, Trash2 } from 'lucide-react'
-import { Client, EmailKind, EmailLog, Invoice } from '@/types'
+import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Client, EmailKind, EmailLog, Invoice, Log } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pagination } from '@/components/ui/Pagination'
-import { deleteInvoice, getEmailStatusByInvoice, listClients, listInvoices, markInvoicePaid, markInvoiceSent, revertInvoiceToDraft, updateInvoiceDueDate } from '@/lib/actions'
+import {
+    deleteInvoice,
+    getEmailStatusByInvoice,
+    getInvoiceWithItems,
+    listClients,
+    listInvoices,
+    markInvoicePaid,
+    markInvoiceSent,
+    revertInvoiceToDraft,
+    updateInvoiceDueDate,
+    updateInvoiceItemDescription,
+} from '@/lib/actions'
 import { EmailDialog } from '@/components/features/EmailDialog'
 import { downloadInvoice } from '@/lib/invoice-download'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
@@ -44,6 +55,11 @@ export default function InvoicesPage() {
     const [emailStatus, setEmailStatus] = useState<Record<string, { invoice?: EmailLog; payment_thanks?: EmailLog }>>({})
     const [emailDialog, setEmailDialog] = useState<{ kind: EmailKind; id: string } | null>(null)
     const [paidDate, setPaidDate] = useState('')
+    const [itemsEdit, setItemsEdit] = useState<Invoice | null>(null)
+    const [itemsToEdit, setItemsToEdit] = useState<Log[]>([])
+    const [itemDescriptions, setItemDescriptions] = useState<Record<string, string>>({})
+    const [loadingItems, setLoadingItems] = useState(false)
+    const [savingItems, setSavingItems] = useState(false)
 
     const load = async () => {
         try {
@@ -109,6 +125,42 @@ export default function InvoicesPage() {
         const inv = dueEdit
         setDueEdit(null)
         return run(() => updateInvoiceDueDate(inv.id, dueValue || null), dueValue ? 'Vencimiento guardado' : 'Vencimiento eliminado')
+    }
+
+    const openItemsEdit = async (inv: Invoice) => {
+        setItemsEdit(inv)
+        setLoadingItems(true)
+        try {
+            const { items } = await getInvoiceWithItems(inv.id)
+            setItemsToEdit(items)
+            setItemDescriptions(Object.fromEntries(items.map((it) => [it.id, it.description])))
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Error al cargar los ítems')
+            setItemsEdit(null)
+        } finally {
+            setLoadingItems(false)
+        }
+    }
+
+    const saveItemDescriptions = async () => {
+        if (!itemsEdit) return
+        const changed = itemsToEdit.filter((it) => (itemDescriptions[it.id] ?? '').trim() !== it.description)
+        if (changed.length === 0) {
+            setItemsEdit(null)
+            return
+        }
+        setSavingItems(true)
+        try {
+            await Promise.all(changed.map((it) => updateInvoiceItemDescription(it.id, itemDescriptions[it.id])))
+            toast.success(changed.length === 1 ? 'Concepto corregido' : `${changed.length} conceptos corregidos`)
+            setItemsEdit(null)
+            emitDataChanged()
+            await load()
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Error al guardar')
+        } finally {
+            setSavingItems(false)
+        }
     }
 
     const confirmCopy: Record<NonNullable<Confirm>['kind'], { title: string; body: string; cta: string; cls: string }> = {
@@ -195,6 +247,11 @@ export default function InvoicesPage() {
                                         </Button>
                                     )}
                                     {inv.status === 'draft' && (
+                                        <Button variant="outline" size="icon" title="Corregir conceptos" className="text-indigo-600" onClick={() => openItemsEdit(inv)}>
+                                            <Pencil />
+                                        </Button>
+                                    )}
+                                    {inv.status === 'draft' && (
                                         <Button variant="outline" size="icon" title="Marcar como enviada" className="text-sky-600" onClick={() => setConfirm({ kind: 'sent', invoice: inv })}>
                                             <Send />
                                         </Button>
@@ -263,6 +320,41 @@ export default function InvoicesPage() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDueEdit(null)}>Cancelar</Button>
                         <Button onClick={saveDue} disabled={working}>Guardar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!itemsEdit} onOpenChange={(o) => !o && !savingItems && setItemsEdit(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Corregir conceptos · Factura #{itemsEdit?.invoice_number}</DialogTitle>
+                        <DialogDescription>
+                            Solo se puede mientras la factura siga en borrador. El monto de cada ítem no cambia, solo el texto.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {loadingItems ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">Cargando…</p>
+                    ) : (
+                        <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                            {itemsToEdit.map((it) => (
+                                <div key={it.id} className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>Concepto</span>
+                                        <span className="font-mono font-semibold">{usd(Number(it.value ?? 0))}</span>
+                                    </div>
+                                    <Input
+                                        value={itemDescriptions[it.id] ?? ''}
+                                        onChange={(e) => setItemDescriptions((prev) => ({ ...prev, [it.id]: e.target.value }))}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setItemsEdit(null)} disabled={savingItems}>Cancelar</Button>
+                        <Button onClick={saveItemDescriptions} disabled={savingItems || loadingItems}>
+                            {savingItems ? 'Guardando…' : 'Guardar cambios'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

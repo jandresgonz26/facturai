@@ -2,9 +2,9 @@ import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { Client, Invoice, Log } from '@/types'
 import { getClient, getBillableClientIds } from './clients'
-import { getLogsByIds } from './logs'
+import { getLogsByIds, LOG_SELECT } from './logs'
 import { promoteStageOnInvoice } from './crm'
-import { ActionError, dateSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
+import { ActionError, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
 export async function getNextInvoiceNumber(): Promise<string> {
     const { data, error } = await supabase
@@ -196,6 +196,33 @@ export async function markInvoiceSent(id: string): Promise<Invoice> {
     const { data, error } = await supabase.from('invoices').update({ status: 'sent' }).eq('id', id).select('*, clients(*)').single()
     if (error) throw new ActionError(`No se pudo marcar como enviada: ${error.message}`)
     return data as Invoice
+}
+
+/**
+ * Corrige el concepto (descripción) de un ítem ya facturado. Solo se permite
+ * mientras la factura siga en borrador: una vez enviada o pagada, el
+ * documento ya salió con ese texto y corregirlo aquí desalinearía el registro
+ * de lo que realmente recibió el cliente.
+ */
+export async function updateInvoiceItemDescription(logId: string, description: string): Promise<Log> {
+    const desc = parseInput(descriptionSchema, description)
+    const { data: log, error: readError } = await supabase
+        .from('logs')
+        .select('id, status, invoice_id, invoices(status)')
+        .eq('id', logId)
+        .maybeSingle()
+    if (readError) throw new ActionError(`No se pudo consultar el ítem: ${readError.message}`)
+    if (!log) throw new ActionError('El ítem no existe', 'NOT_FOUND')
+    if (log.status !== 'billed' || !log.invoice_id) {
+        throw new ActionError('Este ítem no está en ninguna factura.')
+    }
+    const invoiceStatus = (log.invoices as { status?: string } | null)?.status
+    if (invoiceStatus !== 'draft') {
+        throw new ActionError('Solo se puede corregir el concepto mientras la factura esté en borrador; ya se envió o se pagó.')
+    }
+    const { data, error } = await supabase.from('logs').update({ description: desc }).eq('id', logId).select(LOG_SELECT).single()
+    if (error) throw new ActionError(`No se pudo actualizar el concepto: ${error.message}`)
+    return data as Log
 }
 
 export async function updateInvoiceDueDate(id: string, due_date: string | null): Promise<Invoice> {

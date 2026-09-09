@@ -68,6 +68,16 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 ],
                 note: input.paid_at ? 'Esta fecha queda impresa en el recibo y en el correo de agradecimiento.' : undefined,
             }
+        case 'update_invoice_item_description':
+            return {
+                title: `Corregir concepto en la factura #${str(input.invoice_number) ?? ''}`,
+                rows: [
+                    { label: 'Cliente', value: client },
+                    { label: 'Antes', value: str(input.old_description) ?? '-' },
+                    { label: 'Después', value: str(input.new_description) ?? '-' },
+                ],
+                note: 'Solo funciona mientras la factura siga en borrador.',
+            }
         case 'add_recurring_service':
             return {
                 title: `Nuevo servicio FIJO para ${client}`,
@@ -261,6 +271,11 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return {
                 title: `Factura #${str(d.invoice_number)} marcada como pagada`,
                 lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
+            }
+        case 'update_invoice_item_description':
+            return {
+                title: `Concepto corregido en la factura #${str(d.invoice_number)}`,
+                lines: [`${str(d.client_name)} · "${str(d.description)}"`],
             }
         case 'add_recurring_service':
             return {
