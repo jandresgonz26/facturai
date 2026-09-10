@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { Invoice, Log, Quote, QuoteItem } from '@/types'
+import { Invoice, Log, Quote, QuoteItem, QuoteStatus } from '@/types'
 import { getEurToUsdRate } from '@/lib/currency'
 import { ActionError, dateSchema, parseInput, round2, uuidSchema } from './validation'
 import { findOrCreateLead, promoteStageOnQuote } from './crm'
@@ -122,6 +122,29 @@ export async function getQuote(id: string): Promise<Quote> {
     return data as Quote
 }
 
+export const QUOTE_STATUSES: { id: QuoteStatus; label: string; hint: string }[] = [
+    { id: 'pending', label: 'Pendiente', hint: 'Enviada o en curso, sin respuesta todavía' },
+    { id: 'approved', label: 'Aprobada', hint: 'El cliente la aceptó' },
+    { id: 'rejected', label: 'Rechazada', hint: 'El cliente dijo que no o se perdió' },
+]
+
+/**
+ * Guarda la respuesta del cliente a una cotización. Al aprobarla se deja la
+ * fecha de la decisión, que es lo que permite después medir cuánto se tarda en
+ * cerrar y cuántas se caen.
+ */
+export async function setQuoteStatus(id: string, status: QuoteStatus): Promise<Quote> {
+    await getQuote(id)
+    const { data, error } = await supabase
+        .from('quotes')
+        .update({ status, decided_at: status === 'pending' ? null : new Date().toISOString() })
+        .eq('id', id)
+        .select('*')
+        .single()
+    if (error) throw new ActionError(`No se pudo guardar el estado de la cotización: ${error.message}`)
+    return data as Quote
+}
+
 export const convertQuoteSchema = z.object({
     quote_id: uuidSchema,
     /** Cliente al que facturar; si se omite se usa el enlazado a la cotización o se busca/crea por nombre. */
@@ -223,9 +246,10 @@ export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ i
         throw e
     }
 
+    // Convertirla implica que el cliente la aprobó: se deja el estado coherente.
     const { data: updatedQuote, error: quoteError } = await supabase
         .from('quotes')
-        .update({ invoice_id: result.invoice.id, invoiced_at: now })
+        .update({ invoice_id: result.invoice.id, invoiced_at: now, status: 'approved', decided_at: quote.decided_at ?? now })
         .eq('id', quote.id)
         .select('*')
         .single()

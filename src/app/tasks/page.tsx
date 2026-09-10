@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Banknote, Clock, Pencil, Plus, ReceiptText, Sparkles, Trash2, TrendingUp, User } from 'lucide-react'
+import { AlertTriangle, Banknote, CalendarCheck, Clock, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp, User } from 'lucide-react'
 import { Client, Task, TaskClarity, TaskConsequence, TaskStatus } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
+    DAY_CAPACITY_MINUTES,
     TASK_COLUMNS,
     createTask,
     deleteTask,
@@ -18,10 +19,12 @@ import {
     listClients,
     listTasks,
     moveTask,
+    planTask,
     registerTaskAsLog,
     updateTask,
     type TaskInput,
 } from '@/lib/actions'
+import { useAgent } from '@/components/agent/AgentProvider'
 import { errorMessage } from '@/lib/actions/validation'
 import {
     BLOCK_META,
@@ -142,6 +145,7 @@ export default function TasksPage() {
     const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
     /** Tarea recién completada que tenía estimación: se pregunta cuánto tomó de verdad. */
     const [measuring, setMeasuring] = useState<Task | null>(null)
+    const { openWith } = useAgent()
 
     const load = async () => {
         try {
@@ -172,6 +176,50 @@ export default function TasksPage() {
     const block = currentBlock()
     const suggestions = useMemo(() => suggestNow(tasks, signals), [tasks, signals])
     const drift = useMemo(() => computeDrift(tasks), [tasks])
+
+    const today = todayStr()
+    const plan = useMemo(() => {
+        const open = tasks.filter((t) => t.status !== 'done')
+        const planned = sortByPriority(open.filter((t) => t.planned_for === today), signals)
+        const carried = sortByPriority(open.filter((t) => !!t.planned_for && t.planned_for < today), signals)
+        const minutes = planned.reduce((s, t) => s + (t.estimated_minutes ?? 0), 0)
+        return { planned, carried, minutes, over: minutes > DAY_CAPACITY_MINUTES }
+    }, [tasks, signals, today])
+
+    /** Saludo del asistente según la franja, con la pregunta ya cargada. */
+    const agentIntro = useMemo(() => {
+        if (block === 'morning') {
+            return {
+                icon: Sun,
+                title: plan.planned.length > 0 ? 'Ya tienes plan para hoy' : 'Buenos días. ¿Armamos el plan de hoy?',
+                text:
+                    plan.planned.length > 0
+                        ? 'Puedo repasarlo contigo, ajustar lo que no quepa y decirte por cuál empezar.'
+                        : 'Te ayudo a elegir tres o cuatro cosas realistas para hoy, empezando por lo que traes arrastrando.',
+                cta: plan.planned.length > 0 ? 'Repasar el plan' : 'Armar el plan de hoy',
+                prompt:
+                    plan.planned.length > 0
+                        ? 'Repasemos el plan de hoy: dime si es realista, qué sacaría y por cuál empiezo.'
+                        : 'Ayúdame a armar el plan de hoy. Empieza por lo que traigo arrastrado y propón pocas tareas realistas.',
+            }
+        }
+        if (block === 'afternoon') {
+            return {
+                icon: Sparkles,
+                title: '¿Cómo vas con el día?',
+                text: 'Puedo decirte qué te queda del plan y qué conviene atacar con el tiempo que te sobra.',
+                cta: '¿Qué me queda?',
+                prompt: '¿Cómo voy con el plan de hoy? Dime qué me queda pendiente y qué conviene hacer con el tiempo que queda de tarde.',
+            }
+        }
+        return {
+            icon: CalendarCheck,
+            title: 'Cerrando el día',
+            text: 'Repasemos qué se cerró y qué mueves a mañana, para no arrastrarlo sin decidirlo.',
+            cta: 'Cerrar el día',
+            prompt: 'Hagamos la revisión del cierre del día: qué cerré, qué quedó abierto y qué muevo a mañana.',
+        }
+    }, [block, plan.planned.length])
 
     const billableClients = clients.filter((c) => c.billing_modality !== 'hour_bag' || c.parent_client_id)
 
@@ -296,6 +344,16 @@ export default function TasksPage() {
 
     const canRegister = (t: Task) => !t.log_id && !!t.client_id && (t.amount != null || t.hours != null)
 
+    const togglePlan = async (task: Task, date: string | null) => {
+        try {
+            const updated = await planTask(task.id, date)
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            if (date === today) toast.success('Va en el plan de hoy')
+        } catch (e) {
+            toast.error(errorMessage(e))
+        }
+    }
+
     const optionalFields = (v: FormValues, set: (next: FormValues) => void) => (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div className="sm:col-span-2 space-y-1">
@@ -366,38 +424,121 @@ export default function TasksPage() {
                 </p>
             </div>
 
-            {/* Qué hago ahora */}
-            {!loading && suggestions.length > 0 && (
+            {/* Asistente según la franja del día */}
+            {!loading && (
                 <section className="rounded-xl border bg-gradient-to-br from-teal-50 to-sky-50 dark:from-teal-950/40 dark:to-sky-950/30 p-4 mb-6">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Sparkles className="w-4 h-4 text-teal-600" />
-                        <h2 className="text-sm font-bold">{BLOCK_META[block].title} · ¿Qué hago ahora?</h2>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="h-9 w-9 shrink-0 rounded-lg bg-gray-900 dark:bg-gray-700 text-teal-400 flex items-center justify-center">
+                            <agentIntro.icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-sm font-bold">{agentIntro.title}</h2>
+                            <p className="text-xs text-muted-foreground mt-0.5">{agentIntro.text}</p>
+                        </div>
+                        <Button className="bg-teal-600 hover:bg-teal-700 text-white shrink-0" onClick={() => openWith(agentIntro.prompt)}>
+                            <Sparkles className="w-4 h-4" /> {agentIntro.cta}
+                        </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground mb-3">{BLOCK_META[block].hint}</p>
-                    <ol className="space-y-2">
-                        {suggestions.map(({ task, priority }, i) => (
-                            <li key={task.id} className="flex items-start gap-3 rounded-lg bg-card/80 border px-3 py-2">
-                                <span className="text-xs font-bold text-muted-foreground mt-0.5 w-4">{i + 1}</span>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-sm font-medium">{task.title}</span>
-                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${LABEL_META[priority.label].className}`}>
+
+                    {/* Plan de hoy */}
+                    {plan.planned.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-teal-200/60 dark:border-teal-800/40">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+                                    Plan de hoy · {plan.planned.length} tarea{plan.planned.length === 1 ? '' : 's'}
+                                </h3>
+                                {plan.minutes > 0 && (
+                                    <span className={`text-[11px] font-medium ${plan.over ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                        {fmtMinutes(plan.minutes)} de {fmtMinutes(DAY_CAPACITY_MINUTES)}
+                                    </span>
+                                )}
+                            </div>
+                            {plan.over && (
+                                <p className="flex items-start gap-1.5 text-[11px] text-red-600 dark:text-red-400 mb-2">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                                    Te pasas de lo que cabe en un día con cabeza. Mejor saca algo ahora que arrastrarlo mañana.
+                                </p>
+                            )}
+                            <ul className="space-y-1.5">
+                                {plan.planned.map((task) => {
+                                    const p = scoreTask(task, signals)
+                                    return (
+                                        <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => applyMove(task, 'done')}
+                                                title="Marcar como hecha"
+                                                className="w-4 h-4 rounded border-2 border-muted-foreground/40 hover:border-emerald-500 hover:bg-emerald-500/10 shrink-0"
+                                            />
+                                            <span className="flex-1 text-sm truncate">{task.title}</span>
+                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[p.label].className}`}>
+                                                {LABEL_META[p.label].emoji}
+                                            </span>
+                                            {task.estimated_minutes != null && (
+                                                <span className="text-[10px] text-muted-foreground shrink-0">{fmtMinutes(task.estimated_minutes)}</span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => togglePlan(task, null)}
+                                                title="Sacar del plan de hoy"
+                                                className="text-muted-foreground hover:text-red-500 shrink-0"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Arrastradas de días anteriores */}
+                    {plan.carried.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2">
+                                Vienen arrastrándose · {plan.carried.length}
+                            </h3>
+                            <ul className="space-y-1.5">
+                                {plan.carried.map((task) => (
+                                    <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                        <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                        <span className="flex-1 text-sm truncate">{task.title}</span>
+                                        {(task.postponed_count ?? 0) >= 3 && (
+                                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 shrink-0">
+                                                movida {task.postponed_count} veces
+                                            </span>
+                                        )}
+                                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
+                                            Hoy
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Sugerencia por franja cuando aún no hay plan */}
+                    {plan.planned.length === 0 && suggestions.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-teal-200/60 dark:border-teal-800/40">
+                            <p className="text-xs text-muted-foreground mb-2">{BLOCK_META[block].hint}</p>
+                            <ul className="space-y-1.5">
+                                {suggestions.map(({ task, priority }) => (
+                                    <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[priority.label].className}`}>
                                             {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
                                         </span>
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        {task.clients?.name ? `${task.clients.name} · ` : ''}
-                                        {priority.reason}
-                                    </p>
-                                </div>
-                                {task.status !== 'doing' && (
-                                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => applyMove(task, 'doing')}>
-                                        Empezar
-                                    </Button>
-                                )}
-                            </li>
-                        ))}
-                    </ol>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm truncate">{task.title}</p>
+                                            <p className="text-[11px] text-muted-foreground truncate">{priority.reason}</p>
+                                        </div>
+                                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
+                                            Hoy
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </section>
             )}
 
@@ -543,6 +684,18 @@ export default function TasksPage() {
                                                 </div>
 
                                                 <div className="flex items-center gap-1 mt-2 pt-2 border-t">
+                                                    {task.status !== 'done' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => togglePlan(task, task.planned_for === today ? null : today)}
+                                                            title={task.planned_for === today ? 'Sacar del plan de hoy' : 'Poner en el plan de hoy'}
+                                                            className={`p-1.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900/20 ${
+                                                                task.planned_for === today ? 'text-teal-600' : 'text-muted-foreground'
+                                                            }`}
+                                                        >
+                                                            <CalendarCheck className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                     {canRegister(task) && (
                                                         <button
                                                             type="button"

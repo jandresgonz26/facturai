@@ -121,6 +121,58 @@ export async function moveTask(id: string, status: TaskStatus, actualMinutes?: n
 }
 
 /**
+ * Compromete (o saca) una tarea para un día concreto. Si ya estaba comprometida
+ * para un día anterior y sigue abierta, cuenta como posposición: ese contador es
+ * el que después delata la tarea que se está evitando.
+ */
+export async function planTask(id: string, date: string | null): Promise<Task> {
+    const task = await getTask(id)
+    const target = date ? parseInput(dateSchema, date) : null
+    const patch: Record<string, unknown> = { planned_for: target }
+
+    const wasPushed = !!task.planned_for && !!target && target > task.planned_for && task.status !== 'done'
+    if (wasPushed) patch.postponed_count = (task.postponed_count ?? 0) + 1
+
+    const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
+    if (error) throw new ActionError(`No se pudo planificar la tarea: ${error.message}`)
+    return data as Task
+}
+
+export interface DayPlan {
+    date: string
+    /** Comprometidas para ese día. */
+    planned: Task[]
+    /** Venían de días anteriores y siguen abiertas: hay que decidir qué hacer con ellas. */
+    carriedOver: Task[]
+    /** Abiertas sin día asignado, de donde se elige para armar el plan. */
+    available: Task[]
+    estimatedMinutes: number
+    /** Minutos de trabajo enfocado que se consideran un día realista. */
+    capacityMinutes: number
+}
+
+export const DAY_CAPACITY_MINUTES = 300 // 5 h de trabajo con cabeza, no 8
+
+/** Plan de un día: lo comprometido, lo arrastrado y lo disponible para elegir. */
+export async function getDayPlan(date?: string): Promise<DayPlan> {
+    const day = date ? parseInput(dateSchema, date) : todayISO()
+    const open = await listTasks({ open_only: true })
+
+    const planned = open.filter((t) => t.planned_for === day)
+    const carriedOver = open.filter((t) => !!t.planned_for && t.planned_for < day)
+    const available = open.filter((t) => !t.planned_for)
+
+    return {
+        date: day,
+        planned,
+        carriedOver,
+        available,
+        estimatedMinutes: planned.reduce((s, t) => s + (t.estimated_minutes ?? 0), 0),
+        capacityMinutes: DAY_CAPACITY_MINUTES,
+    }
+}
+
+/**
  * Señales que el sistema ya conoce y que suben la urgencia de una tarea sin
  * preguntarle nada al usuario: clientes con facturas vencidas y clientes cuyo
  * seguimiento comercial se está enfriando.

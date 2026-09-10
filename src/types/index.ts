@@ -106,11 +106,16 @@ export interface Quote {
     total_amount: number
     total_hours: number
     issue_date: string
+    /** Respuesta del cliente: pendiente por defecto; aprobada al convertirla en factura. */
+    status: QuoteStatus
+    decided_at?: string | null
     /** Factura generada a partir de esta cotización (null si aún no se convirtió). */
     invoice_id?: string | null
     invoiced_at?: string | null
     created_at: string
 }
+
+export type QuoteStatus = 'pending' | 'approved' | 'rejected'
 
 export interface RecurringService {
     id: string
@@ -172,6 +177,10 @@ export interface Task {
     /** Minutos que creías que tomaba, para medir después contra los reales. */
     estimated_minutes?: number | null
     actual_minutes?: number | null
+    /** Día para el que te comprometiste a hacerla. */
+    planned_for?: string | null
+    /** Veces que se empujó a otro día: delata la tarea que estás evitando. */
+    postponed_count?: number | null
     /** Ítem facturable ya generado desde esta tarea; si existe, no se puede registrar de nuevo. */
     log_id?: string | null
     completed_at?: string | null

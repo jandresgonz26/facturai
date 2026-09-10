@@ -616,6 +616,57 @@ export const agentTools = {
             }),
     }),
 
+    get_day_plan: tool({
+        description:
+            'El plan de un día: qué tareas están comprometidas para ese día, cuáles se arrastran de días anteriores sin cerrarse, cuáles están disponibles para elegir, y cuánto tiempo estimado suman contra lo que cabe en un día realista (capacity_minutes). Úsala al armar el plan de la mañana y al revisar el cierre del día. Sin fecha, usa hoy.',
+        inputSchema: z.object({ date: optionalDate.describe('YYYY-MM-DD; omítelo para hoy') }),
+        execute: async ({ date }) =>
+            run(async () => {
+                const [plan, signals] = await Promise.all([
+                    actions.getDayPlan(date),
+                    actions.getClientSignals().catch(() => emptySignals()),
+                ])
+                const brief = (t: (typeof plan.planned)[number]) => {
+                    const p = scoreTask(t, signals)
+                    return {
+                        id: t.id,
+                        title: t.title,
+                        status: t.status,
+                        client_name: t.clients?.name ?? null,
+                        due_date: t.due_date ?? null,
+                        estimated_minutes: t.estimated_minutes ?? null,
+                        postponed_count: t.postponed_count ?? 0,
+                        priority: p.label,
+                        why: p.reason,
+                    }
+                }
+                return {
+                    date: plan.date,
+                    planned: plan.planned.map(brief),
+                    carried_over: plan.carriedOver.map(brief),
+                    available: sortByPriority(plan.available, signals).slice(0, 12).map(brief),
+                    estimated_minutes: plan.estimatedMinutes,
+                    capacity_minutes: plan.capacityMinutes,
+                    over_capacity: plan.estimatedMinutes > plan.capacityMinutes,
+                }
+            }),
+    }),
+
+    plan_task: tool({
+        description:
+            'Compromete una tarea para un día (o la saca del plan si date se omite). Requiere confirmación. Úsala al armar el plan de la mañana ("hoy hago estas tres") o al mover algo a mañana en la revisión del cierre. Si la tarea ya estaba comprometida para un día anterior, moverla cuenta como posposición y el sistema lo registra.',
+        inputSchema: z.object({
+            task_id: uuidSchema,
+            title: z.string().min(1).describe('Título de la tarea, para la confirmación'),
+            date: optionalDate.describe('YYYY-MM-DD. Omítelo SOLO si el usuario quiere sacarla del plan.'),
+        }),
+        execute: async ({ task_id, title, date }) =>
+            run(async () => {
+                const task = await actions.planTask(task_id, date ?? null)
+                return { title, planned_for: task.planned_for ?? null, postponed_count: task.postponed_count ?? 0 }
+            }),
+    }),
+
     what_should_i_do_now: tool({
         description:
             'Qué conviene hacer AHORA MISMO, según la hora del día y la prioridad calculada de las tareas abiertas. Úsala para "¿qué hago ahora?", "¿por dónde empiezo?", "¿qué es lo más urgente?". Devuelve la franja del día, por qué esa franja sirve para cierto tipo de trabajo, y hasta 3 tareas sugeridas con su razón. No escribe nada.',

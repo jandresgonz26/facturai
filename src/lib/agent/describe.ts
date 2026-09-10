@@ -204,6 +204,14 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
         }
         case 'complete_task':
             return { title: 'Marcar tarea como hecha', rows: [{ label: 'Tarea', value: str(input.title) ?? '-' }] }
+        case 'plan_task':
+            return {
+                title: input.date ? 'Comprometer tarea para un día' : 'Sacar la tarea del plan',
+                rows: [
+                    { label: 'Tarea', value: str(input.title) ?? '-' },
+                    { label: 'Día', value: input.date ? dateLabel(str(input.date)) : 'Sin día asignado' },
+                ],
+            }
         case 'register_task_as_log':
             return {
                 title: 'Registrar tarea para facturar',
@@ -374,6 +382,16 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         }
         case 'complete_task':
             return { title: 'Tarea completada', lines: [`${str(d.title) ?? ''}${d.client_name ? ` · ${str(d.client_name)}` : ''}`] }
+        case 'plan_task': {
+            const n = num(d.postponed_count) ?? 0
+            return {
+                title: d.planned_for ? 'Tarea puesta en el plan' : 'Tarea fuera del plan',
+                lines: [
+                    `${str(d.title) ?? ''}${d.planned_for ? ` · ${dateLabel(str(d.planned_for))}` : ''}`,
+                    ...(n >= 3 ? [`Ojo: la has movido ${n} veces. Quizá conviene partirla o soltarla.`] : []),
+                ],
+            }
+        }
         case 'register_task_as_log':
             return {
                 title: 'Tarea registrada para facturar',

@@ -25,6 +25,7 @@ export const WRITE_TOOLS = [
     'create_task',
     'complete_task',
     'register_task_as_log',
+    'plan_task',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -67,6 +68,8 @@ export const TOOL_LABELS: Record<string, string> = {
     add_client_note: 'Guardar nota',
     list_tasks: 'Consultando tus tareas',
     what_should_i_do_now: 'Viendo qué conviene hacer ahora',
+    get_day_plan: 'Revisando el plan del día',
+    plan_task: 'Poner la tarea en el plan del día',
     create_task: 'Crear tarea',
     complete_task: 'Marcar tarea como hecha',
     register_task_as_log: 'Registrar tarea para facturar',

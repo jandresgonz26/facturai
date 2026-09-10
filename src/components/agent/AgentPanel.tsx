@@ -83,7 +83,7 @@ function MessageBubble({
 }
 
 export function AgentPanel() {
-    const { open, setOpen } = useAgent()
+    const { open, setOpen, consumePrompt } = useAgent()
     const [input, setInput] = useState('')
     const endRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -119,7 +119,17 @@ export function AgentPanel() {
     }, [messages, status])
 
     useEffect(() => {
-        if (open) setTimeout(() => textareaRef.current?.focus(), 150)
+        if (!open) return
+        // Si otra pantalla lo abrió con una pregunta ya cargada (ej. el plan del
+        // día desde Tareas), se manda sola; si no, solo se enfoca el campo.
+        const seeded = consumePrompt()
+        if (seeded && !busy && !hasPendingApproval) {
+            void sendMessage({ text: seeded })
+            return
+        }
+        setTimeout(() => textareaRef.current?.focus(), 150)
+        // Solo debe dispararse al abrir, no en cada cambio de estado del chat.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open])
 
     // Se recalcula con cualquier cambio del texto (tipeo, transcripción de voz,

@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Client, EmailLog, Quote } from '@/types'
+import { Client, EmailLog, Quote, QuoteStatus } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, Mail, Pencil, Receipt, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, Mail, Pencil, Receipt, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { EmailDialog } from '@/components/features/EmailDialog'
 import { ClientForm } from '@/components/features/ClientForm'
 import { getEmailStatusByQuote } from '@/lib/actions/email'
-import { convertQuoteToInvoice } from '@/lib/actions/quotes'
+import { QUOTE_STATUSES, convertQuoteToInvoice, setQuoteStatus } from '@/lib/actions/quotes'
 import { getClient, listClients, updateClient, type ClientInput } from '@/lib/actions/clients'
 import { ActionError, errorMessage } from '@/lib/actions/validation'
 import { saveBlobToFile } from '@/lib/invoice-download'
@@ -29,10 +29,57 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 
+type StatusFilter = 'all' | QuoteStatus | 'invoiced'
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'pending', label: 'Pendientes' },
+    { id: 'approved', label: 'Aprobadas' },
+    { id: 'invoiced', label: 'Facturadas' },
+    { id: 'rejected', label: 'Rechazadas' },
+]
+
+/** Estado visible de la cotización: facturada manda sobre aprobada. */
+function quoteState(quote: Quote, invoiced: boolean) {
+    if (invoiced) {
+        return {
+            label: 'Facturada',
+            dot: 'bg-green-600',
+            className: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+            border: 'border-l-green-500',
+        }
+    }
+    if (quote.status === 'approved') {
+        return {
+            label: 'Aprobada',
+            dot: 'bg-emerald-500',
+            className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+            border: 'border-l-emerald-500',
+        }
+    }
+    if (quote.status === 'rejected') {
+        return {
+            label: 'Rechazada',
+            dot: 'bg-gray-400',
+            className: 'bg-muted text-muted-foreground',
+            border: 'border-l-gray-300 dark:border-l-gray-600',
+        }
+    }
+    return {
+        label: 'Pendiente',
+        dot: 'bg-amber-500',
+        className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+        border: 'border-l-amber-500',
+    }
+}
+
 export default function QuotesPage() {
     const [quotes, setQuotes] = useState<Quote[]>([])
     const [loading, setLoading] = useState(true)
     const [currentPage, setCurrentPage] = useState(1)
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+    const [expandedId, setExpandedId] = useState<string | null>(null)
+    const [savingStatus, setSavingStatus] = useState<string | null>(null)
     const itemsPerPage = 6
     const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -98,7 +145,6 @@ export default function QuotesPage() {
         return () => {
             active = false
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
     useDataChanged(() => void fetchQuotes())
 
@@ -194,9 +240,44 @@ export default function QuotesPage() {
         }
     }
 
-    const totalPages = Math.ceil(quotes.length / itemsPerPage)
+    const changeStatus = async (quote: Quote, status: QuoteStatus) => {
+        setSavingStatus(quote.id)
+        try {
+            const updated = await setQuoteStatus(quote.id, status)
+            setQuotes((prev) => prev.map((q) => (q.id === quote.id ? { ...q, status: updated.status, decided_at: updated.decided_at } : q)))
+            toast.success(status === 'approved' ? 'Marcada como aprobada' : status === 'rejected' ? 'Marcada como rechazada' : 'Vuelve a quedar pendiente')
+        } catch (e) {
+            console.error(e)
+            toast.error(errorMessage(e))
+        } finally {
+            setSavingStatus(null)
+        }
+    }
+
+    const counts = useMemo(() => {
+        const c = { pending: 0, approved: 0, rejected: 0, pendingAmount: 0 }
+        for (const q of quotes) {
+            if (q.status === 'approved') c.approved += 1
+            else if (q.status === 'rejected') c.rejected += 1
+            else {
+                c.pending += 1
+                if (q.quote_type !== 'hours') c.pendingAmount += Number(q.total_amount || 0)
+            }
+        }
+        return c
+    }, [quotes])
+
+    const filtered = useMemo(() => {
+        if (statusFilter === 'all') return quotes
+        if (statusFilter === 'invoiced') return quotes.filter((q) => !!q.invoice_id)
+        return quotes.filter((q) => q.status === statusFilter)
+    }, [quotes, statusFilter])
+
+    useEffect(() => setCurrentPage(1), [statusFilter])
+
+    const totalPages = Math.ceil(filtered.length / itemsPerPage)
     const startIndex = (currentPage - 1) * itemsPerPage
-    const currentQuotes = quotes.slice(startIndex, startIndex + itemsPerPage)
+    const currentQuotes = filtered.slice(startIndex, startIndex + itemsPerPage)
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
@@ -210,19 +291,50 @@ export default function QuotesPage() {
             </div>
 
             <div>
-                <h2 className="text-lg font-semibold mb-4">Historial de Cotizaciones</h2>
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
+                    <div>
+                        <h2 className="text-lg font-semibold">Historial de Cotizaciones</h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {counts.pending} pendiente{counts.pending === 1 ? '' : 's'} · {counts.approved} aprobada{counts.approved === 1 ? '' : 's'} · {counts.rejected} rechazada{counts.rejected === 1 ? '' : 's'}
+                            {counts.pendingAmount > 0 && <> · <span className="text-amber-600 dark:text-amber-400">${counts.pendingAmount.toFixed(2)} en juego</span></>}
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                        {STATUS_FILTERS.map((f) => (
+                            <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => setStatusFilter(f.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                    statusFilter === f.id
+                                        ? 'bg-teal-600 border-teal-600 text-white'
+                                        : 'border-gray-300 dark:border-gray-600 text-muted-foreground hover:border-teal-400'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className="grid gap-4">
                     {currentQuotes.map((quote) => {
                         const isHours = quote.quote_type === 'hours'
                         const symbol = quote.currency === 'EUR' ? '€' : '$'
                         const invoiced = !!quote.invoice_id && !!invoiceNumbers[quote.id]
+                        const state = quoteState(quote, invoiced)
+                        const expanded = expandedId === quote.id
+                        const items = Array.isArray(quote.items) ? quote.items : []
                         return (
-                            <Card key={quote.id}>
+                            <Card key={quote.id} className={`border-l-4 ${state.border}`}>
                                 <CardContent className="p-4 flex items-center justify-between">
-                                    <div>
-                                        <div className="flex items-center gap-2">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <span className="font-bold text-lg">#{quote.quote_number}</span>
-                                            <span className="text-muted-foreground">
+                                            <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${state.className}`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${state.dot}`} />
+                                                {state.label}
+                                            </span>
+                                            <span className="text-muted-foreground text-sm">
                                                 • {formatDate(quote.issue_date)}
                                             </span>
                                             <span
@@ -251,6 +363,14 @@ export default function QuotesPage() {
                                                 <Receipt className="w-3 h-3" /> Facturada · #{invoiceNumbers[quote.id]}
                                             </Link>
                                         )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedId(expanded ? null : quote.id)}
+                                            className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground hover:text-teal-600"
+                                        >
+                                            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                            {items.length} ítem{items.length === 1 ? '' : 's'}
+                                        </button>
                                     </div>
 
                                     <div className="flex items-center gap-6">
@@ -322,13 +442,56 @@ export default function QuotesPage() {
                                         </div>
                                     </div>
                                 </CardContent>
+
+                                {expanded && (
+                                    <div className="border-t bg-muted/30 px-4 py-3 space-y-3">
+                                        <ul className="space-y-1.5">
+                                            {items.map((it, i) => (
+                                                <li key={i} className="flex items-start justify-between gap-3 text-sm">
+                                                    <div className="min-w-0">
+                                                        <span className="font-medium">{it.service || 'Servicio Profesional'}</span>
+                                                        <span className="text-muted-foreground"> · {it.description}</span>
+                                                    </div>
+                                                    <span className="font-mono text-xs shrink-0 pt-0.5">
+                                                        {isHours
+                                                            ? `${it.hours} h`
+                                                            : `${it.quantity > 1 ? `${it.quantity} × ` : ''}${symbol}${Number(it.unit_price).toFixed(2)}`}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                            {items.length === 0 && <li className="text-sm text-muted-foreground">Sin ítems.</li>}
+                                        </ul>
+
+                                        {!invoiced && (
+                                            <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+                                                <span className="text-xs text-muted-foreground">¿Qué respondió el cliente?</span>
+                                                {QUOTE_STATUSES.map((s) => (
+                                                    <button
+                                                        key={s.id}
+                                                        type="button"
+                                                        onClick={() => changeStatus(quote, s.id)}
+                                                        disabled={savingStatus === quote.id || quote.status === s.id}
+                                                        title={s.hint}
+                                                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors disabled:opacity-100 ${
+                                                            quote.status === s.id
+                                                                ? 'bg-teal-600 border-teal-600 text-white'
+                                                                : 'border-gray-300 dark:border-gray-600 text-muted-foreground hover:border-teal-400'
+                                                        }`}
+                                                    >
+                                                        {s.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </Card>
                         )
                     })}
 
-                    {quotes.length === 0 && !loading && (
+                    {currentQuotes.length === 0 && !loading && (
                         <div className="text-center py-10 text-muted-foreground border rounded-lg border-dashed">
-                            No hay cotizaciones guardadas.
+                            {quotes.length === 0 ? 'No hay cotizaciones guardadas.' : 'No hay cotizaciones con ese filtro.'}
                         </div>
                     )}
 
