@@ -53,8 +53,17 @@ export function periodRange(period: string): { start: string; end: string } {
     return { start, end }
 }
 
-export function todayISO(): string {
-    return new Date().toISOString().split('T')[0]
+/**
+ * Zona horaria del usuario. El servidor corre en UTC, así que usar la fecha del
+ * sistema haría que a partir de las 8 de la noche en Venezuela ya se considere
+ * el día siguiente: una factura emitida de noche saldría fechada mañana.
+ */
+export const USER_TIMEZONE = process.env.USER_TIMEZONE || 'America/Caracas'
+
+/** Fecha de hoy (YYYY-MM-DD) tal como la ve el usuario, no el servidor. */
+export function todayISO(date = new Date()): string {
+    // en-CA da directamente el formato YYYY-MM-DD.
+    return new Intl.DateTimeFormat('en-CA', { timeZone: USER_TIMEZONE }).format(date)
 }
 
 export function round2(n: number): number {

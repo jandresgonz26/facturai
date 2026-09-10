@@ -3,7 +3,7 @@ import { getBriefing } from './briefing'
 import { getDayPlan, getClientSignals, listTasks } from './tasks'
 import { canSend, listNudges, markSent, type NudgeState } from './nudges'
 import { sortByPriority } from '@/lib/task-priority'
-import { todayISO } from './validation'
+import { USER_TIMEZONE, todayISO } from './validation'
 
 /**
  * Decide qué vale la pena decirle al usuario en este momento, como haría un
@@ -37,8 +37,13 @@ export interface Checkin {
 const fmtDate = (d: string) => d.split('T')[0].split('-').reverse().join('/')
 const money = (n: number) => `$${Number(n).toFixed(2)}`
 
+function hourInUserTimezone(now: Date): number {
+    const h = new Intl.DateTimeFormat('en-US', { timeZone: USER_TIMEZONE, hour: 'numeric', hour12: false }).format(now)
+    return Number(h) % 24
+}
+
 export function momentFor(now = new Date()): CheckinMoment {
-    const h = now.getHours()
+    const h = hourInUserTimezone(now)
     if (h < 12) return 'morning'
     if (h < 18) return 'midday'
     return 'evening'
