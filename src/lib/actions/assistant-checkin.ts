@@ -50,6 +50,21 @@ const KIND_EMOJI: Record<string, string> = {
     carried_over: '🔁',
     day_close: '🌙',
     quote_cold: '📄',
+    wip_overload: '🧱',
+    weekly_review: '🧹',
+}
+
+/** Más de esto empezado a la vez y ya no se termina nada. */
+const WIP_LIMIT = 2
+/** Días que puede esperar una tarea sin planificarse antes de repasarla. */
+const STALE_DAYS = 14
+
+const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+
+/** Lunes en la zona del usuario: el día de repasar el montón. */
+function isReviewDay(now: Date): boolean {
+    const day = new Intl.DateTimeFormat('en-US', { timeZone: USER_TIMEZONE, weekday: 'short' }).format(now)
+    return day === 'Mon'
 }
 
 function hourInUserTimezone(now: Date): number {
@@ -122,6 +137,30 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
         }
         if (plan && plan.carriedOver.length > 0) {
             push('carried_over', todayISO(), `Traes **${plan.carriedOver.length} tarea${plan.carriedOver.length === 1 ? '' : 's'}** arrastrándose de días anteriores`)
+        }
+    }
+
+    // Demasiadas cosas empezadas a la vez: es la vía rápida a no terminar ninguna.
+    const doing = allTasks.filter((t) => t.status === 'doing')
+    if (doing.length > WIP_LIMIT) {
+        push('wip_overload', todayISO(), `Tienes **${doing.length} tareas empezadas** a la vez. Terminar una antes de abrir otra te va a costar menos que arrastrarlas todas`)
+    }
+
+    /**
+     * Revisión semanal: la válvula de escape del montón acumulado. Sin esto la
+     * pila crece en silencio, y esa pila es la que genera la sensación de
+     * colapso cuando encima llegan cosas nuevas cada día.
+     */
+    if (moment === 'morning' && isReviewDay(now)) {
+        const stale = allTasks.filter(
+            (t) => t.status === 'todo' && !t.planned_for && daysSince(t.created_at) >= STALE_DAYS
+        )
+        if (stale.length > 0) {
+            push(
+                'weekly_review',
+                todayISO(),
+                `Tienes **${stale.length} tarea${stale.length === 1 ? '' : 's'}** esperando hace más de ${STALE_DAYS} días sin que las planifiques. Repasémoslas: cada una se hace, se parte en algo más chico, o se suelta`
+            )
         }
     }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Banknote, CalendarCheck, Clock, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp, User } from 'lucide-react'
+import { AlertTriangle, CalendarCheck, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-react'
 import { Client, Task, TaskClarity, TaskConsequence, TaskStatus } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,7 @@ import {
     type TaskInput,
 } from '@/lib/actions'
 import { useAgent } from '@/components/agent/AgentProvider'
+import { DayBanner } from '@/components/features/DayBanner'
 import { errorMessage } from '@/lib/actions/validation'
 import {
     BLOCK_META,
@@ -44,6 +45,9 @@ import { emitDataChanged, useDataChanged } from '@/lib/events'
 
 const fmt = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '')
 const todayStr = () => new Date().toISOString().split('T')[0]
+/** Cuántas tarjetas se muestran por columna antes de plegar el resto. */
+const COLLAPSE_AFTER = 6
+
 const fmtMinutes = (m: number) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10} h` : `${m} min`)
 
 const COLUMN_STYLES: Record<TaskStatus, { head: string; dot: string }> = {
@@ -145,7 +149,16 @@ export default function TasksPage() {
     const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
     /** Tarea recién completada que tenía estimación: se pregunta cuánto tomó de verdad. */
     const [measuring, setMeasuring] = useState<Task | null>(null)
+    const [expandedColumns, setExpandedColumns] = useState<Set<TaskStatus>>(new Set())
     const { openWith } = useAgent()
+
+    const toggleColumn = (id: TaskStatus) =>
+        setExpandedColumns((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
 
     const load = async () => {
         try {
@@ -417,32 +430,21 @@ export default function TasksPage() {
 
     return (
         <div className="max-w-6xl mx-auto">
-            <div className="mb-5">
-                <h1 className="text-2xl font-bold">Tareas</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                    La prioridad se calcula sola con tus dos respuestas y lo que el sistema ya sabe de cada cliente.
-                </p>
-            </div>
+            <DayBanner block={block}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className={`text-sm ${block === 'evening' ? 'text-slate-200' : 'text-slate-800'}`}>{agentIntro.title}</p>
+                    <Button size="sm" className="bg-slate-900/90 hover:bg-slate-900 text-white shrink-0" onClick={() => openWith(agentIntro.prompt)}>
+                        <Sparkles className="w-4 h-4" /> {agentIntro.cta}
+                    </Button>
+                </div>
+            </DayBanner>
 
-            {/* Asistente según la franja del día */}
-            {!loading && (
-                <section className="rounded-xl border bg-gradient-to-br from-teal-50 to-sky-50 dark:from-teal-950/40 dark:to-sky-950/30 p-4 mb-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="h-9 w-9 shrink-0 rounded-lg bg-gray-900 dark:bg-gray-700 text-teal-400 flex items-center justify-center">
-                            <agentIntro.icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-sm font-bold">{agentIntro.title}</h2>
-                            <p className="text-xs text-muted-foreground mt-0.5">{agentIntro.text}</p>
-                        </div>
-                        <Button className="bg-teal-600 hover:bg-teal-700 text-white shrink-0" onClick={() => openWith(agentIntro.prompt)}>
-                            <Sparkles className="w-4 h-4" /> {agentIntro.cta}
-                        </Button>
-                    </div>
-
+            {/* Plan del día y lo que se arrastra */}
+            {!loading && (plan.planned.length > 0 || plan.carried.length > 0 || suggestions.length > 0) && (
+                <section className="rounded-xl border bg-card p-4 mb-6">
                     {/* Plan de hoy */}
                     {plan.planned.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-teal-200/60 dark:border-teal-800/40">
+                        <div>
                             <div className="flex items-center justify-between gap-2 mb-2">
                                 <h3 className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
                                     Plan de hoy · {plan.planned.length} tarea{plan.planned.length === 1 ? '' : 's'}
@@ -494,7 +496,7 @@ export default function TasksPage() {
 
                     {/* Arrastradas de días anteriores */}
                     {plan.carried.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40">
+                        <div className="mt-4 pt-3 border-t">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2">
                                 Vienen arrastrándose · {plan.carried.length}
                             </h3>
@@ -519,7 +521,7 @@ export default function TasksPage() {
 
                     {/* Sugerencia por franja cuando aún no hay plan */}
                     {plan.planned.length === 0 && suggestions.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-teal-200/60 dark:border-teal-800/40">
+                        <div>
                             <p className="text-xs text-muted-foreground mb-2">{BLOCK_META[block].hint}</p>
                             <ul className="space-y-1.5">
                                 {suggestions.map(({ task, priority }) => (
@@ -595,6 +597,11 @@ export default function TasksPage() {
                     {TASK_COLUMNS.map((col) => {
                         const items = byColumn[col.id]
                         const isOver = dragOver === col.id
+                        // Ver treinta tarjetas de golpe es justo lo que agobia. Se muestran
+                        // las más prioritarias y el resto queda a un clic.
+                        const expandedCol = expandedColumns.has(col.id)
+                        const visible = expandedCol ? items : items.slice(0, COLLAPSE_AFTER)
+                        const hidden = items.length - visible.length
                         return (
                             <div
                                 key={col.id}
@@ -618,82 +625,57 @@ export default function TasksPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    {items.map((task) => {
+                                    {visible.map((task) => {
                                         const overdue = !!task.due_date && task.status !== 'done' && task.due_date < todayStr()
                                         const priority = scoreTask(task, signals)
                                         const showLabel = task.status !== 'done' && (task.consequence != null || task.clarity != null || task.due_date != null)
+                                        // Contexto condensado en una línea: solo lo que aporta.
+                                        const meta = [
+                                            task.clients?.name,
+                                            task.due_date ? `${overdue ? 'venció' : 'para'} ${fmt(task.due_date)}` : null,
+                                            task.estimated_minutes != null ? fmtMinutes(task.estimated_minutes) : null,
+                                            task.amount != null ? `$${task.amount.toFixed(2)}` : task.hours != null ? `${task.hours}h` : null,
+                                            task.log_id ? 'facturable' : null,
+                                        ].filter(Boolean) as string[]
                                         return (
                                             <article
                                                 key={task.id}
                                                 draggable
                                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
-                                                className="rounded-lg border bg-card p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+                                                onDoubleClick={() => openEdit(task)}
+                                                title={priority.reason}
+                                                className={`group relative rounded-lg border-l-[3px] border bg-card px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                                                    showLabel ? LABEL_META[priority.label].border : 'border-l-transparent'
+                                                }`}
                                             >
-                                                {showLabel && (
-                                                    <div className="flex items-center gap-1.5 mb-1.5">
-                                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${LABEL_META[priority.label].className}`}>
-                                                            {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
-                                                    {task.title}
-                                                </p>
-                                                {showLabel && <p className="text-[11px] text-muted-foreground mt-0.5">{priority.reason}</p>}
-                                                {task.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.notes}</p>}
-
-                                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                                    {task.clients?.name && (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
-                                                            <User className="w-3 h-3" /> {task.clients.name}
+                                                <div className="flex items-start gap-2">
+                                                    {showLabel && (
+                                                        <span className="text-sm leading-5 shrink-0" title={LABEL_META[priority.label].text}>
+                                                            {LABEL_META[priority.label].emoji}
                                                         </span>
                                                     )}
-                                                    {task.due_date && (
-                                                        <span
-                                                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                                                overdue
-                                                                    ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                                                                    : 'bg-muted text-muted-foreground'
-                                                            }`}
-                                                        >
-                                                            {overdue ? 'Vencía ' : 'Para '}
-                                                            {fmt(task.due_date)}
-                                                        </span>
-                                                    )}
-                                                    {task.estimated_minutes != null && (
-                                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                                            ~{fmtMinutes(task.estimated_minutes)}
-                                                            {task.actual_minutes != null && ` · real ${fmtMinutes(task.actual_minutes)}`}
-                                                        </span>
-                                                    )}
-                                                    {task.hours != null && (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                                                            <Clock className="w-3 h-3" /> {task.hours}h
-                                                        </span>
-                                                    )}
-                                                    {task.amount != null && (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                                                            <Banknote className="w-3 h-3" /> {task.amount.toFixed(2)}
-                                                        </span>
-                                                    )}
-                                                    {task.log_id && (
-                                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                                                            Registrada para facturar
-                                                        </span>
-                                                    )}
+                                                    <p className={`flex-1 text-sm leading-5 ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+                                                        {task.title}
+                                                    </p>
                                                 </div>
 
-                                                <div className="flex items-center gap-1 mt-2 pt-2 border-t">
+                                                {/* Una sola línea de contexto, en vez de una fila de etiquetas. */}
+                                                {meta.length > 0 && (
+                                                    <p className="mt-1 text-[11px] text-muted-foreground truncate">
+                                                        {meta.join(' · ')}
+                                                    </p>
+                                                )}
+
+                                                {/* Las acciones solo aparecen al pasar por encima. */}
+                                                <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md bg-card/95 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                                     {task.status !== 'done' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => togglePlan(task, task.planned_for === today ? null : today)}
                                                             title={task.planned_for === today ? 'Sacar del plan de hoy' : 'Poner en el plan de hoy'}
-                                                            className={`p-1.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900/20 ${
-                                                                task.planned_for === today ? 'text-teal-600' : 'text-muted-foreground'
-                                                            }`}
+                                                            className={`p-1 rounded hover:bg-muted ${task.planned_for === today ? 'text-teal-600' : 'text-muted-foreground'}`}
                                                         >
-                                                            <CalendarCheck className="w-4 h-4" />
+                                                            <CalendarCheck className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
                                                     {canRegister(task) && (
@@ -702,32 +684,40 @@ export default function TasksPage() {
                                                             onClick={() => handleRegister(task)}
                                                             disabled={working}
                                                             title="Registrar como ítem pendiente de facturar"
-                                                            className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40"
+                                                            className="p-1 rounded text-emerald-600 hover:bg-muted disabled:opacity-40"
                                                         >
-                                                            <ReceiptText className="w-4 h-4" />
+                                                            <ReceiptText className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openEdit(task)}
-                                                        title="Editar"
-                                                        className="p-1.5 rounded text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20"
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
+                                                    <button type="button" onClick={() => openEdit(task)} title="Editar" className="p-1 rounded text-muted-foreground hover:bg-muted">
+                                                        <Pencil className="w-3.5 h-3.5" />
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setToDelete(task)}
-                                                        title="Eliminar"
-                                                        className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 ml-auto"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
+                                                    <button type="button" onClick={() => setToDelete(task)} title="Eliminar" className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-muted">
+                                                        <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
                                                 </div>
                                             </article>
                                         )
                                     })}
 
+                                    {hidden > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleColumn(col.id)}
+                                            className="w-full text-xs text-muted-foreground hover:text-teal-600 py-1.5"
+                                        >
+                                            Ver {hidden} más
+                                        </button>
+                                    )}
+                                    {expandedCol && items.length > COLLAPSE_AFTER && (
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleColumn(col.id)}
+                                            className="w-full text-xs text-muted-foreground hover:text-teal-600 py-1.5"
+                                        >
+                                            Mostrar menos
+                                        </button>
+                                    )}
                                     {items.length === 0 && (
                                         <p className="text-xs text-muted-foreground text-center py-6">Sin tareas aquí</p>
                                     )}

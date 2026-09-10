@@ -60,11 +60,11 @@ export interface TaskPriority {
     reason: string
 }
 
-export const LABEL_META: Record<TaskLabel, { text: string; emoji: string; className: string }> = {
-    now: { text: 'Hazla ya', emoji: '🔥', className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
-    frog: { text: 'El sapo', emoji: '🐸', className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' },
-    quick: { text: 'Ganar rápido', emoji: '⚡', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
-    later: { text: 'Puede esperar', emoji: '🌱', className: 'bg-muted text-muted-foreground' },
+export const LABEL_META: Record<TaskLabel, { text: string; emoji: string; className: string; border: string }> = {
+    now: { text: 'Hazla ya', emoji: '🔥', className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300', border: 'border-l-red-500' },
+    frog: { text: 'El sapo', emoji: '🐸', className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300', border: 'border-l-violet-500' },
+    quick: { text: 'Ganar rápido', emoji: '⚡', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300', border: 'border-l-amber-500' },
+    later: { text: 'Puede esperar', emoji: '🌱', className: 'bg-muted text-muted-foreground', border: 'border-l-transparent' },
 }
 
 function daysUntil(date: string, today: string): number {

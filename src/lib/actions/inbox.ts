@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { ActionError, uuidSchema, parseInput } from './validation'
 import { createTask } from './tasks'
+import { classifyNoise } from '@/lib/inbox-noise'
 import type { Task } from '@/types'
 
 /**
@@ -25,6 +26,9 @@ export interface InboxItem {
     dismissed: boolean
     synced_at: string
     clients?: { name: string } | null
+    /** Calculado al leer, no almacenado. */
+    is_noise?: boolean
+    noise_reason?: string | null
 }
 
 const SELECT = '*, clients(name)'
@@ -32,16 +36,34 @@ const SELECT = '*, clients(name)'
 export interface InboxFilters {
     /** Excluye los descartados y los que ya son tarea. */
     pending_only?: boolean
+    /** Incluye el correo automático que normalmente se oculta. */
+    include_noise?: boolean
     limit?: number
 }
 
+/** Remitentes que el usuario silenció a fuerza de descartarlos. */
+async function mutedSenders(): Promise<Set<string>> {
+    const { data } = await supabase.from('muted_senders').select('from_email').eq('muted', true)
+    return new Set(((data || []) as { from_email: string }[]).map((m) => m.from_email.toLowerCase()))
+}
+
+/**
+ * El veredicto de ruido se calcula aquí y no se guarda: así, al afinar las
+ * reglas, también se reclasifica lo que ya estaba sincronizado.
+ */
 export async function listInboxItems(filters: InboxFilters = {}): Promise<InboxItem[]> {
     let query = supabase.from('inbox_items').select(SELECT).order('sent_at', { ascending: false })
     if (filters.pending_only) query = query.eq('dismissed', false).is('task_id', null)
-    query = query.limit(filters.limit ?? 40)
+    query = query.limit(filters.limit ?? 60)
     const { data, error } = await query
     if (error) throw new ActionError(`No se pudieron cargar los correos: ${error.message}`)
-    return (data || []) as InboxItem[]
+
+    const muted = await mutedSenders().catch(() => new Set<string>())
+    const rows = ((data || []) as InboxItem[]).map((i) => {
+        const verdict = classifyNoise(i.from_email, i.subject, { isKnownClient: !!i.client_id, mutedSenders: muted })
+        return { ...i, is_noise: verdict.isNoise, noise_reason: verdict.reason }
+    })
+    return filters.include_noise ? rows : rows.filter((i) => !i.is_noise)
 }
 
 export async function getInboxItem(id: string): Promise<InboxItem> {
@@ -51,11 +73,49 @@ export async function getInboxItem(id: string): Promise<InboxItem> {
     return data as InboxItem
 }
 
-/** "Este no me interesa": deja de proponerse, sin borrar el registro. */
-export async function dismissInboxItem(id: string): Promise<void> {
+/** A partir de cuántos descartes se silencia solo a un remitente. */
+const MUTE_AFTER = 2
+
+/**
+ * "Este no me interesa": deja de proponerse, sin borrar el registro. Además
+ * lleva la cuenta por remitente: si el usuario descarta lo mismo dos veces,
+ * ese remitente se silencia solo y deja de aparecer en el futuro. Es la parte
+ * que hace que el filtro mejore con el uso en vez de quedarse fijo.
+ */
+export async function dismissInboxItem(id: string): Promise<{ senderMuted: boolean; from_email: string }> {
     parseInput(uuidSchema, id)
+    const item = await getInboxItem(id)
+
     const { error } = await supabase.from('inbox_items').update({ dismissed: true }).eq('id', id)
     if (error) throw new ActionError(`No se pudo descartar el correo: ${error.message}`)
+
+    // A un cliente conocido nunca se le silencia por descartar un correo suyo.
+    if (item.client_id) return { senderMuted: false, from_email: item.from_email }
+
+    const email = item.from_email.toLowerCase()
+    const { data: existing } = await supabase.from('muted_senders').select('id, dismissals, muted').eq('from_email', email).maybeSingle()
+    const dismissals = (existing?.dismissals ?? 0) + 1
+    const muted = dismissals >= MUTE_AFTER
+
+    if (existing) {
+        await supabase.from('muted_senders').update({ dismissals, muted, updated_at: new Date().toISOString() }).eq('id', existing.id)
+    } else {
+        await supabase.from('muted_senders').insert({ from_email: email, dismissals, muted })
+    }
+    return { senderMuted: muted, from_email: email }
+}
+
+/** Deshace el silenciado de un remitente ("vuélveme a mostrar los de X"). */
+export async function unmuteSender(fromEmail: string): Promise<void> {
+    const email = fromEmail.toLowerCase().trim()
+    const { error } = await supabase.from('muted_senders').update({ muted: false, dismissals: 0 }).eq('from_email', email)
+    if (error) throw new ActionError(`No se pudo reactivar ese remitente: ${error.message}`)
+}
+
+export async function listMutedSenders(): Promise<{ from_email: string; dismissals: number }[]> {
+    const { data, error } = await supabase.from('muted_senders').select('from_email, dismissals').eq('muted', true).order('updated_at', { ascending: false })
+    if (error) throw new ActionError(`No se pudieron cargar los remitentes silenciados: ${error.message}`)
+    return (data || []) as { from_email: string; dismissals: number }[]
 }
 
 /**

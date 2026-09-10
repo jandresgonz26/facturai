@@ -156,6 +156,8 @@ async function main() {
     const byEmail = new Map(clients.map((c) => [String(c.email).toLowerCase().trim(), c.id]))
     for (const r of rows) r.client_id = byEmail.get(r.from_email) ?? null
 
+    // El filtro de ruido se aplica al leer, no aquí: así mejorar las reglas
+    // también reclasifica lo ya sincronizado, en vez de congelar el veredicto.
     if (DRY) {
         console.log('\n--- prueba en seco, no se sube nada ---')
         for (const r of rows) {
