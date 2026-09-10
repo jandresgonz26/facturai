@@ -220,6 +220,17 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 rows: [{ label: 'Asunto', value: str(input.subject) ?? '-' }],
                 note: 'No se vuelve a proponer. El correo no se toca en tu buzón.',
             }
+        case 'set_availability': {
+            const ws = Array.isArray(input.windows) ? (input.windows as Rec[]) : []
+            return {
+                title: 'Guardar tu disponibilidad',
+                rows: [
+                    { label: 'Día', value: input.date ? dateLabel(str(input.date)) : 'Hoy' },
+                    { label: 'Puedes trabajar', value: ws.map((w) => `${str(w.start)}–${str(w.end)}`).join(' y ') || '-' },
+                ],
+                note: 'Con esto se recalcula el horario del día.',
+            }
+        }
         case 'plan_task':
             return {
                 title: input.date ? 'Comprometer tarea para un día' : 'Sacar la tarea del plan',
@@ -405,6 +416,18 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             }
         case 'dismiss_inbox_item':
             return { title: 'Correo descartado', lines: [str(d.subject) ?? ''] }
+        case 'set_availability': {
+            const bloques = Array.isArray(d.bloques) ? (d.bloques as Rec[]) : []
+            const noCaben = Array.isArray(d.no_caben) ? (d.no_caben as string[]) : []
+            return {
+                title: 'Horario actualizado',
+                lines: [
+                    `Disponible ${str(d.disponibilidad) ?? ''}`,
+                    ...bloques.slice(0, 6).map((b) => `${str(b.hora)} · ${str(b.tarea)}`),
+                    ...(noCaben.length ? [`No caben hoy: ${noCaben.join(', ')}`] : []),
+                ],
+            }
+        }
         case 'plan_task': {
             const n = num(d.postponed_count) ?? 0
             return {

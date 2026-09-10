@@ -26,6 +26,7 @@ export const WRITE_TOOLS = [
     'complete_task',
     'register_task_as_log',
     'plan_task',
+    'set_availability',
     'create_task_from_email',
     'dismiss_inbox_item',
 ] as const
@@ -71,6 +72,8 @@ export const TOOL_LABELS: Record<string, string> = {
     list_tasks: 'Consultando tus tareas',
     what_should_i_do_now: 'Viendo qué conviene hacer ahora',
     get_day_plan: 'Revisando el plan del día',
+    get_day_schedule: 'Armando tu horario',
+    set_availability: 'Guardar tu disponibilidad',
     list_inbox_items: 'Revisando tu correo',
     create_task_from_email: 'Convertir el correo en tarea',
     dismiss_inbox_item: 'Descartar el correo',

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import * as actions from '@/lib/actions'
 import { dateSchema, periodSchema, uuidSchema, errorMessage } from '@/lib/actions/validation'
 import { BLOCK_META, currentBlock, emptySignals, scoreTask, sortByPriority, suggestNow } from '@/lib/task-priority'
+import { formatTime } from '@/lib/schedule'
 
 /** Resultado uniforme: el modelo siempre recibe ok/data o ok/error legible. */
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -710,6 +711,60 @@ export const agentTools = {
                     estimated_minutes: plan.estimatedMinutes,
                     capacity_minutes: plan.capacityMinutes,
                     over_capacity: plan.estimatedMinutes > plan.capacityMinutes,
+                }
+            }),
+    }),
+
+    get_day_schedule: tool({
+        description:
+            'Horario del día ya armado: a qué hora cae cada tarea del plan según el tiempo disponible, cuánto queda libre y qué NO cabe. Úsalo para "¿cómo me organizo hoy?", "¿me da tiempo?", "¿a qué hora hago X?". Sin fecha, hoy.',
+        inputSchema: z.object({ date: optionalDate.describe('YYYY-MM-DD; omítelo para hoy') }),
+        execute: async ({ date }) =>
+            run(async () => {
+                const s = await actions.getDaySchedule(date)
+                return {
+                    day: s.day,
+                    disponibilidad: actions.describeWindows(s.windows),
+                    usando_horario_estandar: s.usingDefaults,
+                    minutos_libres: s.freeMinutes,
+                    bloques: s.blocks.map((b) => ({
+                        hora: formatTime(b.start),
+                        hasta: formatTime(b.end),
+                        tarea: b.task.title,
+                        cliente: b.task.clients?.name ?? null,
+                        prioridad: b.priority.label,
+                        en_curso: b.inProgress,
+                    })),
+                    no_caben: s.overflow.map((o) => o.task.title),
+                }
+            }),
+    }),
+
+    set_availability: tool({
+        description:
+            'Guarda desde cuándo y hasta cuándo el usuario puede trabajar un día, y recalcula su horario. Requiere confirmación. Úsalo cuando diga cosas como "hoy no puedo hasta las 2", "me desocupo a las 4", "tengo reunión de 3 a 4" o "mañana solo trabajo en la mañana". IMPORTANTE: se guardan las franjas LIBRES, no las ocupadas. Si tiene una reunión en medio, parte el día en dos franjas (por ejemplo 14:00-15:00 y 16:00-18:00). Horas en formato 24h HH:MM.',
+        inputSchema: z.object({
+            date: optionalDate.describe('YYYY-MM-DD; omítelo para hoy'),
+            windows: z
+                .array(
+                    z.object({
+                        start: z.string().describe('HH:MM en formato 24 horas'),
+                        end: z.string().describe('HH:MM en formato 24 horas'),
+                        note: optionalText.describe('Motivo, si lo dijo (ej. "vuelvo de una diligencia")'),
+                    })
+                )
+                .min(1)
+                .describe('Las franjas en las que SÍ puede trabajar'),
+        }),
+        execute: async ({ date, windows }) =>
+            run(async () => {
+                const saved = await actions.setAvailability({ day: date, windows })
+                const schedule = await actions.getDaySchedule(date)
+                return {
+                    disponibilidad: actions.describeWindows(saved),
+                    minutos_libres: schedule.freeMinutes,
+                    bloques: schedule.blocks.map((b) => ({ hora: formatTime(b.start), tarea: b.task.title })),
+                    no_caben: schedule.overflow.map((o) => o.task.title),
                 }
             }),
     }),

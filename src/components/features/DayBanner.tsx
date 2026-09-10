@@ -9,24 +9,35 @@ import type { DayBlock } from '@/lib/task-priority'
  * qué momento del día estás, que es lo que decide qué conviene hacer.
  */
 
-const SCENES: Record<DayBlock, { sky: string; ground: string; accent: string; label: string }> = {
+/**
+ * Cada escena define también su velo y su color de texto. El texto se apoya
+ * siempre sobre ese velo, así se lee igual de bien tanto si detrás hay cielo
+ * claro, el sol o una montaña.
+ */
+const SCENES: Record<DayBlock, { sky: string; ground: string; accent: string; label: string; scrim: string; text: string }> = {
     morning: {
         sky: 'from-amber-200 via-orange-200 to-sky-300 dark:from-amber-900/70 dark:via-orange-900/50 dark:to-sky-900/60',
         ground: 'text-emerald-700/70 dark:text-emerald-950',
         accent: 'text-amber-500',
         label: 'Buenos días',
+        scrim: 'from-white/70 via-white/35 to-transparent dark:from-slate-950/80 dark:via-slate-950/45 dark:to-transparent',
+        text: 'text-slate-900 dark:text-slate-50',
     },
     afternoon: {
         sky: 'from-sky-300 via-sky-200 to-amber-100 dark:from-sky-900/70 dark:via-sky-800/50 dark:to-amber-900/40',
         ground: 'text-emerald-800/70 dark:text-emerald-950',
         accent: 'text-amber-400',
         label: 'Buenas tardes',
+        scrim: 'from-white/70 via-white/35 to-transparent dark:from-slate-950/80 dark:via-slate-950/45 dark:to-transparent',
+        text: 'text-slate-900 dark:text-slate-50',
     },
     evening: {
         sky: 'from-indigo-900 via-slate-900 to-slate-950',
         ground: 'text-slate-950',
         accent: 'text-slate-100',
         label: 'Buenas noches',
+        scrim: 'from-slate-950/80 via-slate-950/40 to-transparent',
+        text: 'text-slate-50',
     },
 }
 
@@ -98,18 +109,21 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
                 <path d="M0 80 L55 46 L110 74 L170 40 L225 76 L290 50 L345 78 L400 58 L400 80 Z" fill="currentColor" />
             </svg>
 
+            {/* Velo bajo el texto: garantiza contraste sin tapar la escena. */}
+            <div className={`absolute inset-x-0 bottom-0 h-full bg-gradient-to-t ${scene.scrim}`} aria-hidden />
+
             {/* Contenido */}
-            <div className="relative px-5 py-5 sm:px-6 sm:py-6">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div className={block === 'evening' ? 'text-slate-100' : 'text-slate-900'}>
-                        <p className="text-2xl font-bold leading-none tracking-tight">{scene.label}</p>
-                        <p className="mt-1.5 text-sm capitalize opacity-80">{fecha}</p>
+            <div className={`relative px-5 py-6 sm:px-7 sm:py-7 ${scene.text}`}>
+                <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+                    <div>
+                        <h1 className="text-[1.75rem] sm:text-3xl font-semibold leading-none tracking-tight">{scene.label}</h1>
+                        <p className="mt-2 text-[13px] font-medium capitalize opacity-75 tracking-wide">{fecha}</p>
                     </div>
-                    <p className={`text-3xl font-light tabular-nums ${block === 'evening' ? 'text-slate-100' : 'text-slate-900'}`}>
+                    <p className="text-4xl sm:text-5xl font-extralight tabular-nums leading-none tracking-tight opacity-95">
                         {hora}
                     </p>
                 </div>
-                {children && <div className="mt-4">{children}</div>}
+                {children && <div className="mt-5">{children}</div>}
             </div>
         </section>
     )

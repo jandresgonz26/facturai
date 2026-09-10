@@ -19,6 +19,7 @@ import {
     listClients,
     listTasks,
     moveTask,
+    getAvailability,
     planTask,
     registerTaskAsLog,
     updateTask,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/actions'
 import { useAgent } from '@/components/agent/AgentProvider'
 import { DayBanner } from '@/components/features/DayBanner'
+import { DaySchedule } from '@/components/features/DaySchedule'
 import { errorMessage } from '@/lib/actions/validation'
 import {
     BLOCK_META,
@@ -42,6 +44,7 @@ import {
     type ClientSignals,
 } from '@/lib/task-priority'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
+import { nowMinutesIn, type Window } from '@/lib/schedule'
 
 const fmt = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '')
 const todayStr = () => new Date().toISOString().split('T')[0]
@@ -150,6 +153,7 @@ export default function TasksPage() {
     /** Tarea recién completada que tenía estimación: se pregunta cuánto tomó de verdad. */
     const [measuring, setMeasuring] = useState<Task | null>(null)
     const [expandedColumns, setExpandedColumns] = useState<Set<TaskStatus>>(new Set())
+    const [windows, setWindows] = useState<Window[]>([])
     const { openWith } = useAgent()
 
     const toggleColumn = (id: TaskStatus) =>
@@ -162,10 +166,16 @@ export default function TasksPage() {
 
     const load = async () => {
         try {
-            const [t, c, s] = await Promise.all([listTasks(), listClients(), getClientSignals().catch(() => emptySignals())])
+            const [t, c, s, w] = await Promise.all([
+                listTasks(),
+                listClients(),
+                getClientSignals().catch(() => emptySignals()),
+                getAvailability().catch(() => []),
+            ])
             setTasks(t)
             setClients(c)
             setSignals(s)
+            setWindows(w)
         } catch (e) {
             toast.error(errorMessage(e))
         } finally {
@@ -432,12 +442,32 @@ export default function TasksPage() {
         <div className="max-w-6xl mx-auto">
             <DayBanner block={block}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className={`text-sm ${block === 'evening' ? 'text-slate-200' : 'text-slate-800'}`}>{agentIntro.title}</p>
-                    <Button size="sm" className="bg-slate-900/90 hover:bg-slate-900 text-white shrink-0" onClick={() => openWith(agentIntro.prompt)}>
+                    <p className="text-sm opacity-90">{agentIntro.title}</p>
+                    <Button
+                        size="sm"
+                        className="shrink-0 bg-white/85 text-slate-900 hover:bg-white dark:bg-slate-100/90 dark:hover:bg-white backdrop-blur-sm shadow-sm"
+                        onClick={() => openWith(agentIntro.prompt)}
+                    >
                         <Sparkles className="w-4 h-4" /> {agentIntro.cta}
                     </Button>
                 </div>
             </DayBanner>
+
+            {/* Horario del día */}
+            {!loading && (
+                <DaySchedule
+                    tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
+                    windows={windows}
+                    signals={signals}
+                    nowMinutes={nowMinutesIn(Intl.DateTimeFormat().resolvedOptions().timeZone)}
+                    usingDefaults={windows.length === 0}
+                    onAskAssistant={() =>
+                        openWith(
+                            'Ayúdame a ajustar mi horario de hoy. Te digo desde cuándo estoy disponible y me repartes las tareas del plan.'
+                        )
+                    }
+                />
+            )}
 
             {/* Plan del día y lo que se arrastra */}
             {!loading && (plan.planned.length > 0 || plan.carried.length > 0 || suggestions.length > 0) && (
