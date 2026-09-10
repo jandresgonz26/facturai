@@ -616,6 +616,13 @@ export const agentTools = {
             }),
     }),
 
+    list_starred_emails: tool({
+        description:
+            'Correos que el usuario marcó con estrella en su cliente de correo y que podrían convertirse en tareas. Devuelve remitente, asunto, fecha, si el remitente coincide con un cliente de la lista (client_id/client_name) y si ya se creó una tarea desde ese correo (already_task). Úsala cuando pregunte por su correo, por pendientes que le hayan llegado, o al armar el plan del día. Si un correo ya tiene tarea, NO lo vuelvas a proponer.',
+        inputSchema: z.object({ limit: z.number().int().min(1).max(30).optional() }),
+        execute: async ({ limit }) => run(() => actions.listStarredSuggestions(limit ?? 15)),
+    }),
+
     get_day_plan: tool({
         description:
             'El plan de un día: qué tareas están comprometidas para ese día, cuáles se arrastran de días anteriores sin cerrarse, cuáles están disponibles para elegir, y cuánto tiempo estimado suman contra lo que cabe en un día realista (capacity_minutes). Úsala al armar el plan de la mañana y al revisar el cierre del día. Sin fecha, usa hoy.',
@@ -713,10 +720,11 @@ export const agentTools = {
                 .optional()
                 .describe('Si ya sabe cómo hacerla: known (mecánica, la ha hecho antes), partial (hay que investigar un poco), unknown (no sabe por dónde empezar)'),
             estimated_minutes: z.number().int().positive().optional().describe('SOLO si el usuario dice cuánto cree que le toma, en minutos'),
+            source_email_id: optionalText.describe('Si la tarea nace de un correo de list_starred_emails, copia aquí su id tal cual, para no duplicarla después'),
         }),
-        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes }) =>
+        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id }) =>
             run(async () => {
-                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount, consequence, clarity, estimated_minutes })
+                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id })
                 const priority = scoreTask(task, await actions.getClientSignals().catch(() => emptySignals()))
                 return {
                     id: task.id,

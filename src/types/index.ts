@@ -181,6 +181,8 @@ export interface Task {
     planned_for?: string | null
     /** Veces que se empujó a otro día: delata la tarea que estás evitando. */
     postponed_count?: number | null
+    /** Correo del que nació la tarea, si vino de la bandeja. */
+    source_email_id?: string | null
     /** Ítem facturable ya generado desde esta tarea; si existe, no se puede registrar de nuevo. */
     log_id?: string | null
     completed_at?: string | null

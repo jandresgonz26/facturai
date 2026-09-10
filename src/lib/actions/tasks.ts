@@ -29,6 +29,8 @@ export const taskInputSchema = z.object({
     consequence: z.preprocess(blankToNull, z.enum(['none', 'client_waiting', 'payment_delayed', 'client_at_risk']).nullable().optional()),
     clarity: z.preprocess(blankToNull, z.enum(['known', 'partial', 'unknown']).nullable().optional()),
     estimated_minutes: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable().optional()),
+    /** Message-Id del correo del que nació la tarea, para no duplicarla. */
+    source_email_id: z.preprocess(blankToNull, z.string().trim().max(500).nullable().optional()),
 })
 export type TaskInput = z.input<typeof taskInputSchema>
 
@@ -44,6 +46,7 @@ function toRow(input: z.infer<typeof taskInputSchema>) {
         consequence: input.consequence ?? null,
         clarity: input.clarity ?? null,
         estimated_minutes: input.estimated_minutes ?? null,
+        source_email_id: input.source_email_id ?? null,
     }
 }
 

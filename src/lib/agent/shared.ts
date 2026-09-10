@@ -69,6 +69,7 @@ export const TOOL_LABELS: Record<string, string> = {
     list_tasks: 'Consultando tus tareas',
     what_should_i_do_now: 'Viendo qué conviene hacer ahora',
     get_day_plan: 'Revisando el plan del día',
+    list_starred_emails: 'Revisando tus correos marcados',
     plan_task: 'Poner la tarea en el plan del día',
     create_task: 'Crear tarea',
     complete_task: 'Marcar tarea como hecha',
