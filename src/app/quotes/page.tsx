@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Client, EmailLog, Quote, QuoteStatus } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
@@ -80,6 +80,7 @@ export default function QuotesPage() {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [savingStatus, setSavingStatus] = useState<string | null>(null)
+    const formRef = useRef<HTMLDivElement>(null)
     const itemsPerPage = 6
     const [quoteToDelete, setQuoteToDelete] = useState<Quote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -150,9 +151,9 @@ export default function QuotesPage() {
 
     const startEdit = (quote: Quote) => {
         setQuoteToEdit(quote)
-        if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' })
-        }
+        // El scroll no lo hace la ventana sino el <main> del layout, así que
+        // window.scrollTo no serviría: se sube al formulario directamente.
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
 
     const handleSaved = () => {
@@ -281,7 +282,7 @@ export default function QuotesPage() {
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
-            <div>
+            <div ref={formRef} className="scroll-mt-4">
                 <h1 className="text-2xl font-bold mb-6">Cotizaciones</h1>
                 <QuoteForm
                     onSaved={handleSaved}
