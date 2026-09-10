@@ -1,0 +1,37 @@
+name: Asistente proactivo
+
+# Avisos del asistente por Telegram. Las horas están en UTC; Venezuela es
+# UTC-4, así que se restan 4 horas respecto a la hora local deseada.
+#   12:00 UTC = 08:00 en Venezuela  (mañana: plan del día)
+#   18:00 UTC = 14:00 en Venezuela  (media jornada: solo si algo urge)
+#   22:00 UTC = 18:00 en Venezuela  (cierre del día)
+on:
+  schedule:
+    - cron: '0 12 * * 1-6'
+    - cron: '0 18 * * 1-6'
+    - cron: '0 22 * * 1-6'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Probar sin enviar el mensaje'
+        type: boolean
+        default: true
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar al asistente
+        run: |
+          URL="${{ secrets.APP_BASE_URL }}/api/cron/checkin"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            URL="$URL?dry_run=1"
+          fi
+          echo "Llamando a $URL"
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$URL" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}")
+          echo "HTTP $code"
+          cat /tmp/out.json
+          echo
+          # Un fallo del servidor no debe pasar desapercibido.
+          if [ "$code" != "200" ]; then exit 1; fi
