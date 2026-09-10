@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Banknote, Clock, Pencil, Plus, ReceiptText, Trash2, User } from 'lucide-react'
-import { Client, Task, TaskStatus } from '@/types'
+import { Banknote, Clock, Pencil, Plus, ReceiptText, Sparkles, Trash2, TrendingUp, User } from 'lucide-react'
+import { Client, Task, TaskClarity, TaskConsequence, TaskStatus } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +14,7 @@ import {
     TASK_COLUMNS,
     createTask,
     deleteTask,
+    getClientSignals,
     listClients,
     listTasks,
     moveTask,
@@ -22,10 +23,25 @@ import {
     type TaskInput,
 } from '@/lib/actions'
 import { errorMessage } from '@/lib/actions/validation'
+import {
+    BLOCK_META,
+    CLARITY_OPTIONS,
+    CONSEQUENCE_OPTIONS,
+    ESTIMATE_OPTIONS,
+    LABEL_META,
+    computeDrift,
+    currentBlock,
+    emptySignals,
+    scoreTask,
+    sortByPriority,
+    suggestNow,
+    type ClientSignals,
+} from '@/lib/task-priority'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 
 const fmt = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '')
 const todayStr = () => new Date().toISOString().split('T')[0]
+const fmtMinutes = (m: number) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10} h` : `${m} min`)
 
 const COLUMN_STYLES: Record<TaskStatus, { head: string; dot: string }> = {
     todo: { head: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
@@ -40,9 +56,22 @@ type FormValues = {
     due_date: string
     hours: string
     amount: string
+    consequence: TaskConsequence | ''
+    clarity: TaskClarity | ''
+    estimated_minutes: string
 }
 
-const emptyForm = (): FormValues => ({ title: '', notes: '', client_id: '', due_date: '', hours: '', amount: '' })
+const emptyForm = (): FormValues => ({
+    title: '',
+    notes: '',
+    client_id: '',
+    due_date: '',
+    hours: '',
+    amount: '',
+    consequence: '',
+    clarity: '',
+    estimated_minutes: '',
+})
 
 const toInput = (v: FormValues, status: TaskStatus): TaskInput => ({
     title: v.title.trim(),
@@ -52,17 +81,58 @@ const toInput = (v: FormValues, status: TaskStatus): TaskInput => ({
     due_date: v.due_date || null,
     hours: v.hours ? Number(v.hours) : null,
     amount: v.amount ? Number(v.amount) : null,
+    consequence: v.consequence || null,
+    clarity: v.clarity || null,
+    estimated_minutes: v.estimated_minutes ? Number(v.estimated_minutes) : null,
 })
+
+/** Fila de opciones en forma de chips: una pregunta se responde con un toque. */
+function ChipGroup<T extends string>({
+    question,
+    options,
+    value,
+    onChange,
+}: {
+    question: string
+    options: { id: T; label: string }[]
+    value: T | ''
+    onChange: (next: T | '') => void
+}) {
+    return (
+        <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">{question}</p>
+            <div className="flex flex-wrap gap-1.5">
+                {options.map((o) => {
+                    const active = value === o.id
+                    return (
+                        <button
+                            key={o.id}
+                            type="button"
+                            onClick={() => onChange(active ? '' : o.id)}
+                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                active
+                                    ? 'bg-teal-600 border-teal-600 text-white'
+                                    : 'border-gray-300 dark:border-gray-600 text-muted-foreground hover:border-teal-400'
+                            }`}
+                        >
+                            {o.label}
+                        </button>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
 
 export default function TasksPage() {
     const [tasks, setTasks] = useState<Task[]>([])
     const [clients, setClients] = useState<Client[]>([])
+    const [signals, setSignals] = useState<ClientSignals>(emptySignals())
     const [loading, setLoading] = useState(true)
     const [working, setWorking] = useState(false)
 
-    const [newTitle, setNewTitle] = useState('')
-    const [detailsOpen, setDetailsOpen] = useState(false)
     const [newForm, setNewForm] = useState<FormValues>(emptyForm())
+    const [detailsOpen, setDetailsOpen] = useState(false)
 
     const [editing, setEditing] = useState<Task | null>(null)
     const [editForm, setEditForm] = useState<FormValues>(emptyForm())
@@ -70,12 +140,15 @@ export default function TasksPage() {
 
     const [toDelete, setToDelete] = useState<Task | null>(null)
     const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
+    /** Tarea recién completada que tenía estimación: se pregunta cuánto tomó de verdad. */
+    const [measuring, setMeasuring] = useState<Task | null>(null)
 
     const load = async () => {
         try {
-            const [t, c] = await Promise.all([listTasks(), listClients()])
+            const [t, c, s] = await Promise.all([listTasks(), listClients(), getClientSignals().catch(() => emptySignals())])
             setTasks(t)
             setClients(c)
+            setSignals(s)
         } catch (e) {
             toast.error(errorMessage(e))
         } finally {
@@ -90,23 +163,28 @@ export default function TasksPage() {
     const byColumn = useMemo(() => {
         const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [] }
         for (const t of tasks) map[t.status]?.push(t)
+        // Dentro de cada columna, lo más urgente primero (las hechas se dejan como están).
+        map.todo = sortByPriority(map.todo, signals)
+        map.doing = sortByPriority(map.doing, signals)
         return map
-    }, [tasks])
+    }, [tasks, signals])
+
+    const block = currentBlock()
+    const suggestions = useMemo(() => suggestNow(tasks, signals), [tasks, signals])
+    const drift = useMemo(() => computeDrift(tasks), [tasks])
 
     const billableClients = clients.filter((c) => c.billing_modality !== 'hour_bag' || c.parent_client_id)
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault()
-        const values = detailsOpen ? { ...newForm, title: newTitle } : { ...emptyForm(), title: newTitle }
-        if (!values.title.trim()) {
+        if (!newForm.title.trim()) {
             toast.error('Escribe de qué se trata la tarea')
             return
         }
         setWorking(true)
         try {
-            const created = await createTask(toInput(values, 'todo'))
+            const created = await createTask(toInput(newForm, 'todo'))
             setTasks((prev) => [...prev, created])
-            setNewTitle('')
             setNewForm(emptyForm())
             setDetailsOpen(false)
             toast.success('Tarea creada')
@@ -117,17 +195,37 @@ export default function TasksPage() {
         }
     }
 
+    const applyMove = async (task: Task, status: TaskStatus) => {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)))
+        try {
+            const updated = await moveTask(task.id, status)
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            // Si tenía estimación y aún no se midió, se pregunta cuánto tomó (opcional).
+            if (status === 'done' && updated.estimated_minutes != null && updated.actual_minutes == null) {
+                setMeasuring(updated)
+            }
+        } catch (e) {
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)))
+            toast.error(errorMessage(e))
+        }
+    }
+
     const handleDrop = async (status: TaskStatus, taskId: string) => {
         setDragOver(null)
         const task = tasks.find((t) => t.id === taskId)
         if (!task || task.status === status) return
-        // Optimista: se mueve en pantalla y, si falla, se revierte.
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)))
+        await applyMove(task, status)
+    }
+
+    const saveActual = async (minutes: number | null) => {
+        const task = measuring
+        setMeasuring(null)
+        if (!task || minutes == null) return
         try {
-            const updated = await moveTask(taskId, status)
-            setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)))
+            const updated = await moveTask(task.id, 'done', minutes)
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            toast.success('Anotado, así el cálculo mejora con el tiempo')
         } catch (e) {
-            setTasks((prev) => prev.map((t) => (t.id === taskId ? task : t)))
             toast.error(errorMessage(e))
         }
     }
@@ -142,6 +240,9 @@ export default function TasksPage() {
             due_date: task.due_date ?? '',
             hours: task.hours != null ? String(task.hours) : '',
             amount: task.amount != null ? String(task.amount) : '',
+            consequence: task.consequence ?? '',
+            clarity: task.clarity ?? '',
+            estimated_minutes: task.estimated_minutes != null ? String(task.estimated_minutes) : '',
         })
     }
 
@@ -195,8 +296,8 @@ export default function TasksPage() {
 
     const canRegister = (t: Task) => !t.log_id && !!t.client_id && (t.amount != null || t.hours != null)
 
-    const fields = (v: FormValues, set: (next: FormValues) => void) => (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    const optionalFields = (v: FormValues, set: (next: FormValues) => void) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div className="sm:col-span-2 space-y-1">
                 <Label>Detalle (opcional)</Label>
                 <Textarea rows={2} placeholder="Notas de la tarea…" value={v.notes} onChange={(e) => set({ ...v, notes: e.target.value })} />
@@ -218,16 +319,41 @@ export default function TasksPage() {
                 <Input type="date" value={v.due_date} onChange={(e) => set({ ...v, due_date: e.target.value })} />
             </div>
             <div className="space-y-1">
-                <Label>Horas (opcional)</Label>
+                <Label>Horas a cobrar (opcional)</Label>
                 <Input type="number" step="0.25" min="0" placeholder="Ej: 3" value={v.hours} onChange={(e) => set({ ...v, hours: e.target.value })} />
             </div>
             <div className="space-y-1">
                 <Label>Monto a cobrar (opcional)</Label>
                 <Input type="number" step="0.01" min="0" placeholder="Ej: 50" value={v.amount} onChange={(e) => set({ ...v, amount: e.target.value })} />
             </div>
+            <div className="sm:col-span-2">
+                <ChipGroup
+                    question="¿Cuánto crees que te toma? (opcional, sirve para medir después)"
+                    options={ESTIMATE_OPTIONS.map((o) => ({ id: String(o.minutes), label: o.label }))}
+                    value={v.estimated_minutes}
+                    onChange={(x) => set({ ...v, estimated_minutes: x })}
+                />
+            </div>
             <p className="sm:col-span-2 text-[11px] text-muted-foreground">
                 Con cliente y monto (u horas) podrás registrar la tarea como ítem pendiente de facturar.
             </p>
+        </div>
+    )
+
+    const questions = (v: FormValues, set: (next: FormValues) => void) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ChipGroup
+                question="Si esto no se hace esta semana, ¿qué pasa?"
+                options={CONSEQUENCE_OPTIONS}
+                value={v.consequence}
+                onChange={(x) => set({ ...v, consequence: x })}
+            />
+            <ChipGroup
+                question="¿Ya sabes exactamente cómo hacerlo?"
+                options={CLARITY_OPTIONS}
+                value={v.clarity}
+                onChange={(x) => set({ ...v, clarity: x })}
+            />
         </div>
     )
 
@@ -236,17 +362,77 @@ export default function TasksPage() {
             <div className="mb-5">
                 <h1 className="text-2xl font-bold">Tareas</h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                    Arrastra las tarjetas entre columnas para cambiarlas de estado.
+                    La prioridad se calcula sola con tus dos respuestas y lo que el sistema ya sabe de cada cliente.
                 </p>
             </div>
 
-            {/* Alta rápida */}
+            {/* Qué hago ahora */}
+            {!loading && suggestions.length > 0 && (
+                <section className="rounded-xl border bg-gradient-to-br from-teal-50 to-sky-50 dark:from-teal-950/40 dark:to-sky-950/30 p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Sparkles className="w-4 h-4 text-teal-600" />
+                        <h2 className="text-sm font-bold">{BLOCK_META[block].title} · ¿Qué hago ahora?</h2>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">{BLOCK_META[block].hint}</p>
+                    <ol className="space-y-2">
+                        {suggestions.map(({ task, priority }, i) => (
+                            <li key={task.id} className="flex items-start gap-3 rounded-lg bg-card/80 border px-3 py-2">
+                                <span className="text-xs font-bold text-muted-foreground mt-0.5 w-4">{i + 1}</span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-medium">{task.title}</span>
+                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${LABEL_META[priority.label].className}`}>
+                                            {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        {task.clients?.name ? `${task.clients.name} · ` : ''}
+                                        {priority.reason}
+                                    </p>
+                                </div>
+                                {task.status !== 'doing' && (
+                                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => applyMove(task, 'doing')}>
+                                        Empezar
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ol>
+                </section>
+            )}
+
+            {/* Cómo va tu cálculo de tiempos */}
+            {drift.length > 0 && (
+                <section className="rounded-xl border bg-card shadow-sm p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="w-4 h-4 text-violet-600" />
+                        <h2 className="text-sm font-bold">Cómo va tu cálculo de tiempos</h2>
+                    </div>
+                    <ul className="space-y-1.5">
+                        {drift.map((d) => {
+                            const clarity = CLARITY_OPTIONS.find((c) => c.id === d.clarity)!
+                            const off = Math.abs(d.ratio - 1) < 0.15
+                            return (
+                                <li key={d.clarity} className="text-sm flex items-baseline gap-2">
+                                    <span className="text-muted-foreground">Cuando dices &quot;{clarity.short.toLowerCase()}&quot;:</span>
+                                    <strong className={off ? 'text-emerald-600' : d.ratio > 1 ? 'text-red-600' : 'text-sky-600'}>
+                                        {off ? 'tu cálculo da' : d.ratio > 1 ? `te toma ${d.ratio}× lo previsto` : `te toma ${d.ratio}× lo previsto`}
+                                    </strong>
+                                    <span className="text-xs text-muted-foreground">({d.samples} tareas medidas)</span>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </section>
+            )}
+
+            {/* Alta */}
             <form onSubmit={handleCreate} className="rounded-xl border bg-card shadow-sm p-4 mb-6 space-y-3">
                 <div className="flex gap-2">
                     <Input
                         placeholder="Nueva tarea… (ej: llamar a Atlantic para el mantenimiento)"
-                        value={newTitle}
-                        onChange={(e) => setNewTitle(e.target.value)}
+                        value={newForm.title}
+                        onChange={(e) => setNewForm({ ...newForm, title: e.target.value })}
                         className="flex-1"
                     />
                     <Button type="button" variant="outline" onClick={() => setDetailsOpen((o) => !o)}>
@@ -256,7 +442,8 @@ export default function TasksPage() {
                         <Plus className="w-4 h-4" /> Agregar
                     </Button>
                 </div>
-                {detailsOpen && fields(newForm, setNewForm)}
+                {questions(newForm, setNewForm)}
+                {detailsOpen && optionalFields(newForm, setNewForm)}
             </form>
 
             {/* Tablero */}
@@ -292,6 +479,8 @@ export default function TasksPage() {
                                 <div className="space-y-2">
                                     {items.map((task) => {
                                         const overdue = !!task.due_date && task.status !== 'done' && task.due_date < todayStr()
+                                        const priority = scoreTask(task, signals)
+                                        const showLabel = task.status !== 'done' && (task.consequence != null || task.clarity != null || task.due_date != null)
                                         return (
                                             <article
                                                 key={task.id}
@@ -299,9 +488,17 @@ export default function TasksPage() {
                                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
                                                 className="rounded-lg border bg-card p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
                                             >
+                                                {showLabel && (
+                                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${LABEL_META[priority.label].className}`}>
+                                                            {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 <p className={`text-sm font-medium ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
                                                     {task.title}
                                                 </p>
+                                                {showLabel && <p className="text-[11px] text-muted-foreground mt-0.5">{priority.reason}</p>}
                                                 {task.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.notes}</p>}
 
                                                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
@@ -320,6 +517,12 @@ export default function TasksPage() {
                                                         >
                                                             {overdue ? 'Vencía ' : 'Para '}
                                                             {fmt(task.due_date)}
+                                                        </span>
+                                                    )}
+                                                    {task.estimated_minutes != null && (
+                                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                                            ~{fmtMinutes(task.estimated_minutes)}
+                                                            {task.actual_minutes != null && ` · real ${fmtMinutes(task.actual_minutes)}`}
                                                         </span>
                                                     )}
                                                     {task.hours != null && (
@@ -382,12 +585,41 @@ export default function TasksPage() {
                 </div>
             )}
 
+            {/* ¿Cuánto tomó de verdad? */}
+            <Dialog open={!!measuring} onOpenChange={(o) => !o && setMeasuring(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>¿Cuánto te llevó de verdad?</DialogTitle>
+                        <DialogDescription>
+                            {measuring ? (
+                                <>
+                                    Calculaste <strong>{fmtMinutes(measuring.estimated_minutes ?? 0)}</strong> para &quot;{measuring.title}&quot;.
+                                    Con el dato real, el sistema aprende cuánto sueles desviarte. Puedes saltarlo.
+                                </>
+                            ) : (
+                                ''
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-wrap gap-2 py-2">
+                        {ESTIMATE_OPTIONS.map((o) => (
+                            <Button key={o.minutes} variant="outline" size="sm" onClick={() => saveActual(o.minutes)}>
+                                {o.label}
+                            </Button>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setMeasuring(null)}>Saltar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Editar */}
             <Dialog open={!!editing} onOpenChange={(o) => !o && !working && setEditing(null)}>
                 <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Editar tarea</DialogTitle>
-                        <DialogDescription>Cambia lo que necesites; el estado también se puede mover desde aquí.</DialogDescription>
+                        <DialogDescription>Si cambias las respuestas, la prioridad se recalcula sola.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
                         <div className="space-y-1">
@@ -405,7 +637,8 @@ export default function TasksPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        {fields(editForm, setEditForm)}
+                        {questions(editForm, setEditForm)}
+                        {optionalFields(editForm, setEditForm)}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEditing(null)} disabled={working}>Cancelar</Button>

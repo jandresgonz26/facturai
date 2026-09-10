@@ -151,6 +151,11 @@ export interface ClientNote {
 
 export type TaskStatus = 'todo' | 'doing' | 'done'
 
+/** Respuesta a "si esto no se hace esta semana, ¿qué pasa?". */
+export type TaskConsequence = 'none' | 'client_waiting' | 'payment_delayed' | 'client_at_risk'
+/** Respuesta a "¿ya sabes exactamente cómo hacerlo?". */
+export type TaskClarity = 'known' | 'partial' | 'unknown'
+
 export interface Task {
     id: string
     title: string
@@ -162,6 +167,11 @@ export interface Task {
     due_date?: string | null
     hours?: number | null
     amount?: number | null
+    consequence?: TaskConsequence | null
+    clarity?: TaskClarity | null
+    /** Minutos que creías que tomaba, para medir después contra los reales. */
+    estimated_minutes?: number | null
+    actual_minutes?: number | null
     /** Ítem facturable ya generado desde esta tarea; si existe, no se puede registrar de nuevo. */
     log_id?: string | null
     completed_at?: string | null

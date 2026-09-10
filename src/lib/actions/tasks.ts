@@ -2,7 +2,9 @@ import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { Log, Task, TaskStatus } from '@/types'
 import { getClient } from './clients'
+import { getPipeline } from './crm'
 import { addLog } from './logs'
+import { emptySignals, type ClientSignals } from '@/lib/task-priority'
 import { ActionError, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
 export const TASK_SELECT = '*, clients(name, billing_modality, preferred_input_currency)'
@@ -23,6 +25,10 @@ export const taskInputSchema = z.object({
     due_date: z.preprocess(blankToNull, dateSchema.nullable().optional()),
     hours: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().positive('Las horas deben ser mayores que 0').nullable().optional()),
     amount: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().positive('El monto debe ser mayor que 0').nullable().optional()),
+    // Las dos preguntas de las que sale la prioridad calculada.
+    consequence: z.preprocess(blankToNull, z.enum(['none', 'client_waiting', 'payment_delayed', 'client_at_risk']).nullable().optional()),
+    clarity: z.preprocess(blankToNull, z.enum(['known', 'partial', 'unknown']).nullable().optional()),
+    estimated_minutes: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable().optional()),
 })
 export type TaskInput = z.input<typeof taskInputSchema>
 
@@ -35,6 +41,9 @@ function toRow(input: z.infer<typeof taskInputSchema>) {
         due_date: input.due_date ?? null,
         hours: input.hours == null ? null : round2(input.hours),
         amount: input.amount == null ? null : round2(input.amount),
+        consequence: input.consequence ?? null,
+        clarity: input.clarity ?? null,
+        estimated_minutes: input.estimated_minutes ?? null,
     }
 }
 
@@ -91,18 +100,63 @@ export async function updateTask(id: string, raw: TaskInput): Promise<Task> {
     return data as Task
 }
 
-/** Mueve una tarea de columna (arrastrar y soltar): la coloca al final de la columna destino. */
-export async function moveTask(id: string, status: TaskStatus): Promise<Task> {
+/**
+ * Mueve una tarea de columna (arrastrar y soltar): la coloca al final de la
+ * columna destino. Al darla por hecha se puede registrar cuánto tomó de
+ * verdad, que es lo que después permite medir la desviación del cálculo.
+ */
+export async function moveTask(id: string, status: TaskStatus, actualMinutes?: number | null): Promise<Task> {
     const current = await getTask(id)
-    if (current.status === status) return current
+    if (current.status === status && actualMinutes == null) return current
     const patch: Record<string, unknown> = {
         status,
-        position: await nextPosition(status),
-        completed_at: status === 'done' ? new Date().toISOString() : null,
+        position: current.status === status ? current.position : await nextPosition(status),
+        completed_at: status === 'done' ? current.completed_at ?? new Date().toISOString() : null,
     }
+    if (status === 'done' && actualMinutes != null) patch.actual_minutes = Math.round(actualMinutes)
+    if (status !== 'done') patch.actual_minutes = null
     const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
     if (error) throw new ActionError(`No se pudo mover la tarea: ${error.message}`)
     return data as Task
+}
+
+/**
+ * Señales que el sistema ya conoce y que suben la urgencia de una tarea sin
+ * preguntarle nada al usuario: clientes con facturas vencidas y clientes cuyo
+ * seguimiento comercial se está enfriando.
+ */
+export async function getClientSignals(): Promise<ClientSignals> {
+    const signals = emptySignals()
+    const today = todayISO()
+
+    const { data: invoices, error } = await supabase
+        .from('invoices')
+        .select('client_id, due_date, issue_date, status')
+        .neq('status', 'paid')
+    if (error) throw new ActionError(`No se pudieron revisar las facturas: ${error.message}`)
+
+    for (const inv of (invoices || []) as { client_id: string; due_date: string | null; issue_date: string }[]) {
+        const overdue = inv.due_date
+            ? inv.due_date < today
+            : (Date.now() - new Date(inv.issue_date).getTime()) / 86400000 > 30
+        if (overdue) signals.overdueInvoice.add(inv.client_id)
+    }
+
+    // Leads y cotizados sin movimiento reciente: el pipeline ya calcula los días.
+    try {
+        const pipeline = await getPipeline()
+        for (const c of [...pipeline.lead, ...pipeline.quoted]) {
+            const stage = c.client.stage ?? 'active'
+            const days = c.days_since_activity ?? 0
+            if ((stage === 'lead' && days >= 7) || (stage === 'quoted' && days >= 15)) {
+                signals.coldLead.add(c.client.id)
+            }
+        }
+    } catch {
+        // Sin pipeline disponible, la prioridad sigue funcionando con el resto de señales.
+    }
+
+    return signals
 }
 
 export async function deleteTask(id: string): Promise<void> {

@@ -2,6 +2,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import * as actions from '@/lib/actions'
 import { dateSchema, periodSchema, uuidSchema, errorMessage } from '@/lib/actions/validation'
+import { BLOCK_META, currentBlock, emptySignals, scoreTask, sortByPriority, suggestNow } from '@/lib/task-priority'
 
 /** Resultado uniforme: el modelo siempre recibe ok/data o ok/error legible. */
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -590,23 +591,60 @@ export const agentTools = {
         }),
         execute: async ({ client_id, open_only }) =>
             run(async () => {
-                const rows = await actions.listTasks({ client_id, open_only })
-                return rows.map((t) => ({
-                    id: t.id,
-                    title: t.title,
-                    status: t.status,
-                    client_name: t.clients?.name ?? null,
-                    due_date: t.due_date ?? null,
-                    hours: t.hours ?? null,
-                    amount: t.amount ?? null,
-                    already_registered: !!t.log_id,
-                }))
+                const [rows, signals] = await Promise.all([
+                    actions.listTasks({ client_id, open_only }),
+                    actions.getClientSignals().catch(() => emptySignals()),
+                ])
+                return sortByPriority(rows, signals).map((t) => {
+                    const p = scoreTask(t, signals)
+                    return {
+                        id: t.id,
+                        title: t.title,
+                        status: t.status,
+                        client_name: t.clients?.name ?? null,
+                        due_date: t.due_date ?? null,
+                        hours: t.hours ?? null,
+                        amount: t.amount ?? null,
+                        already_registered: !!t.log_id,
+                        // Prioridad calculada: now = hazla ya, frog = importante y sin forma clara,
+                        // quick = mecánica y corta, later = puede esperar.
+                        priority: p.label,
+                        urgency: p.urgency,
+                        why: p.reason,
+                    }
+                })
+            }),
+    }),
+
+    what_should_i_do_now: tool({
+        description:
+            'Qué conviene hacer AHORA MISMO, según la hora del día y la prioridad calculada de las tareas abiertas. Úsala para "¿qué hago ahora?", "¿por dónde empiezo?", "¿qué es lo más urgente?". Devuelve la franja del día, por qué esa franja sirve para cierto tipo de trabajo, y hasta 3 tareas sugeridas con su razón. No escribe nada.',
+        inputSchema: z.object({}),
+        execute: async () =>
+            run(async () => {
+                const [rows, signals] = await Promise.all([
+                    actions.listTasks({ open_only: true }),
+                    actions.getClientSignals().catch(() => emptySignals()),
+                ])
+                const block = currentBlock()
+                return {
+                    block,
+                    block_title: BLOCK_META[block].title,
+                    block_hint: BLOCK_META[block].hint,
+                    suggestions: suggestNow(rows, signals).map(({ task, priority }) => ({
+                        id: task.id,
+                        title: task.title,
+                        client_name: task.clients?.name ?? null,
+                        priority: priority.label,
+                        why: priority.reason,
+                    })),
+                }
             }),
     }),
 
     create_task: tool({
         description:
-            'Crea una tarea en el tablero ("recuérdame llamar a X el lunes", "anota que tengo que hacer Y"). Requiere confirmación. El cliente, la fecha, las horas y el monto son opcionales: pásalos SOLO si el usuario los menciona. Si indica horas o un monto y un cliente, luego esa tarea se puede registrar como ítem facturable.',
+            'Crea una tarea en el tablero ("recuérdame llamar a X el lunes", "anota que tengo que hacer Y"). Requiere confirmación. El cliente, la fecha, las horas y el monto son opcionales: pásalos SOLO si el usuario los menciona. consequence y clarity son las dos respuestas de las que sale la prioridad calculada: dedúcelas del mensaje si están claras y, si no, pregúntalas ANTES de proponer la tarea (ver regla de TAREAS). Si indica horas o un monto y un cliente, luego esa tarea se puede registrar como ítem facturable.',
         inputSchema: z.object({
             title: z.string().min(3).max(300).describe('Qué hay que hacer'),
             notes: optionalText.describe('Detalle adicional, solo si lo da'),
@@ -615,11 +653,30 @@ export const agentTools = {
             due_date: optionalDate.describe('SOLO si el usuario indica para cuándo'),
             hours: z.number().positive().optional().describe('SOLO si el usuario dice cuántas horas de trabajo son'),
             amount: z.number().positive().optional().describe('SOLO si el usuario dice cuánto se cobra por la tarea'),
+            consequence: z
+                .enum(['none', 'client_waiting', 'payment_delayed', 'client_at_risk'])
+                .optional()
+                .describe('Qué pasa si no se hace esta semana: none (nada), client_waiting (un cliente espera), payment_delayed (se retrasa un cobro), client_at_risk (puedo perder el cliente)'),
+            clarity: z
+                .enum(['known', 'partial', 'unknown'])
+                .optional()
+                .describe('Si ya sabe cómo hacerla: known (mecánica, la ha hecho antes), partial (hay que investigar un poco), unknown (no sabe por dónde empezar)'),
+            estimated_minutes: z.number().int().positive().optional().describe('SOLO si el usuario dice cuánto cree que le toma, en minutos'),
         }),
-        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount }) =>
+        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes }) =>
             run(async () => {
-                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount })
-                return { id: task.id, title: task.title, client_name: task.clients?.name ?? client_name ?? null, due_date: task.due_date ?? null, hours: task.hours ?? null, amount: task.amount ?? null }
+                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount, consequence, clarity, estimated_minutes })
+                const priority = scoreTask(task, await actions.getClientSignals().catch(() => emptySignals()))
+                return {
+                    id: task.id,
+                    title: task.title,
+                    client_name: task.clients?.name ?? client_name ?? null,
+                    due_date: task.due_date ?? null,
+                    hours: task.hours ?? null,
+                    amount: task.amount ?? null,
+                    priority: priority.label,
+                    why: priority.reason,
+                }
             }),
     }),
 

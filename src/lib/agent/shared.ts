@@ -66,6 +66,7 @@ export const TOOL_LABELS: Record<string, string> = {
     update_client_stage: 'Cambiar etapa del cliente',
     add_client_note: 'Guardar nota',
     list_tasks: 'Consultando tus tareas',
+    what_should_i_do_now: 'Viendo qué conviene hacer ahora',
     create_task: 'Crear tarea',
     complete_task: 'Marcar tarea como hecha',
     register_task_as_log: 'Registrar tarea para facturar',

@@ -3,6 +3,7 @@
  * de escritura. Compartida por la tarjeta del chat web y por el bot de Telegram.
  */
 import { TOOL_LABELS, dateLabel, fmtMoney, fmtUsd, periodLabel } from './shared'
+import { CLARITY_OPTIONS, CONSEQUENCE_OPTIONS, LABEL_META, type TaskLabel } from '@/lib/task-priority'
 import type { Quote } from '@/types'
 
 export type Row = { label: string; value: string }
@@ -191,9 +192,15 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             const rows: Row[] = [{ label: 'Tarea', value: str(input.title) ?? '-' }]
             if (input.client_name) rows.push({ label: 'Cliente', value: str(input.client_name)! })
             rows.push({ label: 'Para', value: input.due_date ? dateLabel(str(input.due_date)) : 'Sin fecha' })
+            if (input.consequence) {
+                rows.push({ label: 'Si no se hace', value: CONSEQUENCE_OPTIONS.find((c) => c.id === input.consequence)?.short ?? '-' })
+            }
+            if (input.clarity) {
+                rows.push({ label: 'Claridad', value: CLARITY_OPTIONS.find((c) => c.id === input.clarity)?.short ?? '-' })
+            }
             if (input.hours != null) rows.push({ label: 'Horas', value: `${num(input.hours)}h` })
             if (input.amount != null) rows.push({ label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` })
-            return { title: 'Nueva tarea', rows, note: 'Queda en el tablero, en "Por hacer".' }
+            return { title: 'Nueva tarea', rows, note: 'Queda en el tablero, en "Por hacer", con la prioridad calculada.' }
         }
         case 'complete_task':
             return { title: 'Marcar tarea como hecha', rows: [{ label: 'Tarea', value: str(input.title) ?? '-' }] }
@@ -360,7 +367,10 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Nota guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
         case 'create_task': {
             const bits = [str(d.client_name), d.due_date ? dateLabel(str(d.due_date)) : null, d.hours != null ? `${num(d.hours)}h` : null, d.amount != null ? fmtUsd(num(d.amount)) : null].filter(Boolean)
-            return { title: 'Tarea creada', lines: [str(d.title) ?? '', bits.join(' · ')].filter(Boolean) }
+            const meta = d.priority ? LABEL_META[d.priority as TaskLabel] : null
+            const lines = [str(d.title) ?? '', bits.join(' · ')]
+            if (meta) lines.push(`${meta.emoji} ${meta.text} · ${str(d.why) ?? ''}`)
+            return { title: 'Tarea creada', lines: lines.filter(Boolean) }
         }
         case 'complete_task':
             return { title: 'Tarea completada', lines: [`${str(d.title) ?? ''}${d.client_name ? ` · ${str(d.client_name)}` : ''}`] }
