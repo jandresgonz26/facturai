@@ -616,11 +616,66 @@ export const agentTools = {
             }),
     }),
 
-    list_starred_emails: tool({
+    list_inbox_items: tool({
         description:
-            'Correos que el usuario marcó con estrella en su cliente de correo y que podrían convertirse en tareas. Devuelve remitente, asunto, fecha, si el remitente coincide con un cliente de la lista (client_id/client_name) y si ya se creó una tarea desde ese correo (already_task). Úsala cuando pregunte por su correo, por pendientes que le hayan llegado, o al armar el plan del día. Si un correo ya tiene tarea, NO lo vuelvas a proponer.',
-        inputSchema: z.object({ limit: z.number().int().min(1).max(30).optional() }),
-        execute: async ({ limit }) => run(() => actions.listStarredSuggestions(limit ?? 15)),
+            'Correos del usuario que están esperando respuesta, traídos desde su cliente Spark. Devuelve remitente, asunto y fecha; NO tienes el cuerpo del correo, así que no inventes su contenido. Marca si el remitente coincide con un cliente (client_name) y si ya se convirtió en tarea. Úsala cuando pregunte por su correo, por lo que tiene pendiente de contestar, o al armar el plan del día. OJO: la lista trae mucho ruido automático (avisos de WordPress, notificaciones, autorespuestas); menciona solo lo que parezca una persona real esperando algo de él, y no lo abrumes: máximo 3 o 4.',
+        inputSchema: z.object({
+            pending_only: z.boolean().optional().describe('true (recomendado) para excluir los ya descartados o convertidos'),
+            limit: z.number().int().min(1).max(40).optional(),
+        }),
+        execute: async ({ pending_only, limit }) =>
+            run(async () => {
+                const [rows, freshness] = await Promise.all([
+                    actions.listInboxItems({ pending_only: pending_only ?? true, limit }),
+                    actions.getInboxFreshness().catch(() => ({ last_sync: null, pending: 0 })),
+                ])
+                return {
+                    // Si lleva días sin sincronizar, el Mac estuvo apagado: dilo en vez de
+                    // dar por hecho que no ha llegado nada.
+                    last_sync: freshness.last_sync,
+                    items: rows.map((i) => ({
+                        id: i.id,
+                        from: i.from_name ? `${i.from_name} <${i.from_email}>` : i.from_email,
+                        from_email: i.from_email,
+                        subject: i.subject,
+                        sent_at: i.sent_at,
+                        client_name: i.clients?.name ?? null,
+                        already_task: !!i.task_id,
+                    })),
+                }
+            }),
+    }),
+
+    create_task_from_email: tool({
+        description:
+            'Convierte uno de los correos de list_inbox_items en tarea del tablero. Requiere confirmación. Propónlo SOLO cuando el correo parezca requerir una acción real del usuario, nunca para notificaciones automáticas. Si no pasas title, se genera uno a partir del remitente y el asunto. Hereda el cliente si el remitente coincidía con uno.',
+        inputSchema: z.object({
+            inbox_item_id: uuidSchema,
+            from: z.string().min(1).describe('Remitente, para la confirmación'),
+            subject: z.string().min(1).describe('Asunto, para la confirmación'),
+            title: optionalText.describe('Título de la tarea si quieres redactarlo mejor que el automático'),
+            due_date: optionalDate.describe('SOLO si el usuario dice para cuándo'),
+            consequence: z.enum(['none', 'client_waiting', 'payment_delayed', 'client_at_risk']).optional(),
+            clarity: z.enum(['known', 'partial', 'unknown']).optional(),
+        }),
+        execute: async ({ inbox_item_id, from, subject, title, due_date, consequence, clarity }) =>
+            run(async () => {
+                const task = await actions.createTaskFromInboxItem(inbox_item_id, { title, due_date, consequence, clarity })
+                return { from, subject, task_title: task.title, client_name: task.clients?.name ?? null }
+            }),
+    }),
+
+    dismiss_inbox_item: tool({
+        description: 'Descarta un correo de la lista para que no se vuelva a proponer ("ese no me interesa", "ignora ese"). Requiere confirmación.',
+        inputSchema: z.object({
+            inbox_item_id: uuidSchema,
+            subject: z.string().min(1).describe('Asunto, para la confirmación'),
+        }),
+        execute: async ({ inbox_item_id, subject }) =>
+            run(async () => {
+                await actions.dismissInboxItem(inbox_item_id)
+                return { subject }
+            }),
     }),
 
     get_day_plan: tool({

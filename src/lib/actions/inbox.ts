@@ -1,122 +1,105 @@
-'use server'
-
-import { ImapFlow } from 'imapflow'
 import { supabase } from '@/lib/supabase'
-import { ActionError, normalizeText } from './validation'
-import { listClients } from './clients'
+import { ActionError, uuidSchema, parseInput } from './validation'
+import { createTask } from './tasks'
+import type { Task } from '@/types'
 
 /**
- * Lectura del correo marcado con estrella, para proponerlo como tarea.
+ * Correos traídos desde Spark por el puente que corre en el Mac
+ * (scripts/spark-sync.mjs).
  *
- * Se lee SOLO lo destacado (no toda la bandeja) por una razón concreta: el
- * inbox real está lleno de newsletters y autorespuestas, así que filtrar por
- * remitente daría más ruido que señal. Marcar la estrella en el cliente de
- * correo es la señal explícita del usuario de que ese correo hay que atenderlo.
- *
- * Es de solo lectura: nunca marca, mueve ni borra nada en el buzón.
+ * Aquí solo hay cabeceras: quién escribió, sobre qué y cuándo. El cuerpo de los
+ * correos nunca sale de la máquina del usuario, así que el asistente puede
+ * mencionarlos y proponerlos como tarea, pero no leerlos.
  */
 
-export interface InboxSuggestion {
-    /** Message-Id del correo: estable entre sesiones, sirve para no repetir. */
+export interface InboxItem {
     id: string
-    subject: string
+    message_id: string
+    account: string
     from_name: string | null
     from_email: string
-    date: string
-    snippet: string
-    /** Cliente de FacturAI que coincide con el remitente, si lo hay. */
+    subject: string
+    sent_at: string
     client_id: string | null
-    client_name: string | null
-    /** Ya existe una tarea creada desde este correo. */
-    already_task: boolean
+    task_id: string | null
+    dismissed: boolean
+    synced_at: string
+    clients?: { name: string } | null
 }
 
-function config() {
-    const user = process.env.INBOX_USER
-    const pass = process.env.INBOX_PASSWORD
-    if (!user || !pass) {
-        throw new ActionError(
-            'El buzón no está configurado todavía. Falta INBOX_USER e INBOX_PASSWORD en el servidor.',
-            'INBOX_NOT_CONFIGURED'
-        )
-    }
-    return {
-        host: process.env.INBOX_HOST || 'imap.gmail.com',
-        port: Number(process.env.INBOX_PORT || 993),
-        secure: true,
-        auth: { user, pass },
-        logger: false as const,
-    }
+const SELECT = '*, clients(name)'
+
+export interface InboxFilters {
+    /** Excluye los descartados y los que ya son tarea. */
+    pending_only?: boolean
+    limit?: number
 }
 
-export async function isInboxConfigured(): Promise<boolean> {
-    return !!process.env.INBOX_USER && !!process.env.INBOX_PASSWORD
+export async function listInboxItems(filters: InboxFilters = {}): Promise<InboxItem[]> {
+    let query = supabase.from('inbox_items').select(SELECT).order('sent_at', { ascending: false })
+    if (filters.pending_only) query = query.eq('dismissed', false).is('task_id', null)
+    query = query.limit(filters.limit ?? 40)
+    const { data, error } = await query
+    if (error) throw new ActionError(`No se pudieron cargar los correos: ${error.message}`)
+    return (data || []) as InboxItem[]
 }
 
-const clean = (s: string | undefined | null) => (s ?? '').replace(/\s+/g, ' ').trim()
+export async function getInboxItem(id: string): Promise<InboxItem> {
+    const { data, error } = await supabase.from('inbox_items').select(SELECT).eq('id', id).maybeSingle()
+    if (error) throw new ActionError(`No se pudo consultar el correo: ${error.message}`)
+    if (!data) throw new ActionError('Ese correo no está en la lista', 'NOT_FOUND')
+    return data as InboxItem
+}
+
+/** "Este no me interesa": deja de proponerse, sin borrar el registro. */
+export async function dismissInboxItem(id: string): Promise<void> {
+    parseInput(uuidSchema, id)
+    const { error } = await supabase.from('inbox_items').update({ dismissed: true }).eq('id', id)
+    if (error) throw new ActionError(`No se pudo descartar el correo: ${error.message}`)
+}
 
 /**
- * Correos destacados recientes, cruzados con la lista de clientes y con las
- * tareas ya creadas, para no proponer dos veces lo mismo.
+ * Convierte un correo en tarea. Deja las dos partes enlazadas para no
+ * proponerlo otra vez, y hereda el cliente si el remitente coincidía con uno.
  */
-export async function listStarredSuggestions(limit = 15): Promise<InboxSuggestion[]> {
-    const client = new ImapFlow(config())
-    const rows: Omit<InboxSuggestion, 'client_id' | 'client_name' | 'already_task'>[] = []
-
-    try {
-        await client.connect()
-        const lock = await client.getMailboxLock('INBOX')
-        try {
-            const uids = await client.search({ flagged: true }, { uid: true })
-            const recent = (uids || []).slice(-limit).reverse()
-            if (recent.length > 0) {
-                for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: false }, { uid: true })) {
-                    const env = msg.envelope
-                    if (!env) continue
-                    const sender = env.from?.[0]
-                    if (!sender?.address) continue
-                    rows.push({
-                        id: clean(env.messageId) || `uid-${msg.uid}`,
-                        subject: clean(env.subject) || '(sin asunto)',
-                        from_name: clean(sender.name) || null,
-                        from_email: sender.address.toLowerCase(),
-                        date: new Date(env.date ?? Date.now()).toISOString(),
-                        snippet: '',
-                    })
-                }
-            }
-        } finally {
-            lock.release()
-        }
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        if (/auth/i.test(msg)) {
-            throw new ActionError('El buzón rechazó las credenciales. Revisa la contraseña de aplicación.', 'INBOX_AUTH')
-        }
-        throw new ActionError(`No se pudo leer el buzón: ${msg}`)
-    } finally {
-        await client.logout().catch(() => undefined)
+export async function createTaskFromInboxItem(
+    id: string,
+    input: { title?: string; due_date?: string | null; consequence?: Task['consequence']; clarity?: Task['clarity'] } = {}
+): Promise<Task> {
+    const item = await getInboxItem(id)
+    if (item.task_id) {
+        throw new ActionError(`Ese correo ya se convirtió en tarea.`)
     }
 
-    if (rows.length === 0) return []
-
-    // Cruce con clientes (por correo exacto) y con tareas ya creadas.
-    const [clients, { data: existing }] = await Promise.all([
-        listClients().catch(() => []),
-        supabase.from('tasks').select('source_email_id').in('source_email_id', rows.map((r) => r.id)),
-    ])
-    const byEmail = new Map(
-        clients.filter((c) => c.email).map((c) => [normalizeText(c.email!), c])
-    )
-    const used = new Set(((existing || []) as { source_email_id: string }[]).map((t) => t.source_email_id))
-
-    return rows.map((r) => {
-        const match = byEmail.get(normalizeText(r.from_email))
-        return {
-            ...r,
-            client_id: match?.id ?? null,
-            client_name: match?.name ?? null,
-            already_task: used.has(r.id),
-        }
+    const who = item.from_name || item.from_email
+    // Solo se repite el correo entre paréntesis si aporta algo sobre el nombre.
+    const quien = item.from_name ? `${item.from_name} (${item.from_email})` : item.from_email
+    const task = await createTask({
+        title: input.title || `Responder a ${who}: ${item.subject}`,
+        client_id: item.client_id ?? undefined,
+        due_date: input.due_date ?? undefined,
+        consequence: input.consequence ?? undefined,
+        clarity: input.clarity ?? undefined,
+        notes: `Viene del correo de ${quien} del ${item.sent_at.split('T')[0]}.`,
+        source_email_id: `${item.account}:${item.message_id}`,
     })
+
+    const { error } = await supabase.from('inbox_items').update({ task_id: task.id }).eq('id', id)
+    if (error) console.warn('[inbox] tarea creada pero no se pudo enlazar al correo', error.message)
+    return task
+}
+
+/** Cuándo se sincronizó por última vez, para avisar si el puente lleva días parado. */
+export async function getInboxFreshness(): Promise<{ last_sync: string | null; pending: number }> {
+    const { data, error } = await supabase
+        .from('inbox_items')
+        .select('synced_at, dismissed, task_id')
+        .order('synced_at', { ascending: false })
+        .limit(200)
+    if (error) throw new ActionError(`No se pudo revisar el estado del buzón: ${error.message}`)
+    const rows = (data || []) as { synced_at: string; dismissed: boolean; task_id: string | null }[]
+    return {
+        last_sync: rows[0]?.synced_at ?? null,
+        pending: rows.filter((r) => !r.dismissed && !r.task_id).length,
+    }
 }

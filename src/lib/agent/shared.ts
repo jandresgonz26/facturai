@@ -26,6 +26,8 @@ export const WRITE_TOOLS = [
     'complete_task',
     'register_task_as_log',
     'plan_task',
+    'create_task_from_email',
+    'dismiss_inbox_item',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -69,7 +71,9 @@ export const TOOL_LABELS: Record<string, string> = {
     list_tasks: 'Consultando tus tareas',
     what_should_i_do_now: 'Viendo qué conviene hacer ahora',
     get_day_plan: 'Revisando el plan del día',
-    list_starred_emails: 'Revisando tus correos marcados',
+    list_inbox_items: 'Revisando tu correo',
+    create_task_from_email: 'Convertir el correo en tarea',
+    dismiss_inbox_item: 'Descartar el correo',
     plan_task: 'Poner la tarea en el plan del día',
     create_task: 'Crear tarea',
     complete_task: 'Marcar tarea como hecha',

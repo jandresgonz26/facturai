@@ -204,6 +204,22 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
         }
         case 'complete_task':
             return { title: 'Marcar tarea como hecha', rows: [{ label: 'Tarea', value: str(input.title) ?? '-' }] }
+        case 'create_task_from_email':
+            return {
+                title: 'Convertir correo en tarea',
+                rows: [
+                    { label: 'De', value: str(input.from) ?? '-' },
+                    { label: 'Asunto', value: str(input.subject) ?? '-' },
+                    ...(input.title ? [{ label: 'Tarea', value: str(input.title)! }] : []),
+                    ...(input.due_date ? [{ label: 'Para', value: dateLabel(str(input.due_date)) }] : []),
+                ],
+            }
+        case 'dismiss_inbox_item':
+            return {
+                title: 'Descartar correo',
+                rows: [{ label: 'Asunto', value: str(input.subject) ?? '-' }],
+                note: 'No se vuelve a proponer. El correo no se toca en tu buzón.',
+            }
         case 'plan_task':
             return {
                 title: input.date ? 'Comprometer tarea para un día' : 'Sacar la tarea del plan',
@@ -382,6 +398,13 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         }
         case 'complete_task':
             return { title: 'Tarea completada', lines: [`${str(d.title) ?? ''}${d.client_name ? ` · ${str(d.client_name)}` : ''}`] }
+        case 'create_task_from_email':
+            return {
+                title: 'Correo convertido en tarea',
+                lines: [`${str(d.task_title) ?? ''}${d.client_name ? ` · ${str(d.client_name)}` : ''}`],
+            }
+        case 'dismiss_inbox_item':
+            return { title: 'Correo descartado', lines: [str(d.subject) ?? ''] }
         case 'plan_task': {
             const n = num(d.postponed_count) ?? 0
             return {
