@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildCheckin, recordCheckin } from '@/lib/actions/assistant-checkin'
 import { sendMessage } from '@/lib/telegram/api'
-import { escapeHtml } from '@/lib/telegram/format'
+import { mdToTelegramHtml } from '@/lib/telegram/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,8 +41,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true, moment: checkin.moment, sent: false, dry_run: true, message: checkin.message, items: checkin.items })
         }
 
+        // mdToTelegramHtml escapa el contenido dinámico y convierte las negritas.
         for (const chatId of chatIds) {
-            await sendMessage(chatId, escapeHtml(checkin.message))
+            await sendMessage(chatId, mdToTelegramHtml(checkin.message))
         }
         await recordCheckin(checkin.items)
 

@@ -37,6 +37,21 @@ export interface Checkin {
 const fmtDate = (d: string) => d.split('T')[0].split('-').reverse().join('/')
 const money = (n: number) => `$${Number(n).toFixed(2)}`
 
+/**
+ * Un emoji por tipo de aviso, para que se distingan de un vistazo en el
+ * teléfono. Uno solo por línea: si cada frase lleva adornos, dejan de servir
+ * como señal y estorban.
+ */
+const KIND_EMOJI: Record<string, string> = {
+    invoice_overdue: '💸',
+    task_avoided: '🐸',
+    task_overdue: '⏰',
+    plan_missing: '📋',
+    carried_over: '🔁',
+    day_close: '🌙',
+    quote_cold: '📄',
+}
+
 function hourInUserTimezone(now: Date): number {
     const h = new Intl.DateTimeFormat('en-US', { timeZone: USER_TIMEZONE, hour: 'numeric', hour12: false }).format(now)
     return Number(h) % 24
@@ -83,17 +98,17 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
 
     // ── Lo que de verdad urge, a cualquier hora ──
     for (const inv of (briefing?.unpaid_invoices ?? []).filter((i) => i.overdue)) {
-        push('invoice_overdue', inv.id, `La factura #${inv.invoice_number} de ${inv.client_name} lleva ${inv.days_since_issue} días sin cobrarse (${money(inv.total_amount)})`)
+        push('invoice_overdue', inv.id, `**Factura #${inv.invoice_number}** de ${inv.client_name}: ${inv.days_since_issue} días sin cobrarse (**${money(inv.total_amount)}**)`)
     }
 
     // Tareas que se están evitando: el contador de posposiciones las delata.
     for (const t of allTasks.filter((x) => (x.postponed_count ?? 0) >= 3)) {
-        push('task_avoided', t.id, `"${t.title}" la has movido ${t.postponed_count} veces`)
+        push('task_avoided', t.id, `**${t.title}**: la has movido ${t.postponed_count} veces`)
     }
 
     // Vencidas de verdad
     for (const t of allTasks.filter((x) => x.due_date && x.due_date < todayISO())) {
-        push('task_overdue', t.id, `"${t.title}" venció el ${fmtDate(t.due_date!)}`)
+        push('task_overdue', t.id, `**${t.title}**: venció el ${fmtDate(t.due_date!)}`)
     }
 
     // ── Según el momento del día ──
@@ -101,26 +116,26 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
         if (plan && plan.planned.length === 0) {
             const top = sortByPriority(plan.available, signals).slice(0, 3)
             if (top.length > 0) {
-                const names = top.map((t) => `"${t.title}"`).join(', ')
+                const names = top.map((t) => `**${t.title}**`).join(', ')
                 push('plan_missing', todayISO(), `Todavía no tienes plan para hoy. Por prioridad yo empezaría por ${names}`)
             }
         }
         if (plan && plan.carriedOver.length > 0) {
-            push('carried_over', todayISO(), `Traes ${plan.carriedOver.length} tarea${plan.carriedOver.length === 1 ? '' : 's'} arrastrándose de días anteriores`)
+            push('carried_over', todayISO(), `Traes **${plan.carriedOver.length} tarea${plan.carriedOver.length === 1 ? '' : 's'}** arrastrándose de días anteriores`)
         }
     }
 
     if (moment === 'evening' && plan) {
         const left = plan.planned.filter((t) => t.status !== 'done')
         if (left.length > 0) {
-            push('day_close', todayISO(), `Del plan de hoy quedaron ${left.length} sin cerrar: ${left.map((t) => `"${t.title}"`).join(', ')}. ¿Las mueves a mañana o las sueltas?`)
+            push('day_close', todayISO(), `Del plan de hoy quedaron **${left.length} sin cerrar**: ${left.map((t) => `**${t.title}**`).join(', ')}. ¿Las mueves a mañana o las sueltas?`)
         }
     }
 
     // Cotizaciones sin respuesta: dinero parado esperando un "sí" o un "no".
     for (const f of briefing?.followups ?? []) {
         if (f.stage === 'quoted') {
-            push('quote_cold', f.client_id, `${f.client_name} tiene una cotización sin respuesta hace ${f.days_since_activity ?? 0} días`)
+            push('quote_cold', f.client_id, `**${f.client_name}**: cotización sin respuesta hace ${f.days_since_activity ?? 0} días`)
         }
     }
 
@@ -129,7 +144,7 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
     // Se limita a lo que una persona puede atender de una sentada.
     const shown = items.slice(0, 5)
     const greeting =
-        moment === 'morning' ? 'Buenos días.' : moment === 'midday' ? '¿Cómo va el día?' : 'Cerrando el día.'
+        moment === 'morning' ? '☀️ **Buenos días.**' : moment === 'midday' ? '⏳ **¿Cómo va el día?**' : '🌙 **Cerrando el día.**'
     const closing =
         moment === 'morning'
             ? '¿Armamos el plan? Dime por dónde quieres empezar.'
@@ -137,7 +152,7 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
               ? 'Dime qué muevo a mañana.'
               : '¿Te ayudo con alguna?'
 
-    const message = [greeting, '', ...shown.map((i) => `• ${i.text}`), '', closing].join('\n')
+    const message = [greeting, '', ...shown.map((i) => `${KIND_EMOJI[i.kind] ?? '•'} ${i.text}`), '', closing].join('\n')
     return { moment, message, items: shown }
 }
 
