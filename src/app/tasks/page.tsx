@@ -214,7 +214,8 @@ export default function TasksPage() {
         if (block === 'morning') {
             return {
                 icon: Sun,
-                title: plan.planned.length > 0 ? 'Ya tienes plan para hoy' : 'Buenos días. ¿Armamos el plan de hoy?',
+                // Sin saludo: el banner ya saluda arriba.
+                title: plan.planned.length > 0 ? 'Ya tienes plan para hoy' : '¿Armamos el plan de hoy?',
                 text:
                     plan.planned.length > 0
                         ? 'Puedo repasarlo contigo, ajustar lo que no quepa y decirte por cuál empezar.'

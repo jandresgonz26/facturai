@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -10,6 +10,18 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { AgentLauncher } from "@/components/agent/AgentLauncher";
 
 const inter = Inter({ subsets: ["latin"] });
+
+/**
+ * Tipografía de display, solo para piezas destacadas como el saludo del día.
+ * El contraste con Inter es deliberado: da un aire editorial que un peso más
+ * de la misma fuente no consigue.
+ */
+const displaySerif = Instrument_Serif({
+    subsets: ["latin"],
+    weight: "400",
+    style: ["normal", "italic"],
+    variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "MicroBill",
@@ -23,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-background font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${inter.className} ${displaySerif.variable} min-h-screen bg-background font-sans antialiased`} suppressHydrationWarning>
         <ThemeProvider>
           <AgentProvider>
             <div className="flex min-h-screen overflow-hidden">

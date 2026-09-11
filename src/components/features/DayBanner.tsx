@@ -17,7 +17,7 @@ import type { DayBlock } from '@/lib/task-priority'
 const SCENES: Record<DayBlock, { sky: string; ground: string; accent: string; label: string; scrim: string; text: string }> = {
     morning: {
         sky: 'from-amber-200 via-orange-200 to-sky-300 dark:from-amber-900/70 dark:via-orange-900/50 dark:to-sky-900/60',
-        ground: 'text-emerald-700/70 dark:text-emerald-950',
+        ground: 'text-teal-800 dark:text-emerald-950',
         accent: 'text-amber-500',
         label: 'Buenos días',
         scrim: 'from-white/70 via-white/35 to-transparent dark:from-slate-950/80 dark:via-slate-950/45 dark:to-transparent',
@@ -25,7 +25,7 @@ const SCENES: Record<DayBlock, { sky: string; ground: string; accent: string; la
     },
     afternoon: {
         sky: 'from-sky-300 via-sky-200 to-amber-100 dark:from-sky-900/70 dark:via-sky-800/50 dark:to-amber-900/40',
-        ground: 'text-emerald-800/70 dark:text-emerald-950',
+        ground: 'text-teal-900 dark:text-emerald-950',
         accent: 'text-amber-400',
         label: 'Buenas tardes',
         scrim: 'from-white/70 via-white/35 to-transparent dark:from-slate-950/80 dark:via-slate-950/45 dark:to-transparent',
@@ -65,10 +65,18 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
         }
     }, [])
 
-    const hora = now?.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true }) ?? ''
-    const fecha = now
-        ? now.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })
-        : ''
+    // La hora se parte para poder tratar el meridiano como un detalle pequeño,
+    // en vez del "a. m." con espacios que devuelve el formato español.
+    const h24 = now?.getHours() ?? 0
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+    const minutos = String(now?.getMinutes() ?? 0).padStart(2, '0')
+    const meridiano = h24 < 12 ? 'AM' : 'PM'
+
+    // toLocaleDateString devuelve todo en minúsculas en español; se capitaliza
+    // solo la primera letra, no cada palabra (el `capitalize` de CSS ponía
+    // "11 De Septiembre").
+    const fechaRaw = now?.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' }) ?? ''
+    const fecha = fechaRaw ? fechaRaw.charAt(0).toUpperCase() + fechaRaw.slice(1) : ''
 
     return (
         <section className={`relative overflow-hidden rounded-2xl bg-gradient-to-b ${scene.sky} mb-6`}>
@@ -87,11 +95,16 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
                         <div className="absolute right-[10%] top-[15%] h-12 w-12 rounded-full bg-slate-900/95" />
                     </>
                 ) : (
+                    // En la mañana el sol queda bajo, para que las montañas lo tapen a
+                    // medias y se lea como un amanecer.
                     <div
-                        className={`absolute h-16 w-16 rounded-full bg-current ${scene.accent} blur-[1px] shadow-[0_0_60px_20px_currentColor] opacity-90`}
+                        className={`absolute rounded-full bg-current ${scene.accent} shadow-[0_0_80px_28px_currentColor]`}
                         style={{
-                            right: block === 'morning' ? '18%' : '12%',
-                            top: block === 'morning' ? '46%' : '14%',
+                            right: block === 'morning' ? '26%' : '14%',
+                            top: block === 'morning' ? '58%' : '16%',
+                            height: block === 'morning' ? 84 : 60,
+                            width: block === 'morning' ? 84 : 60,
+                            opacity: block === 'morning' ? 0.95 : 0.85,
                         }}
                     />
                 )}
@@ -103,27 +116,36 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
                 viewBox="0 0 400 80"
                 preserveAspectRatio="none"
                 aria-hidden
-                style={{ height: 64 }}
+                style={{ height: 76 }}
             >
-                <path d="M0 80 L70 26 L120 60 L175 18 L240 62 L300 34 L360 66 L400 44 L400 80 Z" fill="currentColor" opacity="0.55" />
-                <path d="M0 80 L55 46 L110 74 L170 40 L225 76 L290 50 L345 78 L400 58 L400 80 Z" fill="currentColor" />
+                {/* Tres capas: cuanto más lejos, más clara, para dar profundidad. */}
+                <path d="M0 80 L70 26 L120 60 L175 18 L240 62 L300 34 L360 66 L400 44 L400 80 Z" fill="currentColor" opacity="0.35" />
+                <path d="M0 80 L45 40 L95 66 L150 32 L205 68 L265 42 L320 70 L400 50 L400 80 Z" fill="currentColor" opacity="0.6" />
+                <path d="M0 80 L55 54 L110 76 L170 48 L225 78 L290 56 L345 79 L400 62 L400 80 Z" fill="currentColor" opacity="0.9" />
             </svg>
 
             {/* Velo bajo el texto: garantiza contraste sin tapar la escena. */}
             <div className={`absolute inset-x-0 bottom-0 h-full bg-gradient-to-t ${scene.scrim}`} aria-hidden />
 
             {/* Contenido */}
-            <div className={`relative px-5 py-6 sm:px-7 sm:py-7 ${scene.text}`}>
-                <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+            <div className={`relative px-6 py-7 sm:px-8 sm:py-8 ${scene.text}`}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3">
                     <div>
-                        <h1 className="text-[1.75rem] sm:text-3xl font-semibold leading-none tracking-tight">{scene.label}</h1>
-                        <p className="mt-2 text-[13px] font-medium capitalize opacity-75 tracking-wide">{fecha}</p>
+                        {/* El saludo en serif: es la única pieza editorial de la pantalla. */}
+                        <h1 className="font-[family-name:var(--font-display)] text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.015em]">
+                            {scene.label}
+                        </h1>
+                        <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.18em] opacity-65">{fecha}</p>
                     </div>
-                    <p className="text-4xl sm:text-5xl font-extralight tabular-nums leading-none tracking-tight opacity-95">
-                        {hora}
+
+                    <p className="flex items-baseline gap-1.5 leading-none">
+                        <span className="text-[2.75rem] sm:text-[3.25rem] font-light tabular-nums tracking-[-0.03em]">
+                            {h12}:{minutos}
+                        </span>
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-60">{meridiano}</span>
                     </p>
                 </div>
-                {children && <div className="mt-5">{children}</div>}
+                {children && <div className="mt-6">{children}</div>}
             </div>
         </section>
     )
