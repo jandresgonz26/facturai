@@ -84,8 +84,9 @@ export function DaySchedule({
                                         b.inProgress ? 'bg-teal-50 dark:bg-teal-900/20' : b.past ? 'opacity-45' : ''
                                     }`}
                                 >
-                                    <div className="w-16 shrink-0 pt-0.5 text-right">
-                                        <p className="text-xs font-medium tabular-nums">{formatTime(b.start)}</p>
+                                    {/* Ancho suficiente para "12:14 p. m." sin partirse en dos líneas. */}
+                                    <div className="w-20 shrink-0 pt-0.5 text-right">
+                                        <p className="text-xs font-medium tabular-nums whitespace-nowrap">{formatTime(b.start)}</p>
                                         <p className="text-[10px] text-muted-foreground tabular-nums">{horas(b.end - b.start)}</p>
                                     </div>
                                     <span className={`mt-1 w-1 shrink-0 self-stretch rounded-full ${meta.border.replace('border-l-', 'bg-')}`} />

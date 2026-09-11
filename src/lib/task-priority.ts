@@ -75,6 +75,8 @@ export const LABEL_META: Record<
         bubble: string
     }
 > = {
+    // La burbuja del icono es blanca sólida en todas: sobre una translúcida el
+    // emoji se embarraba con el color de fondo y no se distinguía.
     now: {
         text: 'Hazla ya',
         emoji: '🔥',
@@ -82,7 +84,7 @@ export const LABEL_META: Record<
         border: 'border-l-red-500',
         card: 'bg-gradient-to-br from-rose-500 to-red-600 border-transparent',
         on: 'text-white',
-        bubble: 'bg-white/25',
+        bubble: 'bg-white shadow-sm',
     },
     frog: {
         text: 'El sapo',
@@ -91,7 +93,7 @@ export const LABEL_META: Record<
         border: 'border-l-violet-500',
         card: 'bg-gradient-to-br from-violet-500 to-purple-600 border-transparent',
         on: 'text-white',
-        bubble: 'bg-white/25',
+        bubble: 'bg-white shadow-sm',
     },
     quick: {
         text: 'Ganar rápido',
@@ -100,18 +102,19 @@ export const LABEL_META: Record<
         border: 'border-l-amber-500',
         card: 'bg-gradient-to-br from-amber-400 to-orange-500 border-transparent',
         on: 'text-white',
-        bubble: 'bg-white/30',
+        bubble: 'bg-white shadow-sm',
     },
-    // También lleva color, pero apagado: la jerarquía la marca la intensidad,
-    // no la ausencia. En blanco, la mayoría de las tarjetas quedaban sin color.
+    // Teal, el color de marca de la app: es el tono "normal". Sigue leyéndose
+    // como menos urgente que el rojo, el violeta o el ámbar, que son colores
+    // de alarma, pero ya no es un gris sin vida.
     later: {
         text: 'Puede esperar',
         emoji: '🌱',
         className: 'bg-muted text-muted-foreground',
         border: 'border-l-transparent',
-        card: 'bg-gradient-to-br from-slate-400 to-slate-500 border-transparent',
+        card: 'bg-gradient-to-br from-teal-500 to-cyan-600 border-transparent',
         on: 'text-white',
-        bubble: 'bg-white/25',
+        bubble: 'bg-white shadow-sm',
     },
 }
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -12,15 +12,14 @@ import { AgentLauncher } from "@/components/agent/AgentLauncher";
 const inter = Inter({ subsets: ["latin"] });
 
 /**
- * Tipografía de display, solo para piezas destacadas como el saludo del día.
- * Fraunces es una serif de trazo cálido y redondeado: acompaña mejor a la
- * ilustración del banner que una serif de contraste alto, que resultaba seca.
+ * Tipografía de display, solo para el saludo del banner. Tras dos serifs que
+ * no terminaron de convencer, se cambia de familia: una sans geométrica de
+ * terminales suaves acompaña mejor a una ilustración amable que una serif,
+ * que contrastaba en vez de acompañar.
  */
-const displaySerif = Fraunces({
+const displaySerif = Outfit({
     subsets: ["latin"],
-    // Fuente variable: los ejes (SOFT, WONK) solo se pueden pedir si no se fija
-    // un peso concreto. El peso se ajusta luego por CSS.
-    axes: ["SOFT", "WONK", "opsz"],
+    weight: ["600", "700"],
     variable: "--font-display",
 });
 

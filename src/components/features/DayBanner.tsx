@@ -80,11 +80,8 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
             <div className={`relative px-6 py-7 sm:px-8 sm:py-8 ${scene.text}`}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3">
                     <div>
-                        {/* El saludo en serif: la única pieza editorial de la pantalla. */}
-                        <h1
-                            className="font-[family-name:var(--font-display)] text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.02em]"
-                            style={{ fontVariationSettings: '"SOFT" 40, "WONK" 1, "opsz" 60', fontWeight: 600 }}
-                        >
+                        {/* El saludo: sans geométrica y gruesa, al estilo de la referencia. */}
+                        <h1 className="font-[family-name:var(--font-display)] font-bold text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.03em]">
                             {scene.label}
                         </h1>
                         <p className={`mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] ${scene.sub} opacity-80`}>
