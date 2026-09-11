@@ -661,8 +661,9 @@ export default function TasksPage() {
                                         const priority = scoreTask(task, signals)
                                         const showLabel = task.status !== 'done' && (task.consequence != null || task.clarity != null || task.due_date != null)
                                         const style = LABEL_META[priority.label]
-                                        // Solo se pinta lo que de verdad urge: si todas gritan, ninguna destaca.
-                                        const colored = showLabel && priority.label !== 'later'
+                                        // Todas las tareas abiertas van a color; la urgencia se lee en la
+                                        // intensidad. Las hechas se quedan neutras, que ya no compiten.
+                                        const colored = task.status !== 'done'
                                         // Contexto condensado en una línea: solo lo que aporta.
                                         const meta = [
                                             task.clients?.name,

@@ -102,16 +102,16 @@ export const LABEL_META: Record<
         on: 'text-white',
         bubble: 'bg-white/30',
     },
-    // Lo que puede esperar se queda neutro a propósito: si todo grita, nada
-    // destaca, y la mayoría de las tareas caen aquí.
+    // También lleva color, pero apagado: la jerarquía la marca la intensidad,
+    // no la ausencia. En blanco, la mayoría de las tarjetas quedaban sin color.
     later: {
         text: 'Puede esperar',
         emoji: '🌱',
         className: 'bg-muted text-muted-foreground',
         border: 'border-l-transparent',
-        card: 'bg-card',
-        on: '',
-        bubble: 'bg-muted',
+        card: 'bg-gradient-to-br from-slate-400 to-slate-500 border-transparent',
+        on: 'text-white',
+        bubble: 'bg-white/25',
     },
 }
 

@@ -10,24 +10,32 @@ import { DayScene } from './DayScene'
  * de bien tanto si detrás hay cielo claro, el sol o un cerro oscuro.
  */
 
-const SCENES: Record<DayBlock, { label: string; scrim: string; text: string; sub: string }> = {
+/**
+ * Cada escena define su velo. Van dos, uno por cada extremo donde hay texto,
+ * en vez de uno solo de izquierda a derecha: así la hora de la derecha también
+ * queda protegida y la ilustración se mantiene limpia en el centro.
+ */
+const SCENES: Record<DayBlock, { label: string; left: string; right: string; text: string; sub: string }> = {
     morning: {
         label: 'Buenos días',
-        scrim: 'from-white/80 via-white/30 to-transparent',
+        left: 'from-white/95 via-white/55 to-transparent',
+        right: 'from-white/92 via-white/40 to-transparent',
         text: 'text-slate-900',
-        sub: 'text-slate-800',
+        sub: 'text-slate-700',
     },
     afternoon: {
         label: 'Buenas tardes',
-        scrim: 'from-white/80 via-white/30 to-transparent',
+        left: 'from-white/95 via-white/55 to-transparent',
+        right: 'from-white/92 via-white/40 to-transparent',
         text: 'text-slate-900',
-        sub: 'text-slate-800',
+        sub: 'text-slate-700',
     },
     evening: {
         label: 'Buenas noches',
-        scrim: 'from-slate-950/85 via-slate-950/35 to-transparent',
+        left: 'from-slate-950/90 via-slate-950/65 to-transparent',
+        right: 'from-slate-950/85 via-slate-950/45 to-transparent',
         text: 'text-slate-50',
-        sub: 'text-slate-200',
+        sub: 'text-slate-300',
     },
 }
 
@@ -64,14 +72,19 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
         <section className="relative overflow-hidden rounded-2xl mb-6 min-h-[190px] shadow-sm">
             <DayScene block={block} />
 
-            {/* Velo bajo el texto: garantiza contraste sin tapar la ilustración. */}
-            <div className={`absolute inset-0 bg-gradient-to-r ${scene.scrim}`} aria-hidden />
+            {/* Velos bajo el texto. Estrechos a propósito: si se tocan en el medio
+                lavan toda la ilustración, que es justo lo que hay que preservar. */}
+            <div className={`absolute inset-y-0 left-0 w-[42%] bg-gradient-to-r ${scene.left}`} aria-hidden />
+            <div className={`absolute inset-y-0 right-0 w-[26%] bg-gradient-to-l ${scene.right}`} aria-hidden />
 
             <div className={`relative px-6 py-7 sm:px-8 sm:py-8 ${scene.text}`}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3">
                     <div>
                         {/* El saludo en serif: la única pieza editorial de la pantalla. */}
-                        <h1 className="font-[family-name:var(--font-display)] text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.015em] drop-shadow-sm">
+                        <h1
+                            className="font-[family-name:var(--font-display)] text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.02em]"
+                            style={{ fontVariationSettings: '"SOFT" 40, "WONK" 1, "opsz" 60', fontWeight: 600 }}
+                        >
                             {scene.label}
                         </h1>
                         <p className={`mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] ${scene.sub} opacity-80`}>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -13,13 +13,14 @@ const inter = Inter({ subsets: ["latin"] });
 
 /**
  * Tipografía de display, solo para piezas destacadas como el saludo del día.
- * El contraste con Inter es deliberado: da un aire editorial que un peso más
- * de la misma fuente no consigue.
+ * Fraunces es una serif de trazo cálido y redondeado: acompaña mejor a la
+ * ilustración del banner que una serif de contraste alto, que resultaba seca.
  */
-const displaySerif = Instrument_Serif({
+const displaySerif = Fraunces({
     subsets: ["latin"],
-    weight: "400",
-    style: ["normal", "italic"],
+    // Fuente variable: los ejes (SOFT, WONK) solo se pueden pedir si no se fija
+    // un peso concreto. El peso se ajusta luego por CSS.
+    axes: ["SOFT", "WONK", "opsz"],
     variable: "--font-display",
 });
 

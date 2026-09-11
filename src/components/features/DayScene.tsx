@@ -92,9 +92,11 @@ const STARS = [
  */
 function Grove({ p, id }: { p: Palette; id: string }) {
     // [x, cota de la loma en ese punto, tamaño, tipo]
+    // El tercio izquierdo se deja despejado a propósito: ahí va el saludo, y
+    // poner detalle detrás del texto es lo que ensucia la lectura.
     const trees: [number, number, number, 'round' | 'pine'][] = [
-        [118, 231, 20, 'round'], [156, 226, 13, 'pine'], [196, 224, 16, 'round'],
-        [452, 212, 15, 'pine'], [492, 208, 22, 'round'], [536, 206, 14, 'pine'],
+        [402, 216, 15, 'pine'], [442, 212, 22, 'round'], [486, 208, 14, 'pine'],
+        [560, 204, 18, 'round'], [600, 206, 12, 'pine'],
         [806, 240, 18, 'round'], [846, 239, 12, 'pine'], [886, 236, 21, 'round'],
         [1054, 220, 16, 'pine'], [1096, 223, 19, 'round'],
     ]
