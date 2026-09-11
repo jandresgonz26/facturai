@@ -660,6 +660,9 @@ export default function TasksPage() {
                                         const overdue = !!task.due_date && task.status !== 'done' && task.due_date < todayStr()
                                         const priority = scoreTask(task, signals)
                                         const showLabel = task.status !== 'done' && (task.consequence != null || task.clarity != null || task.due_date != null)
+                                        const style = LABEL_META[priority.label]
+                                        // Solo se pinta lo que de verdad urge: si todas gritan, ninguna destaca.
+                                        const colored = showLabel && priority.label !== 'later'
                                         // Contexto condensado en una línea: solo lo que aporta.
                                         const meta = [
                                             task.clients?.name,
@@ -675,36 +678,52 @@ export default function TasksPage() {
                                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
                                                 onDoubleClick={() => openEdit(task)}
                                                 title={priority.reason}
-                                                className={`group relative rounded-lg border-l-[3px] border bg-card px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                                                    showLabel ? LABEL_META[priority.label].border : 'border-l-transparent'
-                                                }`}
+                                                className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
+                                                    colored ? `${style.card} ${style.on}` : 'bg-card'
+                                                } ${task.status === 'done' ? 'opacity-60' : ''}`}
                                             >
-                                                <div className="flex items-start gap-2">
-                                                    {showLabel && (
-                                                        <span className="text-sm leading-5 shrink-0" title={LABEL_META[priority.label].text}>
-                                                            {LABEL_META[priority.label].emoji}
-                                                        </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] ${
+                                                            colored ? style.bubble : 'bg-muted'
+                                                        }`}
+                                                        title={showLabel ? style.text : undefined}
+                                                    >
+                                                        {showLabel ? style.emoji : '·'}
+                                                    </span>
+                                                    {meta.length > 0 && (
+                                                        <p className={`truncate text-[11px] ${colored ? 'text-white/85' : 'text-muted-foreground'}`}>
+                                                            {meta.join(' · ')}
+                                                        </p>
                                                     )}
-                                                    <p className={`flex-1 text-sm leading-5 ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
-                                                        {task.title}
-                                                    </p>
                                                 </div>
 
-                                                {/* Una sola línea de contexto, en vez de una fila de etiquetas. */}
-                                                {meta.length > 0 && (
-                                                    <p className="mt-1 text-[11px] text-muted-foreground truncate">
-                                                        {meta.join(' · ')}
-                                                    </p>
-                                                )}
+                                                <p
+                                                    className={`mt-1.5 text-sm font-medium leading-5 ${
+                                                        task.status === 'done' ? 'line-through' : ''
+                                                    } ${colored ? '' : 'text-foreground'}`}
+                                                >
+                                                    {task.title}
+                                                </p>
 
                                                 {/* Las acciones solo aparecen al pasar por encima. */}
-                                                <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md bg-card/95 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                <div
+                                                    className={`absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 ${
+                                                        colored ? 'bg-black/15' : 'bg-card/95'
+                                                    }`}
+                                                >
                                                     {task.status !== 'done' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => togglePlan(task, task.planned_for === today ? null : today)}
                                                             title={task.planned_for === today ? 'Sacar del plan de hoy' : 'Poner en el plan de hoy'}
-                                                            className={`p-1 rounded hover:bg-muted ${task.planned_for === today ? 'text-teal-600' : 'text-muted-foreground'}`}
+                                                            className={`p-1 rounded ${
+                                                                colored
+                                                                    ? 'text-white hover:bg-white/20'
+                                                                    : task.planned_for === today
+                                                                      ? 'text-teal-600 hover:bg-muted'
+                                                                      : 'text-muted-foreground hover:bg-muted'
+                                                            }`}
                                                         >
                                                             <CalendarCheck className="w-3.5 h-3.5" />
                                                         </button>
@@ -715,15 +734,27 @@ export default function TasksPage() {
                                                             onClick={() => handleRegister(task)}
                                                             disabled={working}
                                                             title="Registrar como ítem pendiente de facturar"
-                                                            className="p-1 rounded text-emerald-600 hover:bg-muted disabled:opacity-40"
+                                                            className={`p-1 rounded disabled:opacity-40 ${
+                                                                colored ? 'text-white hover:bg-white/20' : 'text-emerald-600 hover:bg-muted'
+                                                            }`}
                                                         >
                                                             <ReceiptText className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
-                                                    <button type="button" onClick={() => openEdit(task)} title="Editar" className="p-1 rounded text-muted-foreground hover:bg-muted">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openEdit(task)}
+                                                        title="Editar"
+                                                        className={`p-1 rounded ${colored ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:bg-muted'}`}
+                                                    >
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </button>
-                                                    <button type="button" onClick={() => setToDelete(task)} title="Eliminar" className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-muted">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setToDelete(task)}
+                                                        title="Eliminar"
+                                                        className={`p-1 rounded ${colored ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:text-red-500 hover:bg-muted'}`}
+                                                    >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
                                                 </div>

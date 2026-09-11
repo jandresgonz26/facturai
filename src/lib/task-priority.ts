@@ -60,11 +60,59 @@ export interface TaskPriority {
     reason: string
 }
 
-export const LABEL_META: Record<TaskLabel, { text: string; emoji: string; className: string; border: string }> = {
-    now: { text: 'Hazla ya', emoji: '🔥', className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300', border: 'border-l-red-500' },
-    frog: { text: 'El sapo', emoji: '🐸', className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300', border: 'border-l-violet-500' },
-    quick: { text: 'Ganar rápido', emoji: '⚡', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300', border: 'border-l-amber-500' },
-    later: { text: 'Puede esperar', emoji: '🌱', className: 'bg-muted text-muted-foreground', border: 'border-l-transparent' },
+export const LABEL_META: Record<
+    TaskLabel,
+    {
+        text: string
+        emoji: string
+        className: string
+        border: string
+        /** Tarjeta a color sólido: el color ES la señal de urgencia. */
+        card: string
+        /** Texto y adornos sobre esa tarjeta. */
+        on: string
+        /** Burbuja del icono dentro de la tarjeta. */
+        bubble: string
+    }
+> = {
+    now: {
+        text: 'Hazla ya',
+        emoji: '🔥',
+        className: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+        border: 'border-l-red-500',
+        card: 'bg-gradient-to-br from-rose-500 to-red-600 border-transparent',
+        on: 'text-white',
+        bubble: 'bg-white/25',
+    },
+    frog: {
+        text: 'El sapo',
+        emoji: '🐸',
+        className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+        border: 'border-l-violet-500',
+        card: 'bg-gradient-to-br from-violet-500 to-purple-600 border-transparent',
+        on: 'text-white',
+        bubble: 'bg-white/25',
+    },
+    quick: {
+        text: 'Ganar rápido',
+        emoji: '⚡',
+        className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+        border: 'border-l-amber-500',
+        card: 'bg-gradient-to-br from-amber-400 to-orange-500 border-transparent',
+        on: 'text-white',
+        bubble: 'bg-white/30',
+    },
+    // Lo que puede esperar se queda neutro a propósito: si todo grita, nada
+    // destaca, y la mayoría de las tareas caen aquí.
+    later: {
+        text: 'Puede esperar',
+        emoji: '🌱',
+        className: 'bg-muted text-muted-foreground',
+        border: 'border-l-transparent',
+        card: 'bg-card',
+        on: '',
+        bubble: 'bg-muted',
+    },
 }
 
 function daysUntil(date: string, today: string): number {
