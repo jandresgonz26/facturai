@@ -34,6 +34,7 @@ import {
     CLARITY_OPTIONS,
     CONSEQUENCE_OPTIONS,
     ESTIMATE_OPTIONS,
+    DONE_STYLE,
     LABEL_META,
     computeDrift,
     currentBlock,
@@ -660,10 +661,9 @@ export default function TasksPage() {
                                         const overdue = !!task.due_date && task.status !== 'done' && task.due_date < todayStr()
                                         const priority = scoreTask(task, signals)
                                         const showLabel = task.status !== 'done' && (task.consequence != null || task.clarity != null || task.due_date != null)
-                                        const style = LABEL_META[priority.label]
-                                        // Todas las tareas abiertas van a color; la urgencia se lee en la
-                                        // intensidad. Las hechas se quedan neutras, que ya no compiten.
-                                        const colored = task.status !== 'done'
+                                        // Las hechas llevan su propio verde de "listo", no el color de
+                                        // urgencia que tenían antes de cerrarse. El resto, todas a color.
+                                        const style = task.status === 'done' ? DONE_STYLE : LABEL_META[priority.label]
                                         // Contexto condensado en una línea: solo lo que aporta.
                                         const meta = [
                                             task.clients?.name,
@@ -679,52 +679,32 @@ export default function TasksPage() {
                                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
                                                 onDoubleClick={() => openEdit(task)}
                                                 title={priority.reason}
-                                                className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
-                                                    colored ? `${style.card} ${style.on}` : 'bg-card'
-                                                } ${task.status === 'done' ? 'opacity-60' : ''}`}
+                                                className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${style.card} ${style.on}`}
                                             >
                                                 <div className="flex items-center gap-2">
                                                     <span
-                                                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] ${
-                                                            colored ? style.bubble : 'bg-muted'
-                                                        }`}
-                                                        title={showLabel ? style.text : undefined}
+                                                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] ${style.bubble}`}
+                                                        title={style.text}
                                                     >
-                                                        {showLabel ? style.emoji : '·'}
+                                                        {task.status === 'done' || showLabel ? style.emoji : '·'}
                                                     </span>
                                                     {meta.length > 0 && (
-                                                        <p className={`truncate text-[11px] ${colored ? 'text-white/85' : 'text-muted-foreground'}`}>
-                                                            {meta.join(' · ')}
-                                                        </p>
+                                                        <p className="truncate text-[11px] text-white/85">{meta.join(' · ')}</p>
                                                     )}
                                                 </div>
 
-                                                <p
-                                                    className={`mt-1.5 text-sm font-medium leading-5 ${
-                                                        task.status === 'done' ? 'line-through' : ''
-                                                    } ${colored ? '' : 'text-foreground'}`}
-                                                >
+                                                <p className={`mt-1.5 text-sm font-medium leading-5 ${task.status === 'done' ? 'line-through' : ''}`}>
                                                     {task.title}
                                                 </p>
 
                                                 {/* Las acciones solo aparecen al pasar por encima. */}
-                                                <div
-                                                    className={`absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 ${
-                                                        colored ? 'bg-black/15' : 'bg-card/95'
-                                                    }`}
-                                                >
+                                                <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md bg-black/15 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                                                     {task.status !== 'done' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => togglePlan(task, task.planned_for === today ? null : today)}
                                                             title={task.planned_for === today ? 'Sacar del plan de hoy' : 'Poner en el plan de hoy'}
-                                                            className={`p-1 rounded ${
-                                                                colored
-                                                                    ? 'text-white hover:bg-white/20'
-                                                                    : task.planned_for === today
-                                                                      ? 'text-teal-600 hover:bg-muted'
-                                                                      : 'text-muted-foreground hover:bg-muted'
-                                                            }`}
+                                                            className="p-1 rounded text-white hover:bg-white/20"
                                                         >
                                                             <CalendarCheck className="w-3.5 h-3.5" />
                                                         </button>
@@ -735,9 +715,7 @@ export default function TasksPage() {
                                                             onClick={() => handleRegister(task)}
                                                             disabled={working}
                                                             title="Registrar como ítem pendiente de facturar"
-                                                            className={`p-1 rounded disabled:opacity-40 ${
-                                                                colored ? 'text-white hover:bg-white/20' : 'text-emerald-600 hover:bg-muted'
-                                                            }`}
+                                                            className="p-1 rounded text-white hover:bg-white/20 disabled:opacity-40"
                                                         >
                                                             <ReceiptText className="w-3.5 h-3.5" />
                                                         </button>
@@ -746,7 +724,7 @@ export default function TasksPage() {
                                                         type="button"
                                                         onClick={() => openEdit(task)}
                                                         title="Editar"
-                                                        className={`p-1 rounded ${colored ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:bg-muted'}`}
+                                                        className="p-1 rounded text-white hover:bg-white/20"
                                                     >
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </button>
@@ -754,7 +732,7 @@ export default function TasksPage() {
                                                         type="button"
                                                         onClick={() => setToDelete(task)}
                                                         title="Eliminar"
-                                                        className={`p-1 rounded ${colored ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:text-red-500 hover:bg-muted'}`}
+                                                        className="p-1 rounded text-white hover:bg-white/20"
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </button>

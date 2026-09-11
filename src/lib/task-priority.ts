@@ -118,6 +118,19 @@ export const LABEL_META: Record<
     },
 }
 
+/**
+ * Estilo de una tarea ya hecha. No es parte de LABEL_META porque no es un
+ * nivel de urgencia: es un estado aparte, y necesita su propio verde de
+ * "listo" en vez de heredar el color que tenía la tarea antes de cerrarla.
+ */
+export const DONE_STYLE = {
+    text: 'Hecha',
+    emoji: '✅',
+    card: 'bg-gradient-to-br from-emerald-500 to-green-600 border-transparent',
+    on: 'text-white',
+    bubble: 'bg-white shadow-sm',
+}
+
 function daysUntil(date: string, today: string): number {
     return Math.round((new Date(`${date}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86400000)
 }

@@ -20,14 +20,15 @@ const SCENES: Record<DayBlock, { label: string; left: string; right: string; tex
         label: 'Buenos días',
         left: 'from-white/95 via-white/55 to-transparent',
         right: 'from-white/92 via-white/40 to-transparent',
-        text: 'text-slate-900',
+        // Oscuro pero no negro puro: un azulado profundo, no gris frío.
+        text: 'text-slate-700',
         sub: 'text-slate-700',
     },
     afternoon: {
         label: 'Buenas tardes',
         left: 'from-white/95 via-white/55 to-transparent',
         right: 'from-white/92 via-white/40 to-transparent',
-        text: 'text-slate-900',
+        text: 'text-slate-700',
         sub: 'text-slate-700',
     },
     evening: {
@@ -80,8 +81,8 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
             <div className={`relative px-6 py-7 sm:px-8 sm:py-8 ${scene.text}`}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3">
                     <div>
-                        {/* El saludo: sans geométrica y gruesa, al estilo de la referencia. */}
-                        <h1 className="font-[family-name:var(--font-display)] font-bold text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.03em]">
+                        {/* El saludo: sans geométrica, semigruesa (menos "volt" que antes). */}
+                        <h1 className="font-[family-name:var(--font-display)] font-semibold text-[2.5rem] sm:text-[3.25rem] leading-[0.95] tracking-[-0.03em]">
                             {scene.label}
                         </h1>
                         <p className={`mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] ${scene.sub} opacity-80`}>
@@ -90,7 +91,7 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
                     </div>
 
                     <p className="flex items-baseline gap-1.5 leading-none drop-shadow-sm">
-                        <span className="text-[2.75rem] sm:text-[3.25rem] font-light tabular-nums tracking-[-0.03em]">
+                        <span className="font-[family-name:var(--font-display)] text-[2.75rem] sm:text-[3.25rem] font-bold tabular-nums tracking-[-0.03em]">
                             {h12}:{minutos}
                         </span>
                         <span className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${scene.sub} opacity-80`}>
