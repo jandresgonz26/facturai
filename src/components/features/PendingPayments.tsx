@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Hourglass } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { ClientAmountCard } from './ClientList'
 
 interface PendingItem {
     clientName: string
     total: number
-    urgency: 'high' | 'medium' | 'low'
 }
 
+/** Actividad registrada que todavía no se ha pasado a factura, por cliente. */
 export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: number }) {
     const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
     const [loading, setLoading] = useState(true)
@@ -31,11 +33,7 @@ export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: numbe
             grouped[name] = (grouped[name] || 0) + (log.value || 0)
         })
         return Object.entries(grouped)
-            .map(([clientName, total]) => ({
-                clientName,
-                total,
-                urgency: (total > 100 ? 'high' : total > 50 ? 'medium' : 'low') as 'high' | 'medium' | 'low',
-            }))
+            .map(([clientName, total]) => ({ clientName, total }))
             .sort((a, b) => b.total - a.total)
     }
 
@@ -49,52 +47,19 @@ export function PendingPayments({ refreshTrigger = 0 }: { refreshTrigger?: numbe
         return () => {
             active = false
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refreshTrigger])
 
-    const urgencyColors = {
-        high: 'bg-red-400',
-        medium: 'bg-amber-400',
-        low: 'bg-amber-400',
-    }
-
     return (
-        <div className="bg-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Pendientes por Facturar
-                </h3>
-                {pendingItems.length > 0 && (
-                    <span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">
-                        {pendingItems.length}
-                    </span>
-                )}
-            </div>
-
-            {loading ? (
-                <p className="text-sm text-gray-400">Cargando...</p>
-            ) : pendingItems.length === 0 ? (
-                <p className="text-sm text-gray-400">No hay registros pendientes 🎉</p>
-            ) : (
-                <>
-                    <ul className="space-y-4">
-                        {pendingItems.slice(0, 5).map((item, i) => (
-                            <li key={i} className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${urgencyColors[item.urgency]}`} />
-                                    <span className="text-gray-700 dark:text-gray-300">{item.clientName}</span>
-                                </div>
-                                <span className="font-mono text-gray-900 dark:text-white font-medium">
-                                    ${item.total.toFixed(2)}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                    <button onClick={() => router.push('/month-end')} className="w-full mt-6 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors">
-                        Facturar Pendientes
-                    </button>
-                </>
-            )}
-        </div>
+        <ClientAmountCard
+            title="Pendiente por facturar"
+            icon={Hourglass}
+            items={pendingItems}
+            loading={loading}
+            emptyText="No hay registros pendientes 🎉"
+            count={pendingItems.length}
+            countTone="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+            actionLabel="Facturar pendientes"
+            onAction={() => router.push('/month-end')}
+        />
     )
 }

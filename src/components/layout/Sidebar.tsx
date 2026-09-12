@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
@@ -12,11 +13,11 @@ import {
     ReceiptText,
     Settings,
     SquareKanban,
-    UserRound,
     Users,
     X,
     type LucideIcon,
 } from 'lucide-react'
+import { BRAND } from '@/lib/brand'
 
 const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,6 +30,19 @@ const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
 
+/** Avatar con iniciales y anillo en los tres colores del logo. */
+export function BrandAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
+    const outer = size === 'sm' ? 'h-9 w-9' : 'h-11 w-11'
+    const text = size === 'sm' ? 'text-xs' : 'text-sm'
+    return (
+        <div className={`brand-ring ${outer} shrink-0 rounded-full p-[2px]`}>
+            <div className={`flex h-full w-full items-center justify-center rounded-full bg-brand-navy font-display font-semibold text-white ${text}`}>
+                {BRAND.initials}
+            </div>
+        </div>
+    )
+}
+
 export function Sidebar() {
     const pathname = usePathname()
     const [mobileOpen, setMobileOpen] = useState(false)
@@ -38,7 +52,7 @@ export function Sidebar() {
             {/* Mobile toggle */}
             <button
                 onClick={() => setMobileOpen(!mobileOpen)}
-                className="lg:hidden fixed top-3.5 left-4 z-50 p-2 bg-gray-900 text-white rounded-lg shadow-lg"
+                className="lg:hidden fixed top-3.5 left-4 z-50 p-2 bg-brand-navy text-white rounded-xl shadow-lg"
                 aria-label="Abrir menú"
             >
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -51,30 +65,40 @@ export function Sidebar() {
 
             <aside
                 className={`
-                fixed left-0 top-0 h-screen z-40
-                w-64 bg-gray-900 text-white border-r border-gray-800
-                flex flex-col py-6 shadow-xl
+                fixed left-0 top-0 h-screen z-40 w-64
+                flex flex-col text-sidebar-foreground
+                bg-[linear-gradient(180deg,#0B3552_0%,#0E4569_100%)]
+                shadow-[8px_0_30px_-18px_rgba(11,53,82,0.6)]
                 transition-transform duration-300
                 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
                 lg:translate-x-0
             `}
             >
-                {/* Logo */}
-                <div className="flex items-center px-6 mb-10">
-                    <div className="relative w-8 h-8 flex-shrink-0">
-                        <svg className="w-full h-full drop-shadow-[0_0_10px_rgba(45,212,191,0.5)]" viewBox="0 0 100 100">
-                            <path d="M10 50 L90 10 L80 90 Z" fill="#38BDF8" opacity="1" />
-                            <path d="M10 50 L80 90 L50 95 Z" fill="#2DD4BF" opacity="1" />
-                        </svg>
-                    </div>
-                    <span className="font-bold text-xl tracking-tight text-white ml-3">
-                        MicroBill
-                        <span className="text-xs font-normal text-gray-400 block -mt-1">Executive</span>
-                    </span>
+                {/* Logo: la versión con texto blanco; el isotipo conserva sus colores. */}
+                <div className="px-6 pt-7 pb-6">
+                    <Link href="/" className="block" title={BRAND.legalName}>
+                        <Image src={BRAND.logoOnDark} alt={BRAND.company} width={1064} height={274} priority className="h-8 w-auto" />
+                    </Link>
                 </div>
 
-                {/* Navigation */}
-                <nav className="flex-1 w-full px-3 space-y-1">
+                {/* Perfil arriba, como tarjeta: quién está usando la app y de qué empresa. */}
+                <Link
+                    href="/settings"
+                    onClick={() => setMobileOpen(false)}
+                    className="mx-4 mb-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 transition-colors hover:bg-white/[0.12]"
+                >
+                    <BrandAvatar />
+                    <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">{BRAND.owner}</p>
+                        <p className="truncate text-[11px] text-white/60">
+                            {BRAND.role} · {BRAND.company}
+                        </p>
+                    </div>
+                    <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-brand-green shadow-[0_0_8px_#68B840]" title="Sesión activa" />
+                </Link>
+
+                {/* Navegación: el activo es una pastilla blanca sobre el azul, no un borde tímido. */}
+                <nav className="flex-1 w-full px-4 space-y-1">
                     {navLinks.map((link) => {
                         const isActive = pathname === link.href
                         const Icon = link.icon
@@ -83,37 +107,22 @@ export function Sidebar() {
                                 key={link.href}
                                 href={link.href}
                                 onClick={() => setMobileOpen(false)}
-                                className={`
-                                    sidebar-link relative flex items-center gap-4 px-4 py-3 rounded-lg transition-all group
-                                    ${
-                                        isActive
-                                            ? 'active text-white bg-gray-800 border border-gray-700/50'
-                                            : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                                    }
-                                `}
+                                className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+                                    isActive
+                                        ? 'bg-white text-brand-blue shadow-[0_6px_18px_-8px_rgba(0,0,0,0.5)]'
+                                        : 'text-white/70 hover:bg-white/10 hover:text-white'
+                                }`}
                             >
-                                <Icon className={`w-5 h-5 ${isActive ? 'text-teal-400' : ''}`} strokeWidth={isActive ? 2.25 : 1.75} />
-                                <span className="text-sm font-medium">{link.label}</span>
+                                <Icon className={`w-[18px] h-[18px] ${isActive ? 'text-brand-blue' : ''}`} strokeWidth={isActive ? 2.25 : 1.75} />
+                                {link.label}
                             </Link>
                         )
                     })}
                 </nav>
 
-                {/* User Profile Footer */}
-                <div className="px-3 w-full mt-auto space-y-4">
-                    <div className="pt-4 border-t border-gray-800">
-                        <Link href="/settings" className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
-                            <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-teal-500 to-sky-500 p-[2px] flex-shrink-0 shadow-lg shadow-teal-900/50">
-                                <div className="h-full w-full rounded-full bg-gray-700 flex items-center justify-center">
-                                    <UserRound className="w-4 h-4 text-white" />
-                                </div>
-                            </div>
-                            <div className="overflow-hidden">
-                                <p className="text-sm font-medium text-white truncate">Admin</p>
-                                <p className="text-xs text-gray-400 truncate">Executive View</p>
-                            </div>
-                        </Link>
-                    </div>
+                <div className="px-6 pb-6 pt-4 text-[11px] leading-relaxed text-white/45">
+                    <p className="font-medium text-white/60">{BRAND.legalName}</p>
+                    <p>Gestión interna</p>
                 </div>
             </aside>
         </>

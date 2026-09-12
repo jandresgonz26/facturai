@@ -142,11 +142,13 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
 
     return (
         <>
-            <section className="space-y-4">
-                <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        <Hourglass className="w-5 h-5 text-purple-600" />
-                        Bolsas de Horas
+            <section className="rounded-2xl bg-card border border-border/70 card-soft p-5 space-y-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h2 className="font-display text-base font-semibold flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300">
+                            <Hourglass className="w-4 h-4" />
+                        </span>
+                        Bolsas de horas
                     </h2>
                     <span className="text-xs text-muted-foreground">Haz clic en una tarjeta para ver el detalle</span>
                 </div>
@@ -165,9 +167,9 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
                             <div
                                 key={item.client.id}
                                 onClick={() => setDetailClient(item)}
-                                className={`p-4 rounded-lg border shadow-sm transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${isComplete
+                                className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${isComplete
                                         ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 ring-2 ring-green-300 dark:ring-green-700'
-                                        : 'bg-card border-gray-100 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700'
+                                        : 'bg-background/70 border-border/70 hover:border-purple-300 dark:hover:border-purple-700'
                                     }`}
                             >
                                 <div className="flex justify-between items-start mb-3">
@@ -191,7 +193,7 @@ export function HourBagTracker({ refreshTrigger = 0, onPackaged }: { refreshTrig
                                     </div>
 
                                     <div className="text-right">
-                                        <span className={`text-2xl font-bold font-mono ${isComplete ? 'text-green-600' : 'text-gray-900 dark:text-white'}`}>
+                                        <span className={`font-display text-2xl font-semibold tabular-nums ${isComplete ? 'text-green-600' : 'text-foreground'}`}>
                                             {item.totalHours.toFixed(1)}
                                         </span>
                                         <span className="text-sm text-muted-foreground"> / 10h</span>

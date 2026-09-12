@@ -131,18 +131,18 @@ export function QuickEntry({ onEntryAdded }: { onEntryAdded?: () => void }) {
 
     return (
         <section aria-labelledby="add-activity-title" className="relative z-10">
-            <div className="bg-card rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
-                {/* Dark gradient header */}
-                <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
+            <div className="rounded-2xl bg-card border border-border/70 card-soft overflow-hidden">
+                {/* Cabecera en el azul marino de la marca */}
+                <div className="bg-[linear-gradient(135deg,#0B3552_0%,#106898_100%)] px-6 py-4 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <div className="p-1.5 bg-teal-500/20 rounded text-teal-400">
-                            <ClipboardCheck className="w-5 h-5" />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-brand-cyan">
+                            <ClipboardCheck className="w-4 h-4" />
                         </div>
-                        <h2 className="text-base font-semibold text-white" id="add-activity-title">
-                            Registro Rápido
+                        <h2 className="font-display text-base font-semibold text-white" id="add-activity-title">
+                            Registro rápido
                         </h2>
                     </div>
-                    <span className="text-xs text-gray-400 font-mono">
+                    <span className="text-xs text-white/50 font-mono">
                         ID: #NEW-{new Date().getFullYear().toString().slice(-2)}{String(new Date().getMonth() + 1).padStart(2, '0')}
                     </span>
                 </div>
@@ -267,7 +267,7 @@ export function QuickEntry({ onEntryAdded }: { onEntryAdded?: () => void }) {
                             </div>
                             <div className="md:col-span-3">
                                 <button
-                                    className="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+                                    className="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-full shadow-[0_10px_22px_-10px_rgba(16,104,152,0.9)] text-sm font-semibold text-white bg-brand-blue hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-cyan transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
                                     type="submit"
                                     disabled={loading}
                                 >

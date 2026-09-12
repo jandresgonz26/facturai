@@ -315,8 +315,8 @@ export function Feed({
                 {groupedLogs.map((group, groupIdx) => (
                     <div key={group.dateKey} className="mb-8 relative timeline-item">
                         {/* Date header */}
-                        <div className="sticky top-0 z-10 bg-background py-2 mb-4 w-full border-b border-gray-100 dark:border-gray-800">
-                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-12">
+                        <div className="sticky top-0 z-10 bg-card py-2 mb-4 w-full border-b border-border/70">
+                            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-12">
                                 {group.dateLabel}
                             </h3>
                         </div>
@@ -339,7 +339,7 @@ export function Feed({
                                         </div>
 
                                         {/* Card */}
-                                        <div className="bg-card rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex justify-between items-center">
+                                        <div className="bg-background/70 rounded-xl p-4 border border-border/70 hover:bg-card hover:shadow-md transition-all flex justify-between items-center">
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="text-xs font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 rounded">

@@ -39,3 +39,35 @@ export async function getMonthlyRevenue(period = currentPeriod()): Promise<Month
     const paid = round2(rows.filter((r) => r.status === 'paid').reduce((s, r) => s + Number(r.total_amount || 0), 0))
     return { period, invoiced, paid, unpaid: round2(invoiced - paid), count: rows.length, goal }
 }
+
+export interface DashboardKpis {
+    month: MonthlyRevenue
+    /** Actividad registrada que todavía no se ha pasado a factura. */
+    unbilled: { total: number; clients: number }
+    /** Facturas emitidas (de cualquier mes) que aún no se han cobrado. */
+    receivable: { total: number; clients: number }
+}
+
+/** Las cuatro cifras de cabecera del dashboard, en una sola ida al servidor. */
+export async function getDashboardKpis(): Promise<DashboardKpis> {
+    const [month, logs, invoices] = await Promise.all([
+        getMonthlyRevenue(),
+        supabase.from('logs').select('value, client_id').eq('status', 'pending').not('value', 'is', null),
+        supabase.from('invoices').select('total_amount, client_id').neq('status', 'paid'),
+    ])
+    if (logs.error) throw new ActionError(`No se pudo leer lo pendiente por facturar: ${logs.error.message}`)
+    if (invoices.error) throw new ActionError(`No se pudo leer lo pendiente por cobrar: ${invoices.error.message}`)
+
+    const sum = (rows: { amount: number | null; client_id: string | null }[]) => ({
+        total: round2(rows.reduce((s, r) => s + Number(r.amount || 0), 0)),
+        clients: new Set(rows.map((r) => r.client_id).filter(Boolean)).size,
+    })
+
+    return {
+        month,
+        unbilled: sum(((logs.data || []) as { value: number | null; client_id: string | null }[]).map((r) => ({ amount: r.value, client_id: r.client_id }))),
+        receivable: sum(
+            ((invoices.data || []) as { total_amount: number | null; client_id: string | null }[]).map((r) => ({ amount: r.total_amount, client_id: r.client_id }))
+        ),
+    }
+}

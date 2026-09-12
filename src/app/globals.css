@@ -6,8 +6,36 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * Marca JAM Tech. Los tonos se midieron sobre el logo oficial: azul #106898,
+   * cian #48C0C0, verde #68B840 y gris #404040. La escala "teal" de Tailwind
+   * se reasigna a la marca a propósito: toda la app ya estaba escrita con
+   * teal-*, así que redefinirla aquí la pinta entera con la línea gráfica sin
+   * tocar cientos de clases. teal-600/700 son el azul (botones y texto),
+   * teal-400 es el cian (iconos y acentos), teal-50/100 sus tintes.
+   */
+  --color-teal-50: #EBF6F8;
+  --color-teal-100: #D4EEF1;
+  --color-teal-200: #A9DFE3;
+  --color-teal-300: #7BD0D4;
+  --color-teal-400: #48C0C0;
+  --color-teal-500: #2698B0;
+  --color-teal-600: #106898;
+  --color-teal-700: #0D5680;
+  --color-teal-800: #0A4466;
+  --color-teal-900: #08344F;
+  --color-teal-950: #052438;
+
+  /* Los tres colores del logo con nombre propio, para gradientes y detalles. */
+  --color-brand-blue: #106898;
+  --color-brand-cyan: #48C0C0;
+  --color-brand-green: #68B840;
+  --color-brand-navy: #0B3552;
+  --color-brand-gray: #404040;
 
   /* Teal palette */
   --color-primary: var(--primary);
@@ -55,78 +83,80 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: #F8FAFC;
-  --foreground: #1F2937;
+  --radius: 0.75rem;
+  /* Fondo frío y muy claro, con un toque del azul de marca: las tarjetas
+     blancas flotan encima en vez de fundirse. */
+  --background: #F0F5F9;
+  --foreground: #2A3138;
   --card: #FFFFFF;
-  --card-foreground: #1F2937;
+  --card-foreground: #2A3138;
   --popover: #FFFFFF;
-  --popover-foreground: #1F2937;
+  --popover-foreground: #2A3138;
 
-  /* Teal primary */
-  --primary: #0D9488;
+  /* Azul de marca como primario; el cian queda para acentos y el verde para lo positivo. */
+  --primary: #106898;
   --primary-foreground: #FFFFFF;
-  --secondary: #F1F5F9;
-  --secondary-foreground: #1E293B;
-  --muted: #F1F5F9;
-  --muted-foreground: #64748B;
-  --accent: #F1F5F9;
-  --accent-foreground: #1E293B;
-  --destructive: #EF4444;
-  --border: #E5E7EB;
-  --input: #E5E7EB;
-  --ring: #0D9488;
+  --secondary: #E8EFF5;
+  --secondary-foreground: #1F2A35;
+  --muted: #EDF2F6;
+  --muted-foreground: #64707C;
+  --accent: #E3F4F5;
+  --accent-foreground: #0D5680;
+  --destructive: #E5484D;
+  --border: #E1E8EF;
+  --input: #D9E2EA;
+  --ring: #48C0C0;
 
-  /* Charts */
-  --chart-1: #0D9488;
-  --chart-2: #0EA5E9;
-  --chart-3: #10B981;
-  --chart-4: #F59E0B;
-  --chart-5: #EF4444;
+  /* Charts: los tres del logo y dos de alerta. */
+  --chart-1: #106898;
+  --chart-2: #48C0C0;
+  --chart-3: #68B840;
+  --chart-4: #F5A524;
+  --chart-5: #E5484D;
 
-  /* Sidebar */
-  --sidebar: #111827;
-  --sidebar-foreground: #F9FAFB;
-  --sidebar-primary: #2DD4BF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1F2937;
-  --sidebar-accent-foreground: #F9FAFB;
-  --sidebar-border: #1F2937;
-  --sidebar-ring: #2DD4BF;
+  /* Sidebar: azul marino derivado del azul del logo. */
+  --sidebar: #0B3552;
+  --sidebar-foreground: #F4F8FB;
+  --sidebar-primary: #48C0C0;
+  --sidebar-primary-foreground: #052438;
+  --sidebar-accent: #124A73;
+  --sidebar-accent-foreground: #F4F8FB;
+  --sidebar-border: #124A73;
+  --sidebar-ring: #48C0C0;
 }
 
 .dark {
-  --background: #0F172A;
-  --foreground: #F1F5F9;
-  --card: #1E293B;
-  --card-foreground: #F1F5F9;
-  --popover: #1E293B;
-  --popover-foreground: #F1F5F9;
-  --primary: #2DD4BF;
-  --primary-foreground: #042F2E;
-  --secondary: #334155;
-  --secondary-foreground: #F1F5F9;
-  --muted: #334155;
-  --muted-foreground: #94A3B8;
-  --accent: #334155;
-  --accent-foreground: #F1F5F9;
-  --destructive: #F87171;
-  --border: #334155;
-  --input: #334155;
-  --ring: #2DD4BF;
-  --chart-1: #2DD4BF;
-  --chart-2: #38BDF8;
-  --chart-3: #34D399;
+  --background: #0C161F;
+  --foreground: #E8EEF3;
+  --card: #142230;
+  --card-foreground: #E8EEF3;
+  --popover: #142230;
+  --popover-foreground: #E8EEF3;
+  --primary: #48C0C0;
+  --primary-foreground: #052438;
+  --secondary: #1D2F3F;
+  --secondary-foreground: #E8EEF3;
+  --muted: #1D2F3F;
+  --muted-foreground: #92A3B3;
+  --accent: #173A4A;
+  --accent-foreground: #A9DFE3;
+  --destructive: #F26D72;
+  --border: #223849;
+  --input: #223849;
+  --ring: #48C0C0;
+  --chart-1: #48C0C0;
+  --chart-2: #5FB0DD;
+  --chart-3: #8CD062;
   --chart-4: #FBBF24;
   --chart-5: #F87171;
-  --sidebar: #0F172A;
-  --sidebar-foreground: #F1F5F9;
-  --sidebar-primary: #2DD4BF;
-  --sidebar-primary-foreground: #042F2E;
-  --sidebar-accent: #1E293B;
-  --sidebar-accent-foreground: #F1F5F9;
-  --sidebar-border: #334155;
-  --sidebar-ring: #2DD4BF;
+  --sidebar: #081F31;
+  --sidebar-foreground: #E8EEF3;
+  --sidebar-primary: #48C0C0;
+  --sidebar-primary-foreground: #052438;
+  --sidebar-accent: #0F3A5A;
+  --sidebar-accent-foreground: #E8EEF3;
+  --sidebar-border: #123B5A;
+  --sidebar-ring: #48C0C0;
 }
 
 @layer base {
@@ -154,19 +184,17 @@
   background: #64748B;
 }
 
-/* Sidebar active indicator */
-.sidebar-link.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 24px;
-  width: 4px;
-  background-color: #2DD4BF;
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
+/* Sombra suave de tarjeta, teñida con el azul de marca en vez de gris neutro. */
+.card-soft {
+  box-shadow: 0 1px 2px rgba(16, 104, 152, 0.05), 0 10px 30px -14px rgba(16, 104, 152, 0.18);
+}
+.dark .card-soft {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.5);
+}
+
+/* Degradado con los tres colores del logo, para anillos y detalles pequeños. */
+.brand-ring {
+  background: conic-gradient(from 200deg, #106898, #48C0C0, #68B840, #106898);
 }
 
 /* Timeline connector line */

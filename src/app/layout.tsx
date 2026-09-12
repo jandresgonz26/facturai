@@ -9,23 +9,22 @@ import { AgentProvider } from "@/components/agent/AgentProvider";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { AgentLauncher } from "@/components/agent/AgentLauncher";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 /**
- * Tipografía de display, solo para el saludo del banner. Tras dos serifs que
- * no terminaron de convencer, se cambia de familia: una sans geométrica de
- * terminales suaves acompaña mejor a una ilustración amable que una serif,
- * que contrastaba en vez de acompañar.
+ * Tipografía de display: títulos, cifras grandes y el saludo del banner. Una
+ * sans geométrica de terminales suaves, en la línea de la tipografía del logo
+ * de JAM Tech. Se expone como `font-display` vía globals.css.
  */
-const displaySerif = Outfit({
+const outfit = Outfit({
     subsets: ["latin"],
-    weight: ["600", "700"],
-    variable: "--font-display",
+    weight: ["500", "600", "700"],
+    variable: "--font-outfit",
 });
 
 export const metadata: Metadata = {
-  title: "MicroBill",
-  description: "Executive billing dashboard",
+  title: "JAM Tech · Gestión",
+  description: "Facturación, clientes y tareas de JAM Tech",
 };
 
 export default function RootLayout({
@@ -35,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${inter.className} ${displaySerif.variable} min-h-screen bg-background font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${outfit.variable} min-h-screen bg-background font-sans antialiased`} suppressHydrationWarning>
         <ThemeProvider>
           <AgentProvider>
             <div className="flex min-h-screen overflow-hidden">

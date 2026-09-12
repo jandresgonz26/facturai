@@ -49,14 +49,14 @@ export function AlertsBell() {
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="relative h-9 w-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                className="relative h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 title="Alertas"
                 aria-label="Alertas"
             >
                 <Bell className="w-5 h-5" />
                 {alerts.length > 0 && (
                     <span
-                        className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-gray-800 ${
+                        className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-card ${
                             important ? 'bg-red-500 text-white' : 'bg-sky-500 text-white'
                         }`}
                     >
