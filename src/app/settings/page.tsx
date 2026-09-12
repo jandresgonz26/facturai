@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import Image from 'next/image'
 import { ServiceCategoryManager } from '@/components/features/ServiceCategoryManager'
 import { SecuritySettings } from '@/components/features/SecuritySettings'
+import { EffectsToggle } from '@/components/features/EffectsToggle'
 
 export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
@@ -235,6 +236,15 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent>
                     <ServiceCategoryManager />
+                </CardContent>
+            </Card>
+
+            <Card className="mt-8">
+                <CardHeader>
+                    <CardTitle>Preferencias</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <EffectsToggle />
                 </CardContent>
             </Card>
 

@@ -1,13 +1,15 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { Log, Task, TaskStatus } from '@/types'
+import { Log, Task, TaskRecurrence, TaskStatus } from '@/types'
 import { getClient } from './clients'
 import { getPipeline } from './crm'
 import { addLog } from './logs'
 import { emptySignals, type ClientSignals } from '@/lib/task-priority'
-import { ActionError, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
+import { ActionError, addDaysISO, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
-export const TASK_SELECT = '*, clients(name, billing_modality, preferred_input_currency)'
+// Las subtareas se piden anidadas: así el tablero puede mostrar "2/5" sin una
+// consulta aparte por tarjeta, y el diálogo de edición ya trae el checklist.
+export const TASK_SELECT = '*, clients(name, billing_modality, preferred_input_currency), task_subtasks(id, title, done, position)'
 
 export const TASK_COLUMNS: { id: TaskStatus; label: string }[] = [
     { id: 'todo', label: 'Por hacer' },
@@ -31,6 +33,18 @@ export const taskInputSchema = z.object({
     estimated_minutes: z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().positive().nullable().optional()),
     /** Message-Id del correo del que nació la tarea, para no duplicarla. */
     source_email_id: z.preprocess(blankToNull, z.string().trim().max(500).nullable().optional()),
+    /** Si se repite, la regla; null/undefined = tarea suelta, no se regenera al completarla. */
+    recurrence: z.preprocess(
+        blankToNull,
+        z
+            .object({
+                freq: z.enum(['daily', 'weekly', 'monthly']),
+                interval: z.number().int().min(1).max(365),
+                days_of_week: z.array(z.number().int().min(0).max(6)).max(7).nullable().optional(),
+            })
+            .nullable()
+            .optional()
+    ),
 })
 export type TaskInput = z.input<typeof taskInputSchema>
 
@@ -47,6 +61,63 @@ function toRow(input: z.infer<typeof taskInputSchema>) {
         clarity: input.clarity ?? null,
         estimated_minutes: input.estimated_minutes ?? null,
         source_email_id: input.source_email_id ?? null,
+        recurrence: input.recurrence ?? null,
+    }
+}
+
+/** Suma meses a una fecha YYYY-MM-DD, recortando al último día del mes destino si no existe (31 ene + 1 mes = 28/29 feb). */
+function addMonthsISO(iso: string, months: number): string {
+    const [y, m, d] = iso.split('-').map(Number)
+    const total = (m - 1) + months
+    const ny = y + Math.floor(total / 12)
+    const nm = ((total % 12) + 12) % 12
+    const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate()
+    const nd = Math.min(d, lastDay)
+    return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(nd).padStart(2, '0')}`
+}
+
+/** Próxima fecha en que le toca a una tarea recurrente, a partir de la fecha base que tenía. */
+export function computeNextOccurrenceDate(base: string, rec: TaskRecurrence): string {
+    const interval = Math.max(1, rec.interval || 1)
+    if (rec.freq === 'daily') return addDaysISO(base, interval)
+    if (rec.freq === 'monthly') return addMonthsISO(base, interval)
+    // weekly, con días concretos: el próximo de la lista después de la base.
+    if (rec.days_of_week && rec.days_of_week.length > 0) {
+        let d = addDaysISO(base, 1)
+        for (let i = 0; i < 14; i++) {
+            const dow = new Date(`${d}T00:00:00Z`).getUTCDay()
+            if (rec.days_of_week.includes(dow)) return d
+            d = addDaysISO(d, 1)
+        }
+    }
+    return addDaysISO(base, 7 * interval)
+}
+
+/**
+ * Al completar una tarea con regla de repetición, deja lista la siguiente. Es
+ * "mejor esfuerzo": si falla, la tarea de hoy igual queda completada — no se
+ * pierde el cierre por un problema al programar la próxima.
+ */
+async function spawnNextOccurrence(task: Task): Promise<void> {
+    if (!task.recurrence) return
+    const base = task.due_date ?? task.planned_for ?? todayISO()
+    const nextDate = computeNextOccurrenceDate(base, task.recurrence)
+    try {
+        await createTask({
+            title: task.title,
+            notes: task.notes ?? null,
+            status: 'todo',
+            client_id: task.client_id ?? null,
+            due_date: nextDate,
+            hours: task.hours ?? null,
+            amount: task.amount ?? null,
+            consequence: task.consequence ?? null,
+            clarity: task.clarity ?? null,
+            estimated_minutes: task.estimated_minutes ?? null,
+            recurrence: task.recurrence,
+        })
+    } catch (e) {
+        console.warn('[tasks] no se pudo generar la siguiente ocurrencia recurrente', e)
     }
 }
 
@@ -58,7 +129,12 @@ export interface TaskFilters {
 }
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
-    let query = supabase.from('tasks').select(TASK_SELECT).order('position').order('created_at', { ascending: false })
+    let query = supabase
+        .from('tasks')
+        .select(TASK_SELECT)
+        .order('position')
+        .order('created_at', { ascending: false })
+        .order('position', { referencedTable: 'task_subtasks', ascending: true })
     if (filters.status) query = query.eq('status', filters.status)
     if (filters.client_id) query = query.eq('client_id', filters.client_id)
     if (filters.open_only) query = query.neq('status', 'done')
@@ -68,7 +144,12 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
 }
 
 export async function getTask(id: string): Promise<Task> {
-    const { data, error } = await supabase.from('tasks').select(TASK_SELECT).eq('id', id).maybeSingle()
+    const { data, error } = await supabase
+        .from('tasks')
+        .select(TASK_SELECT)
+        .eq('id', id)
+        .order('position', { referencedTable: 'task_subtasks', ascending: true })
+        .maybeSingle()
     if (error) throw new ActionError(`No se pudo consultar la tarea: ${error.message}`)
     if (!data) throw new ActionError('La tarea no existe', 'NOT_FOUND')
     return data as Task
@@ -96,10 +177,18 @@ export async function updateTask(id: string, raw: TaskInput): Promise<Task> {
     if (input.client_id) await getClient(input.client_id)
     const patch: Record<string, unknown> = toRow(input)
     // La marca de completada se mantiene alineada con el estado.
-    if (input.status === 'done' && current.status !== 'done') patch.completed_at = new Date().toISOString()
+    const completing = input.status === 'done' && current.status !== 'done'
+    if (completing) patch.completed_at = new Date().toISOString()
     if (input.status !== 'done') patch.completed_at = null
+    // Empujar la fecha límite desde el editor también delata evitación, igual
+    // que empujar el día planificado: antes solo contaba lo segundo, y era
+    // fácil "posponer" en silencio con solo cambiar el vencimiento.
+    if (current.due_date && input.due_date && input.due_date > current.due_date && current.status !== 'done') {
+        patch.postponed_count = (current.postponed_count ?? 0) + 1
+    }
     const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
     if (error) throw new ActionError(`No se pudo actualizar la tarea: ${error.message}`)
+    if (completing) await spawnNextOccurrence(data as Task)
     return data as Task
 }
 
@@ -111,6 +200,7 @@ export async function updateTask(id: string, raw: TaskInput): Promise<Task> {
 export async function moveTask(id: string, status: TaskStatus, actualMinutes?: number | null): Promise<Task> {
     const current = await getTask(id)
     if (current.status === status && actualMinutes == null) return current
+    const completing = status === 'done' && current.status !== 'done'
     const patch: Record<string, unknown> = {
         status,
         position: current.status === status ? current.position : await nextPosition(status),
@@ -120,6 +210,7 @@ export async function moveTask(id: string, status: TaskStatus, actualMinutes?: n
     if (status !== 'done') patch.actual_minutes = null
     const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
     if (error) throw new ActionError(`No se pudo mover la tarea: ${error.message}`)
+    if (completing) await spawnNextOccurrence(data as Task)
     return data as Task
 }
 

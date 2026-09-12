@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, CalendarCheck, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-react'
-import { Client, Task, TaskClarity, TaskConsequence, TaskStatus } from '@/types'
+import { AlertTriangle, CalendarCheck, Clock, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-react'
+import { Client, Task, TaskClarity, TaskConsequence, TaskStatus, TaskSubtask } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,7 +28,11 @@ import {
 import { useAgent } from '@/components/agent/AgentProvider'
 import { DayBanner } from '@/components/features/DayBanner'
 import { DaySchedule } from '@/components/features/DaySchedule'
-import { errorMessage } from '@/lib/actions/validation'
+import { RecurrenceField, type RecurrenceFormValue } from '@/components/features/RecurrenceField'
+import { SubtaskChecklist } from '@/components/features/SubtaskChecklist'
+import { errorMessage, tomorrowISO } from '@/lib/actions/validation'
+import { parseSpanishDatePhrase } from '@/lib/natural-date'
+import { celebrateDayDone, celebrateTaskDone } from '@/lib/celebrate'
 import {
     BLOCK_META,
     CLARITY_OPTIONS,
@@ -70,6 +74,7 @@ type FormValues = {
     consequence: TaskConsequence | ''
     clarity: TaskClarity | ''
     estimated_minutes: string
+    recurrence: RecurrenceFormValue
 }
 
 const emptyForm = (): FormValues => ({
@@ -82,6 +87,7 @@ const emptyForm = (): FormValues => ({
     consequence: '',
     clarity: '',
     estimated_minutes: '',
+    recurrence: { freq: '', interval: '1', days: [] },
 })
 
 const toInput = (v: FormValues, status: TaskStatus): TaskInput => ({
@@ -95,6 +101,13 @@ const toInput = (v: FormValues, status: TaskStatus): TaskInput => ({
     consequence: v.consequence || null,
     clarity: v.clarity || null,
     estimated_minutes: v.estimated_minutes ? Number(v.estimated_minutes) : null,
+    recurrence: v.recurrence.freq
+        ? {
+              freq: v.recurrence.freq,
+              interval: Math.max(1, Number(v.recurrence.interval) || 1),
+              days_of_week: v.recurrence.freq === 'weekly' && v.recurrence.days.length > 0 ? v.recurrence.days : null,
+          }
+        : null,
 })
 
 /** Fila de opciones en forma de chips: una pregunta se responde con un toque. */
@@ -157,6 +170,9 @@ export default function TasksPage() {
     const [measuring, setMeasuring] = useState<Task | null>(null)
     const [expandedColumns, setExpandedColumns] = useState<Set<TaskStatus>>(new Set())
     const [windows, setWindows] = useState<Window[]>([])
+    /** Alta casual, directo en el plan de hoy: sin las preguntas de prioridad. */
+    const [quickTitle, setQuickTitle] = useState('')
+    const [quickWorking, setQuickWorking] = useState(false)
     const { openWith } = useAgent()
 
     const toggleColumn = (id: TaskStatus) =>
@@ -274,11 +290,21 @@ export default function TasksPage() {
         }
     }
 
+    /** ¿Queda algo más planificado para hoy además de esta tarea? Decide si el
+     *  cierre merece el festejo grande o el chispazo normal. */
+    const otherPlannedTodayLeft = (excludeId: string) =>
+        tasks.some((t) => t.id !== excludeId && t.planned_for === today && t.status !== 'done')
+
     const applyMove = async (task: Task, status: TaskStatus) => {
+        const wasDone = task.status === 'done'
         setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)))
         try {
             const updated = await moveTask(task.id, status)
             setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            if (status === 'done' && !wasDone) {
+                if (task.planned_for === today && !otherPlannedTodayLeft(task.id)) celebrateDayDone()
+                else celebrateTaskDone()
+            }
             // Si tenía estimación y aún no se midió, se pregunta cuánto tomó (opcional).
             if (status === 'done' && updated.estimated_minutes != null && updated.actual_minutes == null) {
                 setMeasuring(updated)
@@ -286,6 +312,37 @@ export default function TasksPage() {
         } catch (e) {
             setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)))
             toast.error(errorMessage(e))
+        }
+    }
+
+    /** Posponer con un clic: sigue contando como aplazo, igual que hacerlo desde el diálogo. */
+    const postponeTomorrow = async (task: Task) => {
+        try {
+            const updated = await planTask(task.id, tomorrowISO())
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            toast.success('Movida a mañana')
+        } catch (e) {
+            toast.error(errorMessage(e))
+        }
+    }
+
+    /** Captura rápida de algo casual: sin las dos preguntas, directo al plan de hoy
+     *  (o al día que se detecte en el texto, ej. "llamar al banco mañana"). */
+    const handleQuickAdd = async (e: React.FormEvent) => {
+        e.preventDefault()
+        const raw = quickTitle.trim()
+        if (!raw) return
+        setQuickWorking(true)
+        try {
+            const { title, date } = parseSpanishDatePhrase(raw, today)
+            const created = await createTask({ title: title || raw, status: 'todo', due_date: date })
+            const planned = await planTask(created.id, date ?? today)
+            setTasks((prev) => [...prev, planned])
+            setQuickTitle('')
+        } catch (err) {
+            toast.error(errorMessage(err))
+        } finally {
+            setQuickWorking(false)
         }
     }
 
@@ -322,6 +379,11 @@ export default function TasksPage() {
             consequence: task.consequence ?? '',
             clarity: task.clarity ?? '',
             estimated_minutes: task.estimated_minutes != null ? String(task.estimated_minutes) : '',
+            recurrence: {
+                freq: task.recurrence?.freq ?? '',
+                interval: String(task.recurrence?.interval ?? 1),
+                days: task.recurrence?.days_of_week ?? [],
+            },
         })
     }
 
@@ -333,15 +395,26 @@ export default function TasksPage() {
         }
         setWorking(true)
         try {
+            const wasDone = editing.status === 'done'
             const updated = await updateTask(editing.id, toInput(editForm, editStatus))
             setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
-            setEditing(null)
             toast.success('Tarea actualizada')
+            if (editStatus === 'done' && !wasDone) {
+                if (editing.planned_for === today && !otherPlannedTodayLeft(editing.id)) celebrateDayDone()
+                else celebrateTaskDone()
+            }
+            setEditing(null)
         } catch (e) {
             toast.error(errorMessage(e))
         } finally {
             setWorking(false)
         }
+    }
+
+    /** Refleja cambios en el checklist tanto en el diálogo abierto como en la tarjeta del tablero. */
+    const patchEditingSubtasks = (subtasks: TaskSubtask[]) => {
+        setEditing((prev) => (prev ? { ...prev, task_subtasks: subtasks } : prev))
+        setTasks((prev) => prev.map((t) => (editing && t.id === editing.id ? { ...t, task_subtasks: subtasks } : t)))
     }
 
     const executeDelete = async () => {
@@ -423,6 +496,9 @@ export default function TasksPage() {
                     onChange={(x) => set({ ...v, estimated_minutes: x })}
                 />
             </div>
+            <div className="sm:col-span-2">
+                <RecurrenceField value={v.recurrence} onChange={(recurrence) => set({ ...v, recurrence })} />
+            </div>
             <p className="sm:col-span-2 text-[11px] text-muted-foreground">
                 Con cliente y monto (u horas) podrás registrar la tarea como ítem pendiente de facturar.
             </p>
@@ -466,8 +542,7 @@ export default function TasksPage() {
                 antes de llegar al tablero. */}
             {!loading && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                    {/* Sin nada que proponer, el horario ocupa el ancho completo en vez de dejar un hueco al lado. */}
-                    <div className={hasFocus ? '' : 'lg:col-span-2'}>
+                    <div>
                         <DaySchedule
                             tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
                             windows={windows}
@@ -482,9 +557,29 @@ export default function TasksPage() {
                         />
                     </div>
 
-                {/* Plan del día y lo que se arrastra */}
-                {hasFocus && (
-                    <section className="rounded-xl border bg-card p-4 h-full">
+                {/* Plan del día: la captura rápida siempre está a mano aquí arriba,
+                    aunque todavía no haya nada que planificar. */}
+                <section className="rounded-xl border bg-card p-4 h-full">
+                    <form onSubmit={handleQuickAdd} className="flex gap-2 mb-3 pb-3 border-b">
+                        <Input
+                            value={quickTitle}
+                            onChange={(e) => setQuickTitle(e.target.value)}
+                            placeholder="Agregar algo rápido a hoy… (ej: llamar al banco mañana)"
+                            className="flex-1 h-9 text-sm"
+                        />
+                        <Button type="submit" size="sm" disabled={quickWorking || !quickTitle.trim()} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
+                            <Plus className="w-4 h-4" />
+                        </Button>
+                    </form>
+
+                    {!hasFocus && (
+                        <p className="text-xs text-muted-foreground text-center py-4">
+                            Nada pendiente para hoy. Agrega algo arriba, o pídele al asistente que arme el plan.
+                        </p>
+                    )}
+
+                    {hasFocus && (
+                        <>
                         {/* Plan de hoy */}
                         {plan.planned.length > 0 && (
                             <div>
@@ -591,8 +686,9 @@ export default function TasksPage() {
                                 </ul>
                             </div>
                         )}
-                    </section>
-                )}
+                        </>
+                    )}
+                </section>
                 </div>
             )}
 
@@ -665,11 +761,14 @@ export default function TasksPage() {
                                         // urgencia que tenían antes de cerrarse. El resto, todas a color.
                                         const style = task.status === 'done' ? DONE_STYLE : LABEL_META[priority.label]
                                         // Contexto condensado en una línea: solo lo que aporta.
+                                        const subtasks = task.task_subtasks ?? []
                                         const meta = [
                                             task.clients?.name,
                                             task.due_date ? `${overdue ? 'venció' : 'para'} ${fmt(task.due_date)}` : null,
                                             task.estimated_minutes != null ? fmtMinutes(task.estimated_minutes) : null,
                                             task.amount != null ? `$${task.amount.toFixed(2)}` : task.hours != null ? `${task.hours}h` : null,
+                                            subtasks.length > 0 ? `${subtasks.filter((s) => s.done).length}/${subtasks.length} pasos` : null,
+                                            task.recurrence ? 'se repite' : null,
                                             task.log_id ? 'facturable' : null,
                                         ].filter(Boolean) as string[]
                                         return (
@@ -707,6 +806,16 @@ export default function TasksPage() {
                                                             className="p-1 rounded text-white hover:bg-white/20"
                                                         >
                                                             <CalendarCheck className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                    {task.status !== 'done' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => postponeTomorrow(task)}
+                                                            title="Posponer a mañana"
+                                                            className="p-1 rounded text-white hover:bg-white/20"
+                                                        >
+                                                            <Clock className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
                                                     {canRegister(task) && (
@@ -881,6 +990,7 @@ export default function TasksPage() {
                         </div>
                         {questions(editForm, setEditForm)}
                         {optionalFields(editForm, setEditForm)}
+                        {editing && <SubtaskChecklist task={editing} onChange={patchEditingSubtasks} />}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEditing(null)} disabled={working}>Cancelar</Button>

@@ -161,6 +161,25 @@ export type TaskConsequence = 'none' | 'client_waiting' | 'payment_delayed' | 'c
 /** Respuesta a "¿ya sabes exactamente cómo hacerlo?". */
 export type TaskClarity = 'known' | 'partial' | 'unknown'
 
+export type TaskRecurrenceFreq = 'daily' | 'weekly' | 'monthly'
+
+export interface TaskRecurrence {
+    freq: TaskRecurrenceFreq
+    /** Cada cuántas unidades de `freq` se repite (2 + weekly = cada 2 semanas). */
+    interval: number
+    /** Solo para weekly: 0=domingo … 6=sábado. Vacío = mismo día de la semana que la fecha base. */
+    days_of_week?: number[] | null
+}
+
+export interface TaskSubtask {
+    id: string
+    task_id: string
+    title: string
+    done: boolean
+    position: number
+    created_at: string
+}
+
 export interface Task {
     id: string
     title: string
@@ -186,6 +205,9 @@ export interface Task {
     /** Ítem facturable ya generado desde esta tarea; si existe, no se puede registrar de nuevo. */
     log_id?: string | null
     completed_at?: string | null
+    /** Si se repite, la regla de cuándo generar la siguiente al completarla. */
+    recurrence?: TaskRecurrence | null
     created_at: string
     clients?: { name: string; billing_modality?: string; preferred_input_currency?: string } | null
+    task_subtasks?: TaskSubtask[] | null
 }

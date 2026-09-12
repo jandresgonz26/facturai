@@ -66,6 +66,18 @@ export function todayISO(date = new Date()): string {
     return new Intl.DateTimeFormat('en-CA', { timeZone: USER_TIMEZONE }).format(date)
 }
 
+/** Mañana (YYYY-MM-DD) para el usuario: para "posponer a mañana" con un clic. */
+export function tomorrowISO(date = new Date()): string {
+    return addDaysISO(todayISO(date), 1)
+}
+
+/** Suma (o resta, con negativo) días a una fecha YYYY-MM-DD sin líos de zona horaria. */
+export function addDaysISO(iso: string, days: number): string {
+    const d = new Date(`${iso}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + days)
+    return d.toISOString().split('T')[0]
+}
+
 export function round2(n: number): number {
     return Math.round(n * 100) / 100
 }
