@@ -49,7 +49,9 @@ Variables de entorno:
 
 | Variable | Uso |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Base de datos |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Base de datos (navegador, con sesión) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. La usan Telegram, el cron y el bridge de Spark, que corren sin usuario |
+| `SUPABASE_DB_URL` | Conexión directa a Postgres para migraciones (`npm run migrate`) y `scripts/create-user.mjs` |
 | `OPENAI_API_KEY` | Asistente y transcripción (solo servidor) |
 | `OPENAI_MODEL` | Modelo de chat con llamadas a funciones (por defecto `gpt-5.4-mini`) |
 | `OPENAI_TRANSCRIBE_MODEL` | Modelo de transcripción del micrófono (por defecto `gpt-4o-mini-transcribe`) |

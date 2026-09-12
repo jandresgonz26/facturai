@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { ServiceCategoryManager } from '@/components/features/ServiceCategoryManager'
+import { SecuritySettings } from '@/components/features/SecuritySettings'
 
 export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
@@ -236,6 +237,8 @@ export default function SettingsPage() {
                     <ServiceCategoryManager />
                 </CardContent>
             </Card>
+
+            <SecuritySettings />
         </div>
     )
 }

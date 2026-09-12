@@ -30,10 +30,15 @@ const LIMIT = Number(argVal('limit', 40))
 const DRY = args.includes('--dry')
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Este proceso corre sin usuario, y desde que la base de datos exige sesión
+// la clave anon ya no puede escribir: hace falta la service role key.
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error('Faltan NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY. Usa: node --env-file=.env.local ...')
+    console.error('Faltan NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. Usa: node --env-file=.env.local ...')
     process.exit(1)
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('Aviso: sin SUPABASE_SERVICE_ROLE_KEY en .env.local; con la base de datos cerrada, la sincronización no podrá escribir.')
 }
 
 const sb = (path, init = {}) =>

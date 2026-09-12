@@ -2,13 +2,14 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
     ClipboardList,
     FileText,
     LayoutDashboard,
     ListTodo,
+    LogOut,
     Menu,
     ReceiptText,
     Settings,
@@ -18,6 +19,7 @@ import {
     type LucideIcon,
 } from 'lucide-react'
 import { BRAND } from '@/lib/brand'
+import { supabase } from '@/lib/supabase'
 
 const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -45,7 +47,14 @@ export function BrandAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
 
 export function Sidebar() {
     const pathname = usePathname()
+    const router = useRouter()
     const [mobileOpen, setMobileOpen] = useState(false)
+
+    const signOut = async () => {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        router.refresh()
+    }
 
     return (
         <>
@@ -120,9 +129,16 @@ export function Sidebar() {
                     })}
                 </nav>
 
-                <div className="px-6 pb-6 pt-4 text-[11px] leading-relaxed text-white/45">
-                    <p className="font-medium text-white/60">{BRAND.legalName}</p>
-                    <p>Gestión interna</p>
+                <div className="px-4 pb-6 pt-4">
+                    <button
+                        type="button"
+                        onClick={signOut}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                        <LogOut className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                        Cerrar sesión
+                    </button>
+                    <p className="mt-3 px-4 text-[11px] text-white/45">{BRAND.legalName}</p>
                 </div>
             </aside>
         </>
