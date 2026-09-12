@@ -37,7 +37,7 @@ export function DaySchedule({
     const horas = (m: number) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10} h` : `${m} min`)
 
     return (
-        <section className="rounded-xl border bg-card p-4 mb-6">
+        <section className="rounded-xl border bg-card p-4 h-full">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                     <CalendarClock className="w-4 h-4 text-teal-600" />

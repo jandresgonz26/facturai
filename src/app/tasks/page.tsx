@@ -143,6 +143,8 @@ export default function TasksPage() {
     const [working, setWorking] = useState(false)
 
     const [newForm, setNewForm] = useState<FormValues>(emptyForm())
+    /** El alta vive en un diálogo: la página se queda para leer el día, no para rellenar formularios. */
+    const [creating, setCreating] = useState(false)
     const [detailsOpen, setDetailsOpen] = useState(false)
 
     const [editing, setEditing] = useState<Task | null>(null)
@@ -248,6 +250,9 @@ export default function TasksPage() {
 
     const billableClients = clients.filter((c) => c.billing_modality !== 'hour_bag' || c.parent_client_id)
 
+    /** Hay algo que proponer para hoy (plan, arrastradas o sugerencias). */
+    const hasFocus = plan.planned.length > 0 || plan.carried.length > 0 || suggestions.length > 0
+
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!newForm.title.trim()) {
@@ -260,6 +265,7 @@ export default function TasksPage() {
             setTasks((prev) => [...prev, created])
             setNewForm(emptyForm())
             setDetailsOpen(false)
+            setCreating(false)
             toast.success('Tarea creada')
         } catch (err) {
             toast.error(errorMessage(err))
@@ -455,125 +461,139 @@ export default function TasksPage() {
                 </div>
             </DayBanner>
 
-            {/* Horario del día */}
+            {/* Horario y foco del día, lado a lado: son las dos lecturas del mismo
+                plan (cuándo y qué), y apiladas obligaban a bajar media pantalla
+                antes de llegar al tablero. */}
             {!loading && (
-                <DaySchedule
-                    tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
-                    windows={windows}
-                    signals={signals}
-                    nowMinutes={nowMinutesIn(Intl.DateTimeFormat().resolvedOptions().timeZone)}
-                    usingDefaults={windows.length === 0}
-                    onAskAssistant={() =>
-                        openWith(
-                            'Ayúdame a ajustar mi horario de hoy. Te digo desde cuándo estoy disponible y me repartes las tareas del plan.'
-                        )
-                    }
-                />
-            )}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                    {/* Sin nada que proponer, el horario ocupa el ancho completo en vez de dejar un hueco al lado. */}
+                    <div className={hasFocus ? '' : 'lg:col-span-2'}>
+                        <DaySchedule
+                            tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
+                            windows={windows}
+                            signals={signals}
+                            nowMinutes={nowMinutesIn(Intl.DateTimeFormat().resolvedOptions().timeZone)}
+                            usingDefaults={windows.length === 0}
+                            onAskAssistant={() =>
+                                openWith(
+                                    'Ayúdame a ajustar mi horario de hoy. Te digo desde cuándo estoy disponible y me repartes las tareas del plan.'
+                                )
+                            }
+                        />
+                    </div>
 
-            {/* Plan del día y lo que se arrastra */}
-            {!loading && (plan.planned.length > 0 || plan.carried.length > 0 || suggestions.length > 0) && (
-                <section className="rounded-xl border bg-card p-4 mb-6">
-                    {/* Plan de hoy */}
-                    {plan.planned.length > 0 && (
-                        <div>
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                                    Plan de hoy · {plan.planned.length} tarea{plan.planned.length === 1 ? '' : 's'}
-                                </h3>
-                                {plan.minutes > 0 && (
-                                    <span className={`text-[11px] font-medium ${plan.over ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                        {fmtMinutes(plan.minutes)} de {fmtMinutes(DAY_CAPACITY_MINUTES)}
-                                    </span>
-                                )}
-                            </div>
-                            {plan.over && (
-                                <p className="flex items-start gap-1.5 text-[11px] text-red-600 dark:text-red-400 mb-2">
-                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-                                    Te pasas de lo que cabe en un día con cabeza. Mejor saca algo ahora que arrastrarlo mañana.
-                                </p>
-                            )}
-                            <ul className="space-y-1.5">
-                                {plan.planned.map((task) => {
-                                    const p = scoreTask(task, signals)
-                                    return (
-                                        <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => applyMove(task, 'done')}
-                                                title="Marcar como hecha"
-                                                className="w-4 h-4 rounded border-2 border-muted-foreground/40 hover:border-emerald-500 hover:bg-emerald-500/10 shrink-0"
-                                            />
-                                            <span className="flex-1 text-sm truncate">{task.title}</span>
-                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[p.label].className}`}>
-                                                {LABEL_META[p.label].emoji}
-                                            </span>
-                                            {task.estimated_minutes != null && (
-                                                <span className="text-[10px] text-muted-foreground shrink-0">{fmtMinutes(task.estimated_minutes)}</span>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={() => togglePlan(task, null)}
-                                                title="Sacar del plan de hoy"
-                                                className="text-muted-foreground hover:text-red-500 shrink-0"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </li>
-                                    )
-                                })}
-                            </ul>
-                        </div>
-                    )}
-
-                    {/* Arrastradas de días anteriores */}
-                    {plan.carried.length > 0 && (
-                        <div className="mt-4 pt-3 border-t">
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2">
-                                Vienen arrastrándose · {plan.carried.length}
-                            </h3>
-                            <ul className="space-y-1.5">
-                                {plan.carried.map((task) => (
-                                    <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
-                                        <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                        <span className="flex-1 text-sm truncate">{task.title}</span>
-                                        {(task.postponed_count ?? 0) >= 3 && (
-                                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 shrink-0">
-                                                movida {task.postponed_count} veces
-                                            </span>
-                                        )}
-                                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
-                                            Hoy
-                                        </Button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-
-                    {/* Sugerencia por franja cuando aún no hay plan */}
-                    {plan.planned.length === 0 && suggestions.length > 0 && (
-                        <div>
-                            <p className="text-xs text-muted-foreground mb-2">{BLOCK_META[block].hint}</p>
-                            <ul className="space-y-1.5">
-                                {suggestions.map(({ task, priority }) => (
-                                    <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
-                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[priority.label].className}`}>
-                                            {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
+                {/* Plan del día y lo que se arrastra */}
+                {hasFocus && (
+                    <section className="rounded-xl border bg-card p-4 h-full">
+                        {/* Plan de hoy */}
+                        {plan.planned.length > 0 && (
+                            <div>
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <CalendarCheck className="w-4 h-4 text-teal-600" />
+                                        <h2 className="text-sm font-semibold">
+                                            Plan de hoy · {plan.planned.length} tarea{plan.planned.length === 1 ? '' : 's'}
+                                        </h2>
+                                    </div>
+                                    {plan.minutes > 0 && (
+                                        <span className={`text-[11px] font-medium ${plan.over ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                            {fmtMinutes(plan.minutes)} de {fmtMinutes(DAY_CAPACITY_MINUTES)}
                                         </span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm truncate">{task.title}</p>
-                                            <p className="text-[11px] text-muted-foreground truncate">{priority.reason}</p>
-                                        </div>
-                                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
-                                            Hoy
-                                        </Button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </section>
+                                    )}
+                                </div>
+                                {plan.over && (
+                                    <p className="flex items-start gap-1.5 text-[11px] text-red-600 dark:text-red-400 mb-2">
+                                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                                        Te pasas de lo que cabe en un día con cabeza. Mejor saca algo ahora que arrastrarlo mañana.
+                                    </p>
+                                )}
+                                <ul className="space-y-1.5">
+                                    {plan.planned.map((task) => {
+                                        const p = scoreTask(task, signals)
+                                        return (
+                                            <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyMove(task, 'done')}
+                                                    title="Marcar como hecha"
+                                                    className="w-4 h-4 rounded border-2 border-muted-foreground/40 hover:border-emerald-500 hover:bg-emerald-500/10 shrink-0"
+                                                />
+                                                <span className="flex-1 text-sm truncate">{task.title}</span>
+                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[p.label].className}`}>
+                                                    {LABEL_META[p.label].emoji}
+                                                </span>
+                                                {task.estimated_minutes != null && (
+                                                    <span className="text-[10px] text-muted-foreground shrink-0">{fmtMinutes(task.estimated_minutes)}</span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => togglePlan(task, null)}
+                                                    title="Sacar del plan de hoy"
+                                                    className="text-muted-foreground hover:text-red-500 shrink-0"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </li>
+                                        )
+                                    })}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* Arrastradas de días anteriores */}
+                        {plan.carried.length > 0 && (
+                            <div className="mt-4 pt-3 border-t">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2">
+                                    Vienen arrastrándose · {plan.carried.length}
+                                </h3>
+                                <ul className="space-y-1.5">
+                                    {plan.carried.map((task) => (
+                                        <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                            <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                            <span className="flex-1 text-sm truncate">{task.title}</span>
+                                            {(task.postponed_count ?? 0) >= 3 && (
+                                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 shrink-0">
+                                                    movida {task.postponed_count} veces
+                                                </span>
+                                            )}
+                                            <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
+                                                Hoy
+                                            </Button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* Sugerencia por franja cuando aún no hay plan */}
+                        {plan.planned.length === 0 && suggestions.length > 0 && (
+                            <div className={plan.carried.length > 0 ? 'mt-4 pt-3 border-t' : ''}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Sparkles className="w-4 h-4 text-teal-600" />
+                                    <h2 className="text-sm font-semibold">¿Qué hago ahora?</h2>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-3">{BLOCK_META[block].hint}</p>
+                                <ul className="space-y-1.5">
+                                    {suggestions.map(({ task, priority }) => (
+                                        <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
+                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[priority.label].className}`}>
+                                                {LABEL_META[priority.label].emoji} {LABEL_META[priority.label].text}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm truncate">{task.title}</p>
+                                                <p className="text-[11px] text-muted-foreground truncate">{priority.reason}</p>
+                                            </div>
+                                            <Button size="sm" variant="outline" className="shrink-0" onClick={() => togglePlan(task, today)}>
+                                                Hoy
+                                            </Button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </section>
+                )}
+                </div>
             )}
 
             {/* Cómo va tu cálculo de tiempos */}
@@ -601,31 +621,11 @@ export default function TasksPage() {
                 </section>
             )}
 
-            {/* Alta */}
-            <form onSubmit={handleCreate} className="rounded-xl border bg-card shadow-sm p-4 mb-6 space-y-3">
-                <div className="flex gap-2">
-                    <Input
-                        placeholder="Nueva tarea… (ej: llamar a Atlantic para el mantenimiento)"
-                        value={newForm.title}
-                        onChange={(e) => setNewForm({ ...newForm, title: e.target.value })}
-                        className="flex-1"
-                    />
-                    <Button type="button" variant="outline" onClick={() => setDetailsOpen((o) => !o)}>
-                        {detailsOpen ? 'Menos' : 'Más opciones'}
-                    </Button>
-                    <Button type="submit" disabled={working} className="bg-teal-600 hover:bg-teal-700 text-white">
-                        <Plus className="w-4 h-4" /> Agregar
-                    </Button>
-                </div>
-                {questions(newForm, setNewForm)}
-                {detailsOpen && optionalFields(newForm, setNewForm)}
-            </form>
-
             {/* Tablero */}
             {loading ? (
                 <p className="p-8 text-center text-sm text-muted-foreground">Cargando…</p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-20">
                     {TASK_COLUMNS.map((col) => {
                         const items = byColumn[col.id]
                         const isOver = dragOver === col.id
@@ -768,6 +768,64 @@ export default function TasksPage() {
                     })}
                 </div>
             )}
+
+            {/* Botón flotante de alta. Siempre a mano, incluso con el tablero
+                desplegado; en móvil sube para no pisar el lanzador del asistente. */}
+            <button
+                type="button"
+                onClick={() => setCreating(true)}
+                aria-label="Nueva tarea"
+                title="Nueva tarea"
+                className="fixed z-30 bottom-[5.5rem] right-5 lg:bottom-6 lg:right-8 flex items-center gap-2 h-13 rounded-full bg-teal-600 px-4 sm:pr-5 text-white shadow-lg shadow-teal-900/30 hover:bg-teal-700 hover:shadow-xl transition-all"
+            >
+                <Plus className="w-6 h-6" />
+                <span className="hidden sm:inline text-sm font-semibold">Nueva tarea</span>
+            </button>
+
+            {/* Alta */}
+            <Dialog
+                open={creating}
+                onOpenChange={(o) => {
+                    if (working) return
+                    setCreating(o)
+                    if (!o) setDetailsOpen(false)
+                }}
+            >
+                <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+                    <form onSubmit={handleCreate} className="space-y-4">
+                        <DialogHeader>
+                            <DialogTitle>Nueva tarea</DialogTitle>
+                            <DialogDescription>Con el título basta. Las dos preguntas ayudan a ordenarla sola.</DialogDescription>
+                        </DialogHeader>
+                        <Input
+                            autoFocus
+                            placeholder="Ej: llamar a Atlantic para el mantenimiento"
+                            value={newForm.title}
+                            onChange={(e) => setNewForm({ ...newForm, title: e.target.value })}
+                        />
+                        {questions(newForm, setNewForm)}
+                        {detailsOpen ? (
+                            optionalFields(newForm, setNewForm)
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setDetailsOpen(true)}
+                                className="text-xs text-teal-700 dark:text-teal-400 hover:underline"
+                            >
+                                Más opciones: cliente, fecha, monto, estimación…
+                            </button>
+                        )}
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setCreating(false)} disabled={working}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" disabled={working} className="bg-teal-600 hover:bg-teal-700 text-white">
+                                <Plus className="w-4 h-4" /> {working ? 'Agregando…' : 'Agregar'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             {/* ¿Cuánto tomó de verdad? */}
             <Dialog open={!!measuring} onOpenChange={(o) => !o && setMeasuring(null)}>
