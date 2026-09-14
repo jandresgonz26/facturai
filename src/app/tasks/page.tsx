@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, CalendarCheck, Clock, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-react'
 import { Client, Task, TaskClarity, TaskConsequence, TaskStatus, TaskSubtask } from '@/types'
@@ -166,6 +166,8 @@ export default function TasksPage() {
 
     const [toDelete, setToDelete] = useState<Task | null>(null)
     const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
+    /** Sobre qué tarjeta está el arrastre ahora mismo, y de qué lado: para la línea guía. */
+    const [reorderTarget, setReorderTarget] = useState<{ taskId: string; side: 'before' | 'after' } | null>(null)
     /** Tarea recién completada que tenía estimación: se pregunta cuánto tomó de verdad. */
     const [measuring, setMeasuring] = useState<Task | null>(null)
     const [expandedColumns, setExpandedColumns] = useState<Set<TaskStatus>>(new Set())
@@ -209,11 +211,15 @@ export default function TasksPage() {
     const byColumn = useMemo(() => {
         const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [] }
         for (const t of tasks) map[t.status]?.push(t)
-        // Dentro de cada columna, lo más urgente primero (las hechas se dejan como están).
-        map.todo = sortByPriority(map.todo, signals)
-        map.doing = sortByPriority(map.doing, signals)
+        // El orden dentro de cada columna es manual (arrastrar y soltar entre
+        // tarjetas): la prioridad calculada sigue coloreando la tarjeta, pero
+        // ya no decide el orden por su cuenta.
+        const byPosition = (a: Task, b: Task) => Number(a.position) - Number(b.position)
+        map.todo.sort(byPosition)
+        map.doing.sort(byPosition)
+        map.done.sort(byPosition)
         return map
-    }, [tasks, signals])
+    }, [tasks])
 
     const block = currentBlock()
     const suggestions = useMemo(() => suggestNow(tasks, signals), [tasks, signals])
@@ -295,11 +301,14 @@ export default function TasksPage() {
     const otherPlannedTodayLeft = (excludeId: string) =>
         tasks.some((t) => t.id !== excludeId && t.planned_for === today && t.status !== 'done')
 
-    const applyMove = async (task: Task, status: TaskStatus) => {
+    /** `position` es opcional: sin ella se va al final de la columna destino
+     *  (arrastrar sobre el fondo). Con ella, es un reordenamiento preciso
+     *  (arrastrar sobre una tarjeta concreta), venga o no de otra columna. */
+    const applyMove = async (task: Task, status: TaskStatus, position?: number) => {
         const wasDone = task.status === 'done'
-        setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)))
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status, ...(position != null ? { position } : {}) } : t)))
         try {
-            const updated = await moveTask(task.id, status)
+            const updated = await moveTask(task.id, status, undefined, position)
             setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
             if (status === 'done' && !wasDone) {
                 if (task.planned_for === today && !otherPlannedTodayLeft(task.id)) celebrateDayDone()
@@ -348,9 +357,37 @@ export default function TasksPage() {
 
     const handleDrop = async (status: TaskStatus, taskId: string) => {
         setDragOver(null)
+        setReorderTarget(null)
         const task = tasks.find((t) => t.id === taskId)
         if (!task || task.status === status) return
         await applyMove(task, status)
+    }
+
+    /** Sitio exacto donde soltar dentro de una columna: antes o después de una tarjeta concreta. */
+    const handleReorderDrop = async (status: TaskStatus, draggedId: string, targetTaskId: string, side: 'before' | 'after') => {
+        setDragOver(null)
+        setReorderTarget(null)
+        if (!draggedId || draggedId === targetTaskId) return
+        const dragged = tasks.find((t) => t.id === draggedId)
+        if (!dragged) return
+        // Vecinos ya en esa columna, sin la propia tarjeta arrastrada (por si venía de ahí mismo).
+        const siblings = byColumn[status].filter((t) => t.id !== draggedId)
+        const targetIdx = siblings.findIndex((t) => t.id === targetTaskId)
+        if (targetIdx === -1) return
+        const insertAt = side === 'after' ? targetIdx + 1 : targetIdx
+        const before = siblings[insertAt - 1]
+        const after = siblings[insertAt]
+        // Posición a mitad de camino entre los vecinos: solo se toca la tarjeta
+        // movida, sin reescribir el orden de las demás.
+        const newPosition =
+            before && after
+                ? (Number(before.position) + Number(after.position)) / 2
+                : before
+                  ? Number(before.position) + 1
+                  : after
+                    ? Number(after.position) - 1
+                    : 0
+        await applyMove(dragged, status, newPosition)
     }
 
     const saveActual = async (minutes: number | null) => {
@@ -771,11 +808,34 @@ export default function TasksPage() {
                                             task.recurrence ? 'se repite' : null,
                                             task.log_id ? 'facturable' : null,
                                         ].filter(Boolean) as string[]
+                                        const isReorderTarget = reorderTarget?.taskId === task.id
                                         return (
+                                            <Fragment key={task.id}>
+                                            {isReorderTarget && reorderTarget?.side === 'before' && (
+                                                <div className="h-1 rounded-full bg-teal-500" />
+                                            )}
                                             <article
-                                                key={task.id}
                                                 draggable
                                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
+                                                onDragEnd={() => {
+                                                    setDragOver(null)
+                                                    setReorderTarget(null)
+                                                }}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault()
+                                                    e.stopPropagation()
+                                                    const rect = e.currentTarget.getBoundingClientRect()
+                                                    const side = e.clientY - rect.top > rect.height / 2 ? 'after' : 'before'
+                                                    setReorderTarget((prev) => (prev?.taskId === task.id && prev.side === side ? prev : { taskId: task.id, side }))
+                                                }}
+                                                onDragLeave={() => setReorderTarget((prev) => (prev?.taskId === task.id ? null : prev))}
+                                                onDrop={(e) => {
+                                                    e.preventDefault()
+                                                    e.stopPropagation()
+                                                    const rect = e.currentTarget.getBoundingClientRect()
+                                                    const side = e.clientY - rect.top > rect.height / 2 ? 'after' : 'before'
+                                                    handleReorderDrop(col.id, e.dataTransfer.getData('text/plain'), task.id, side)
+                                                }}
                                                 onDoubleClick={() => openEdit(task)}
                                                 title={priority.reason}
                                                 className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${style.card} ${style.on}`}
@@ -847,6 +907,10 @@ export default function TasksPage() {
                                                     </button>
                                                 </div>
                                             </article>
+                                            {isReorderTarget && reorderTarget?.side === 'after' && (
+                                                <div className="h-1 rounded-full bg-teal-500" />
+                                            )}
+                                            </Fragment>
                                         )
                                     })}
 

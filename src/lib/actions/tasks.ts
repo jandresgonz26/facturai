@@ -193,17 +193,21 @@ export async function updateTask(id: string, raw: TaskInput): Promise<Task> {
 }
 
 /**
- * Mueve una tarea de columna (arrastrar y soltar): la coloca al final de la
- * columna destino. Al darla por hecha se puede registrar cuánto tomó de
- * verdad, que es lo que después permite medir la desviación del cálculo.
+ * Mueve una tarea de columna (arrastrar y soltar) y, si se pide, la coloca en
+ * una posición exacta dentro de esa columna: el orden dentro de cada columna
+ * es manual, el usuario decide, la prioridad calculada solo colorea la
+ * tarjeta. Sin `position` explícita, se va al final (comportamiento de
+ * siempre al arrastrar entre columnas sin apuntar a un lugar concreto). Al
+ * darla por hecha se puede registrar cuánto tomó de verdad, que es lo que
+ * después permite medir la desviación del cálculo.
  */
-export async function moveTask(id: string, status: TaskStatus, actualMinutes?: number | null): Promise<Task> {
+export async function moveTask(id: string, status: TaskStatus, actualMinutes?: number | null, position?: number): Promise<Task> {
     const current = await getTask(id)
-    if (current.status === status && actualMinutes == null) return current
+    if (current.status === status && actualMinutes == null && position == null) return current
     const completing = status === 'done' && current.status !== 'done'
     const patch: Record<string, unknown> = {
         status,
-        position: current.status === status ? current.position : await nextPosition(status),
+        position: position != null ? position : current.status === status ? current.position : await nextPosition(status),
         completed_at: status === 'done' ? current.completed_at ?? new Date().toISOString() : null,
     }
     if (status === 'done' && actualMinutes != null) patch.actual_minutes = Math.round(actualMinutes)
