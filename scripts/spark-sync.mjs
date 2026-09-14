@@ -20,6 +20,12 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 
+// launchd (el programador que corre esto en segundo plano cada 30 min) usa un
+// PATH mínimo que no incluye /usr/local/bin, donde quedó el symlink del CLI
+// de Spark: desde una terminal normal "spark" se encuentra, desde launchd no
+// (falla en silencio con ENOENT). Se usa la ruta absoluta por eso.
+const SPARK_BIN = process.env.SPARK_BIN || '/usr/local/bin/spark'
+
 const args = process.argv.slice(2)
 const argVal = (name, fallback) => {
     const i = args.indexOf(`--${name}`)
@@ -54,10 +60,13 @@ const sb = (path, init = {}) =>
 
 async function spark(args) {
     try {
-        const { stdout } = await run('spark', args, { maxBuffer: 32 * 1024 * 1024 })
+        const { stdout } = await run(SPARK_BIN, args, { maxBuffer: 32 * 1024 * 1024 })
         return stdout
     } catch (e) {
         const msg = e.stderr || e.message || String(e)
+        if (e.code === 'ENOENT') {
+            throw new Error(`No se encuentra el CLI de Spark en ${SPARK_BIN}. Revisa el symlink (ver README) o define SPARK_BIN.`)
+        }
         if (/can't access your Spark Desktop/i.test(msg)) {
             throw new Error('Spark Desktop no está abierto o el CLI no tiene permiso. Abre Spark y vuelve a intentar.')
         }
@@ -172,12 +181,22 @@ async function main() {
         return
     }
 
-    // upsert: no duplica si ya se sincronizó antes.
-    const res = await sb('inbox_items?on_conflict=account,message_id', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify(rows.map((r) => ({ ...r, synced_at: new Date().toISOString() }))),
-    })
+    // upsert: no duplica si ya se sincronizó antes. Un 502/503 de la pasarela
+    // de Supabase es transitorio y ya se vio en la práctica; como esto corre
+    // sola cada 30 min sin que nadie lo mire, vale la pena un segundo intento
+    // antes de rendirse y dejar el ciclo perdido.
+    const upload = () =>
+        sb('inbox_items?on_conflict=account,message_id', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+            body: JSON.stringify(rows.map((r) => ({ ...r, synced_at: new Date().toISOString() }))),
+        })
+    let res = await upload()
+    if (!res.ok && res.status >= 500) {
+        console.warn(`Aviso: ${res.status} al subir, reintentando en 3s…`)
+        await new Promise((r) => setTimeout(r, 3000))
+        res = await upload()
+    }
     if (!res.ok) {
         console.error('Error al subir:', res.status, await res.text())
         process.exit(1)
