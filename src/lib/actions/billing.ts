@@ -81,6 +81,15 @@ export async function getBillingSnapshot(clientId: string, period?: string) {
                 original_amount: s.original_amount ?? s.amount,
             })),
             to_load_total_usd: toLoadTotal,
+            // Frecuencia distinta de mensual (trimestral, etc.) que todavía no le
+            // toca este periodo: no se cargan ahora, pero conviene que se vean.
+            not_due_yet: recurring.notDue.map((s) => ({
+                id: s.id,
+                description: s.description,
+                amount_usd: toUsd(s),
+                interval_months: s.interval_months,
+                next_period: s.next_period,
+            })),
         },
         projected_total_usd: round2(pendingTotal + toLoadTotal),
     }

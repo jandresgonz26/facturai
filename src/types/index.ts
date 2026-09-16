@@ -121,11 +121,16 @@ export interface RecurringService {
     id: string
     client_id: string
     description: string
+    /** Monto que se cobra CADA VEZ que toca: si es trimestral, el total del trimestre, no un promedio mensual. */
     amount: number
     original_amount?: number
     currency?: string
     category_id?: string
     is_active: boolean
+    /** Cada cuántos meses se cobra: 1 = mensual (el default de siempre), 3 = trimestral, etc. */
+    interval_months: number
+    /** Próximo periodo (YYYY-MM) en que toca cobrarlo. null = siempre debido (así se comportan, sin cambios, los servicios mensuales de toda la vida). */
+    next_period: string | null
     created_at: string
     service_categories?: { name: string }
 }

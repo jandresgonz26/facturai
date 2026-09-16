@@ -22,6 +22,7 @@ const clientNameField = z.string().min(1).describe('Nombre del cliente tal como 
 /** El modelo a veces manda "" en vez de omitir: lo tratamos como ausente. */
 const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v)
 const optionalDate = z.preprocess(blankToUndefined, dateSchema.optional())
+const optionalPeriod = z.preprocess(blankToUndefined, periodSchema.optional())
 const optionalText = z.preprocess(blankToUndefined, z.string().trim().min(1).optional())
 // El validador de correo de zod genera un JSON Schema con un patrón que la API de OpenAI rechaza en
 // silencio (respuesta vacía). Validamos el formato en las acciones y aquí solo pedimos texto.
@@ -899,18 +900,41 @@ export const agentTools = {
 
     add_recurring_service: tool({
         description:
-            'Crea un servicio FIJO que se cobrará TODOS los meses de forma automática hasta que se desactive. No todos los clientes tienen servicios fijos: es una decisión poco frecuente e importante. Requiere confirmación. Úsala SOLO si el usuario pide explícitamente que sea recurrente ("todos los meses", "cada mes", "de forma fija"). Si el usuario menciona un mes concreto (ej. "el SEO de agosto") es un cobro puntual de ese mes: usa add_log, NO esta herramienta, aunque el trabajo en sí sea mensual.',
+            'Crea un servicio FIJO que se cobrará automáticamente hasta que se desactive: mensual por defecto, o cada N meses (trimestral, semestral, anual) si el usuario lo pide así ("es trimestral", "cada 3 meses", "se paga cada semestre"). No todos los clientes tienen servicios fijos: es una decisión poco frecuente e importante. Requiere confirmación. Úsala SOLO si el usuario pide explícitamente que sea recurrente ("todos los meses", "cada mes", "de forma fija", "cada trimestre"). Si el usuario menciona un mes concreto (ej. "el SEO de agosto") es un cobro puntual de ese mes: usa add_log, NO esta herramienta, aunque el trabajo en sí sea mensual.',
         inputSchema: z.object({
             client_id: uuidSchema,
             client_name: clientNameField,
             description: z.string().min(3),
-            amount: z.number().positive().describe('Monto mensual en la moneda del cliente'),
+            amount: z
+                .number()
+                .positive()
+                .describe(
+                    'Monto por cada cobro, en la moneda del cliente. Si interval_months es mayor que 1, es el TOTAL de ese periodo completo (ej. el trimestre entero), nunca un promedio mensual — si el usuario da un monto mensual para un servicio trimestral, multiplícalo por 3 antes de llamar.'
+                ),
             category: optionalText.describe('SOLO si el usuario la menciona'),
+            interval_months: z
+                .number()
+                .int()
+                .min(1)
+                .max(12)
+                .optional()
+                .describe('Cada cuántos meses se cobra: omite o pon 1 para mensual (el caso normal); 3 trimestral, 6 semestral, 12 anual.'),
+            first_period: optionalPeriod
+                .describe(
+                    'SOLO si interval_months > 1 y el usuario da a entender cuándo empieza o cuándo ya está en curso ("el trimestre actual es agosto-octubre" → first_period 2026-08). Formato YYYY-MM. Si no lo menciona, se usa el periodo actual.'
+                ),
         }),
         execute: async ({ client_name, ...input }) =>
             run(async () => {
                 const s = await actions.addRecurringService(input)
-                return { client_name, description: s.description, amount_usd: s.amount, currency: s.currency }
+                return {
+                    client_name,
+                    description: s.description,
+                    amount_usd: s.amount,
+                    currency: s.currency,
+                    interval_months: s.interval_months,
+                    next_period: s.next_period,
+                }
             }),
     }),
 }
