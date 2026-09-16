@@ -8,6 +8,11 @@ import type { Task } from '@/types'
  * Correos traídos desde Spark por el puente que corre en el Mac
  * (scripts/spark-sync.mjs).
  *
+ * Un registro por HILO, no por mensaje: cada respuesta nueva actualiza la
+ * misma fila (identificada por thread_key) en vez de crear una casi
+ * duplicada, así que nunca hay que adivinar cuál de varias filas parecidas
+ * es la más reciente.
+ *
  * Siempre hay cabeceras: quién escribió, sobre qué y cuándo. El cuerpo del
  * hilo (`body`) también se sube, pero solo cuando el puente decide que no es
  * ruido automático, y con las contraseñas que pueda traer ya tachadas ahí
@@ -17,6 +22,9 @@ import type { Task } from '@/types'
 
 export interface InboxItem {
     id: string
+    /** Identidad real del registro: un token estable por hilo (no por mensaje individual). */
+    thread_key: string
+    /** Id del mensaje más reciente conocido del hilo; cambia en cada resincronización. */
     message_id: string
     account: string
     from_name: string | null

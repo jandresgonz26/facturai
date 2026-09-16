@@ -7,6 +7,13 @@
  * lo deja en la base de FacturAI, para que el asistente pueda mencionarlo
  * desde Telegram aunque el Mac esté apagado después.
  *
+ * Se guarda UN REGISTRO POR HILO (no por mensaje): un hilo con varias
+ * respuestas se identifica por un token estable que da el propio CLI de
+ * Spark (el mismo sin importar qué mensaje del hilo se consulte), así que
+ * cada mensaje nuevo actualiza la misma fila en vez de crear una casi
+ * duplicada — y el asistente nunca tiene que adivinar cuál de varias filas
+ * parecidas es la más reciente.
+ *
  * PRIVACIDAD: se sube el cuerpo del hilo (no solo cabeceras) para que el
  * asistente pueda resumirlo, pero con salvaguardas decididas explícitamente
  * por el usuario, todas aplicadas AQUÍ, antes de que nada salga del Mac:
@@ -197,6 +204,19 @@ function parseMessages(threadOut) {
     return messages
 }
 
+/**
+ * Identidad del hilo: el mismo token sin importar qué mensaje se haya usado
+ * para pedirlo (comprobado a mano: `spark thread <id-viejo>` y
+ * `spark thread <id-nuevo>` del mismo hilo devuelven el mismo Link). Si algún
+ * hilo no trae Link (caso raro), se usa el id del propio mensaje como
+ * respaldo: degrada a "una fila por mensaje" solo para ese caso, en vez de
+ * romper la sincronización.
+ */
+function extractThreadKey(threadOut, fallbackId) {
+    const m = threadOut.match(/^Link:\s*(.+)$/m)
+    return m ? m[1].trim() : fallbackId
+}
+
 /** El hilo completo como un solo texto, para que el asistente pueda resumirlo de verdad, no solo el último mensaje. */
 function renderThread(messages) {
     const text = messages
@@ -237,25 +257,38 @@ async function main() {
     const mutedSenders = new Set(mutedRes.ok ? (await mutedRes.json()).map((m) => String(m.from_email).toLowerCase()) : [])
 
     const rows = []
+    // Varios candidatos de esta misma corrida pueden ser mensajes del mismo
+    // hilo (ej. 4 respuestas seguidas todas "sin responder" a la vez): se
+    // procesa cada hilo una sola vez, no una por mensaje.
+    const threadKeysSeen = new Set()
     let bodiesFetched = 0
     for (const id of ids) {
         try {
             const threadOut = await spark(['thread', id])
             const messages = parseMessages(threadOut)
-            const h = messages.find((m) => m.message_id === id)
-            if (!h) continue
-            const client_id = byEmail.get(h.from_email) ?? null
-            const noise = isLikelyNoise(h.from_email, h.subject, { isKnownClient: !!client_id, mutedSenders })
+            if (messages.length === 0) continue
+            const threadKey = extractThreadKey(threadOut, id)
+            if (threadKeysSeen.has(threadKey)) continue
+            threadKeysSeen.add(threadKey)
+
+            // El último mensaje del hilo (no necesariamente el candidato que
+            // disparó la consulta): spark thread siempre trae el hilo
+            // completo y al día, así que esto es lo más reciente que existe
+            // ahora mismo, venga de donde venga el id de arranque.
+            const latest = messages[messages.length - 1]
+            const client_id = byEmail.get(latest.from_email) ?? null
+            const noise = isLikelyNoise(latest.from_email, latest.subject, { isKnownClient: !!client_id, mutedSenders })
             // La cuenta destino aparece en el bloque; si no, se usa la primera.
-            const toLine = threadOut.match(new RegExp(`^\\s{2}ID:\\s*${id}[\\s\\S]*?^\\s{2}To:\\s*(.+)$`, 'm'))
+            const toLine = threadOut.match(new RegExp(`^\\s{2}ID:\\s*${latest.message_id}[\\s\\S]*?^\\s{2}To:\\s*(.+)$`, 'm'))
             const account = accounts.find((a) => toLine?.[1]?.toLowerCase().includes(a.toLowerCase())) || defaultAccount
             const row = {
-                message_id: h.message_id,
+                thread_key: threadKey,
+                message_id: latest.message_id,
                 account,
-                from_name: h.from_name,
-                from_email: h.from_email,
-                subject: h.subject,
-                sent_at: toIso(h.date),
+                from_name: latest.from_name,
+                from_email: latest.from_email,
+                subject: latest.subject,
+                sent_at: toIso(latest.date),
                 client_id,
                 body: null,
                 body_synced_at: null,
@@ -287,12 +320,13 @@ async function main() {
         return
     }
 
-    // upsert: no duplica si ya se sincronizó antes. Un 502/503 de la pasarela
-    // de Supabase es transitorio y ya se vio en la práctica; como esto corre
-    // sola cada 30 min sin que nadie lo mire, vale la pena un segundo intento
-    // antes de rendirse y dejar el ciclo perdido.
+    // upsert por hilo: si ya existía una fila para este thread_key, se
+    // actualiza en el sitio (cabeceras + cuerpo al día), no se duplica. Un
+    // 502/503 de la pasarela de Supabase es transitorio y ya se vio en la
+    // práctica; como esto corre sola cada 30 min sin que nadie lo mire, vale
+    // la pena un segundo intento antes de rendirse y dejar el ciclo perdido.
     const upload = () =>
-        sb('inbox_items?on_conflict=account,message_id', {
+        sb('inbox_items?on_conflict=account,thread_key', {
             method: 'POST',
             headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
             body: JSON.stringify(rows.map((r) => ({ ...r, synced_at: new Date().toISOString() }))),
