@@ -145,7 +145,25 @@ function redactSecrets(text) {
     return out
 }
 
-const MAX_BODY_CHARS = 6000
+// Con la firma completa (la de Asiri incluye RGPD, aviso legal y promo, y se
+// repite en cada mensaje del hilo) un hilo de 13 mensajes se iba muy por
+// encima de esto — y como se recorta por el final, lo que se perdía eran
+// justo los mensajes más recientes, que es lo que más importa. Con la firma
+// fuera (stripSignature), el margen alcanza para hilos bastante largos.
+const MAX_BODY_CHARS = 12000
+
+/**
+ * El CLI de Spark marca el arranque del bloque de firma con "Firma email -
+ * <nombre> --" antes de imprimirlo (visto en la práctica: contactos, avisos
+ * legales y promoción repetidos en cada mensaje del hilo). Se corta ahí: es
+ * ruido para un resumen y se come el presupuesto de caracteres a lo tonto.
+ * Si el marcador no aparece, se deja el cuerpo tal cual (mejor de más que
+ * arriesgarse a cortar contenido real).
+ */
+function stripSignature(body) {
+    const m = body.match(/^\s*Firma email\b/im)
+    return m && m.index != null ? body.slice(0, m.index).trim() : body
+}
 
 /**
  * Se filtra por "sin responder" y categoría personal porque es lo único que en
@@ -185,11 +203,13 @@ function parseMessages(threadOut) {
         }
         const body =
             bodyStart >= 0
-                ? lines
-                      .slice(bodyStart)
-                      .map((l) => l.replace(/^ {1,2}/, '')) // Spark indenta cada línea con 2 espacios.
-                      .join('\n')
-                      .trim()
+                ? stripSignature(
+                      lines
+                          .slice(bodyStart)
+                          .map((l) => l.replace(/^ {1,2}/, '')) // Spark indenta cada línea con 2 espacios.
+                          .join('\n')
+                          .trim()
+                  )
                 : ''
         const withName = from.match(/^"?(.*?)"?\s*<([^>]+)>$/)
         messages.push({
@@ -223,7 +243,10 @@ function renderThread(messages) {
         .map((m) => `--- ${m.from_name || m.from_email} (${m.date || 'sin fecha'}) ---\n${m.body || '(sin contenido)'}`)
         .join('\n\n')
     const redacted = redactSecrets(text)
-    return redacted.length > MAX_BODY_CHARS ? `${redacted.slice(0, MAX_BODY_CHARS)}\n\n[…hilo truncado…]` : redacted
+    if (redacted.length <= MAX_BODY_CHARS) return redacted
+    // Si aún así no cabe, se recorta por el PRINCIPIO: lo reciente pesa más
+    // que el contexto de apertura, y es justo lo que se quiere poder leer.
+    return `[…se omiten los mensajes más antiguos del hilo…]\n\n${redacted.slice(-MAX_BODY_CHARS)}`
 }
 
 /** La fecha viene como 'YYYY-MM-DD HH:mm' en hora local del Mac. */
