@@ -2,14 +2,45 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarClock, FileText, HeartHandshake, LoaderCircle, Mail, Plus, ReceiptText, StickyNote, Trash2, Wrench } from 'lucide-react'
+import {
+    CalendarClock,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    FileText,
+    HeartHandshake,
+    ListTodo,
+    LoaderCircle,
+    Mail,
+    Pencil,
+    Pin,
+    PinOff,
+    Plus,
+    ReceiptText,
+    RotateCcw,
+    StickyNote,
+    Trash2,
+    Wrench,
+} from 'lucide-react'
 import Link from 'next/link'
 import type { Client, ClientNote, ClientStage, Task } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { CLIENT_STAGES, addClientNote, deleteClientNote, getClientTimeline, listClientNotes, setClientStage, type TimelineEvent } from '@/lib/actions/crm'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+    CLIENT_STAGES,
+    addClientNote,
+    convertClientNoteToTask,
+    deleteClientNote,
+    getClientTimeline,
+    listClientNotes,
+    setClientStage,
+    updateClientNote,
+    type TimelineEvent,
+} from '@/lib/actions/crm'
 import { createTask, listTasks, moveTask } from '@/lib/actions/tasks'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 
@@ -40,6 +71,10 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
     const [notes, setNotes] = useState<ClientNote[]>([])
     const [timeline, setTimeline] = useState<TimelineEvent[]>([])
     const [note, setNote] = useState('')
+    /** Nota en edición inline (id + texto en curso). */
+    const [editingNote, setEditingNote] = useState<{ id: string; body: string } | null>(null)
+    const [noteToDelete, setNoteToDelete] = useState<ClientNote | null>(null)
+    const [showResolved, setShowResolved] = useState(false)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
 
@@ -117,8 +152,7 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
         try {
             await addClientNote(client.id, note)
             setNote('')
-            load()
-            emitDataChanged()
+            afterNoteChange()
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'No se pudo guardar la nota')
         } finally {
@@ -126,14 +160,67 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
         }
     }
 
-    const removeNote = async (id: string) => {
+    /** Todo cambio en una nota refresca la lista y avisa al resto (la franja de fijadas en la cabecera escucha). */
+    const afterNoteChange = () => {
+        load()
+        emitDataChanged()
+    }
+
+    const patchNote = async (n: ClientNote, patch: Parameters<typeof updateClientNote>[1], okMsg?: string) => {
         try {
-            await deleteClientNote(id)
-            load()
+            await updateClientNote(n.id, patch)
+            if (okMsg) toast.success(okMsg)
+            afterNoteChange()
         } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'No se pudo eliminar')
+            toast.error(err instanceof Error ? err.message : 'No se pudo actualizar la nota')
         }
     }
+
+    const saveEditedNote = async () => {
+        if (!editingNote) return
+        if (editingNote.body.trim().length < 2) {
+            toast.error('La nota está vacía')
+            return
+        }
+        setSaving(true)
+        try {
+            await updateClientNote(editingNote.id, { body: editingNote.body })
+            setEditingNote(null)
+            afterNoteChange()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo guardar')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const noteToTask = async (n: ClientNote) => {
+        try {
+            const r = await convertClientNoteToTask(n.id)
+            toast.success(`Ahora es una tarea: "${r.task.title}"`)
+            afterNoteChange()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo convertir')
+        }
+    }
+
+    const removeNote = async () => {
+        if (!noteToDelete) return
+        setSaving(true)
+        try {
+            await deleteClientNote(noteToDelete.id)
+            setNoteToDelete(null)
+            toast.success('Nota eliminada')
+            afterNoteChange()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo eliminar')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const activeNotes = notes.filter((n) => !n.resolved_at)
+    const resolvedNotes = notes.filter((n) => n.resolved_at)
 
     return (
         <div className="space-y-6">
@@ -199,21 +286,142 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
 
             <section className="space-y-2">
                 <Label className="flex items-center gap-1.5"><StickyNote className="w-4 h-4 text-amber-600" /> Notas</Label>
-                <form onSubmit={addNote} className="flex gap-2">
-                    <Input placeholder="Anota algo de este cliente…" value={note} onChange={(e) => setNote(e.target.value)} />
-                    <Button type="submit" disabled={saving || note.trim().length < 2} className="bg-teal-600 hover:bg-teal-700 text-white"><Plus /></Button>
+                <p className="text-xs text-muted-foreground">
+                    Lo que hay que saber de este cliente. Fija las importantes (se ven arriba de la ficha y el asistente las lee primero);
+                    si una nota es en realidad algo por hacer, conviértela en tarea.
+                </p>
+                <form
+                    onSubmit={addNote}
+                    className="flex gap-2 items-start"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addNote(e)
+                    }}
+                >
+                    <Textarea rows={2} placeholder="Anota algo de este cliente… (⌘↵ para guardar)" value={note} onChange={(e) => setNote(e.target.value)} className="flex-1 text-sm" />
+                    <Button type="submit" disabled={saving || note.trim().length < 2} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"><Plus /></Button>
                 </form>
-                {notes.length > 0 && (
+
+                {activeNotes.length > 0 && (
                     <ul className="space-y-1.5">
-                        {notes.map((n) => (
-                            <li key={n.id} className="flex items-start gap-2 text-sm rounded-lg border px-3 py-2">
-                                <span className="flex-1 whitespace-pre-wrap">{n.body}</span>
-                                <span className="text-xs text-muted-foreground shrink-0">{fmt(n.created_at)}</span>
-                                <Button size="icon-xs" variant="ghost" onClick={() => removeNote(n.id)} className="text-destructive hover:text-destructive"><Trash2 /></Button>
-                            </li>
-                        ))}
+                        {activeNotes.map((n) => {
+                            const isEditing = editingNote?.id === n.id
+                            return (
+                                <li
+                                    key={n.id}
+                                    className={`rounded-lg border px-3 py-2 text-sm ${
+                                        n.pinned ? 'border-l-2 border-l-amber-400 bg-amber-50/50 dark:bg-amber-900/10' : 'bg-card'
+                                    }`}
+                                >
+                                    {isEditing ? (
+                                        <div className="space-y-2">
+                                            <Textarea
+                                                autoFocus
+                                                rows={3}
+                                                value={editingNote.body}
+                                                onChange={(e) => setEditingNote({ id: n.id, body: e.target.value })}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEditedNote()
+                                                    if (e.key === 'Escape') setEditingNote(null)
+                                                }}
+                                                className="text-sm"
+                                            />
+                                            <div className="flex justify-end gap-2">
+                                                <Button size="sm" variant="ghost" onClick={() => setEditingNote(null)} disabled={saving}>Cancelar</Button>
+                                                <Button size="sm" onClick={saveEditedNote} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white">Guardar</Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="whitespace-pre-wrap">{n.body}</p>
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                <span className="text-xs text-muted-foreground">
+                                                    {fmt(n.created_at)}
+                                                    {n.updated_at ? ' · editada' : ''}
+                                                    {n.pinned ? ' · fijada' : ''}
+                                                </span>
+                                                <span className="ml-auto flex items-center gap-0.5">
+                                                    <Button size="icon-xs" variant="ghost" title={n.pinned ? 'Soltar' : 'Fijar arriba de la ficha'} onClick={() => patchNote(n, { pinned: !n.pinned })} className={n.pinned ? 'text-amber-600' : 'text-muted-foreground'}>
+                                                        {n.pinned ? <PinOff /> : <Pin />}
+                                                    </Button>
+                                                    <Button size="icon-xs" variant="ghost" title="Editar" onClick={() => setEditingNote({ id: n.id, body: n.body })} className="text-muted-foreground">
+                                                        <Pencil />
+                                                    </Button>
+                                                    <Button size="icon-xs" variant="ghost" title="Convertir en tarea" onClick={() => noteToTask(n)} className="text-muted-foreground">
+                                                        <ListTodo />
+                                                    </Button>
+                                                    <Button size="icon-xs" variant="ghost" title="Resolver (tachar)" onClick={() => patchNote(n, { resolved: true }, 'Nota resuelta')} className="text-muted-foreground hover:text-emerald-600">
+                                                        <Check />
+                                                    </Button>
+                                                    <Button size="icon-xs" variant="ghost" title="Eliminar" onClick={() => setNoteToDelete(n)} className="text-muted-foreground hover:text-destructive">
+                                                        <Trash2 />
+                                                    </Button>
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
+                                </li>
+                            )
+                        })}
                     </ul>
                 )}
+
+                {resolvedNotes.length > 0 && (
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setShowResolved((v) => !v)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                            {showResolved ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            {resolvedNotes.length} resuelta{resolvedNotes.length === 1 ? '' : 's'}
+                        </button>
+                        {showResolved && (
+                            <ul className="mt-1.5 space-y-1.5">
+                                {resolvedNotes.map((n) => (
+                                    <li key={n.id} className="rounded-lg border bg-muted/30 px-3 py-2 text-sm opacity-75">
+                                        <p className="whitespace-pre-wrap line-through text-muted-foreground">{n.body}</p>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <span className="text-xs text-muted-foreground">
+                                                {fmt(n.created_at)}
+                                                {n.task_id ? (
+                                                    <> · <Link href="/tasks" className="text-teal-600 hover:underline">convertida en tarea</Link></>
+                                                ) : (
+                                                    ' · resuelta'
+                                                )}
+                                            </span>
+                                            <span className="ml-auto flex items-center gap-0.5">
+                                                {!n.task_id && (
+                                                    <Button size="icon-xs" variant="ghost" title="Reabrir" onClick={() => patchNote(n, { resolved: false })} className="text-muted-foreground">
+                                                        <RotateCcw />
+                                                    </Button>
+                                                )}
+                                                <Button size="icon-xs" variant="ghost" title="Eliminar" onClick={() => setNoteToDelete(n)} className="text-muted-foreground hover:text-destructive">
+                                                    <Trash2 />
+                                                </Button>
+                                            </span>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
+
+                <Dialog open={!!noteToDelete} onOpenChange={(o) => !o && !saving && setNoteToDelete(null)}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Eliminar nota</DialogTitle>
+                            <DialogDescription>
+                                Se borra definitivamente. Si solo dejó de aplicar, mejor márcala como resuelta: queda en el historial.
+                            </DialogDescription>
+                        </DialogHeader>
+                        {noteToDelete && <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm whitespace-pre-wrap">{noteToDelete.body}</p>}
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setNoteToDelete(null)} disabled={saving}>Cancelar</Button>
+                            <Button variant="destructive" onClick={removeNote} disabled={saving}>{saving ? 'Eliminando…' : 'Eliminar'}</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </section>
 
             <section className="space-y-2">

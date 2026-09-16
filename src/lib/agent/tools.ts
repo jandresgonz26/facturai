@@ -575,12 +575,84 @@ export const agentTools = {
     }),
 
     add_client_note: tool({
-        description: 'Guarda una nota en la ficha del cliente ("anota que…", "recuerda que…"). Requiere confirmación.',
-        inputSchema: z.object({ client_id: uuidSchema, client_name: clientNameField, body: z.string().min(2).max(2000) }),
-        execute: async ({ client_id, client_name, body }) =>
+        description:
+            'Guarda una nota en la ficha del cliente ("anota que…", "recuerda que…"). Es contexto privado sobre el cliente, NO una tarea: si lo que dicta es algo por hacer ("hay que llamarlo el lunes"), usa create_task. Requiere confirmación. Pasa pinned true si es algo que hay que tener siempre presente de ese cliente ("que no se me olvide que…", "ojo con…").',
+        inputSchema: z.object({
+            client_id: uuidSchema,
+            client_name: clientNameField,
+            body: z.string().min(2).max(2000),
+            pinned: z.boolean().optional().describe('true = fijarla arriba de la ficha, como "lo que hay que saber" de este cliente'),
+        }),
+        execute: async ({ client_id, client_name, body, pinned }) =>
             run(async () => {
                 const n = await actions.addClientNote(client_id, body)
-                return { client_name, body: n.body, created_at: n.created_at }
+                const final = pinned ? await actions.updateClientNote(n.id, { pinned: true }) : n
+                return { client_name, note_id: final.id, body: final.body, pinned: final.pinned, created_at: final.created_at }
+            }),
+    }),
+
+    list_client_notes: tool({
+        description:
+            'Notas de la ficha de un cliente, con su estado: fijadas primero (lo que hay que saber de él), luego las vigentes, al final las resueltas. Úsala para resolver el note_id antes de editar/resolver/eliminar, y para dar contexto cuando el usuario pregunte por un cliente o vaya a cotizarle o facturarle: menciona las fijadas si son relevantes.',
+        inputSchema: z.object({ client_id: uuidSchema }),
+        execute: async ({ client_id }) =>
+            run(async () =>
+                (await actions.listClientNotes(client_id)).map((n) => ({
+                    id: n.id,
+                    body: n.body,
+                    pinned: n.pinned,
+                    resolved: !!n.resolved_at,
+                    converted_to_task: !!n.task_id,
+                    created_at: n.created_at,
+                }))
+            ),
+    }),
+
+    update_client_note: tool({
+        description:
+            'Edita una nota existente de un cliente: cambiar el texto (body), fijarla o soltarla (pinned), o resolverla/reabrirla (resolved). Solo se toca lo que se pase. "Tacha esa nota", "ya no aplica" → resolved true. "Que quede siempre a la vista" → pinned true. Resuelve el note_id con list_client_notes. Requiere confirmación.',
+        inputSchema: z.object({
+            note_id: uuidSchema,
+            client_name: clientNameField,
+            body: optionalText.describe('Nuevo texto completo, solo si lo cambia'),
+            pinned: z.boolean().optional(),
+            resolved: z.boolean().optional().describe('true = tacharla; false = reabrirla'),
+        }),
+        execute: async ({ note_id, client_name, body, pinned, resolved }) =>
+            run(async () => {
+                const n = await actions.updateClientNote(note_id, { body, pinned, resolved })
+                return { client_name, note_id: n.id, body: n.body, pinned: n.pinned, resolved: !!n.resolved_at }
+            }),
+    }),
+
+    convert_client_note_to_task: tool({
+        description:
+            'La nota era en realidad algo por hacer: crea la tarea en el tablero con el cliente enlazado y deja la nota resuelta apuntando a ella. Resuelve el note_id con list_client_notes. Requiere confirmación.',
+        inputSchema: z.object({
+            note_id: uuidSchema,
+            client_name: clientNameField,
+            body: z.string().min(1).describe('Texto de la nota, para la confirmación'),
+            due_date: optionalDate.describe('SOLO si el usuario dice para cuándo'),
+        }),
+        execute: async ({ note_id, client_name, due_date }) =>
+            run(async () => {
+                const r = await actions.convertClientNoteToTask(note_id, due_date ?? null)
+                return { client_name, task_title: r.task.title, due_date: r.task.due_date ?? null }
+            }),
+    }),
+
+    delete_client_note: tool({
+        description:
+            'Elimina una nota de la ficha del cliente de forma definitiva. Prefiere update_client_note con resolved true si solo dejó de aplicar (queda en el historial); elimina solo si el usuario lo pide así. Resuelve el note_id con list_client_notes. Requiere confirmación.',
+        inputSchema: z.object({
+            note_id: uuidSchema,
+            client_name: clientNameField,
+            body: z.string().min(1).describe('Texto de la nota, para la confirmación'),
+        }),
+        execute: async ({ note_id, client_name, body }) =>
+            run(async () => {
+                await actions.deleteClientNote(note_id)
+                return { client_name, body }
             }),
     }),
 

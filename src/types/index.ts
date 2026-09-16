@@ -156,6 +156,13 @@ export interface ClientNote {
     id: string
     client_id: string
     body: string
+    /** Destacada: "lo que hay que saber" del cliente. Sube arriba, se ve en la cabecera de la ficha y el asistente la lee primero. */
+    pinned: boolean
+    /** Tachada. null = vigente. */
+    resolved_at: string | null
+    /** Si la nota era en realidad algo por hacer y se convirtió en tarea, el enlace. */
+    task_id: string | null
+    updated_at: string | null
     created_at: string
 }
 

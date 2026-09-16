@@ -188,6 +188,25 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'add_client_note':
             return { title: `Nota en la ficha de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }] }
+        case 'update_client_note': {
+            const rows: Row[] = []
+            if (input.body != null) rows.push({ label: 'Nuevo texto', value: str(input.body) ?? '-' })
+            if (input.pinned != null) rows.push({ label: 'Fijada', value: input.pinned ? 'Sí, arriba de la ficha' : 'No' })
+            if (input.resolved != null) rows.push({ label: 'Estado', value: input.resolved ? 'Resuelta (tachada)' : 'Vigente de nuevo' })
+            if (rows.length === 0) rows.push({ label: 'Cambio', value: 'Sin cambios' })
+            return { title: `Actualizar nota de ${client}`, rows }
+        }
+        case 'convert_client_note_to_task':
+            return {
+                title: `Convertir nota en tarea (${client})`,
+                rows: [
+                    { label: 'Nota', value: str(input.body) ?? '-' },
+                    { label: 'Para', value: input.due_date ? dateLabel(str(input.due_date)) : 'Sin fecha' },
+                ],
+                note: 'La tarea va al tablero con el cliente enlazado; la nota queda resuelta apuntando a ella.',
+            }
+        case 'delete_client_note':
+            return { title: `Eliminar nota de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }], note: 'No se puede deshacer.' }
         case 'create_task': {
             const rows: Row[] = [{ label: 'Tarea', value: str(input.title) ?? '-' }]
             if (input.client_name) rows.push({ label: 'Cliente', value: str(input.client_name)! })
@@ -400,6 +419,15 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Etapa actualizada', lines: [`${str(d.client_name) ?? ''} → ${STAGE_LABELS[str(d.stage) ?? ''] ?? str(d.stage) ?? ''}`] }
         case 'add_client_note':
             return { title: 'Nota guardada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
+        case 'update_client_note':
+            return {
+                title: d.resolved ? 'Nota resuelta' : d.pinned ? 'Nota fijada' : 'Nota actualizada',
+                lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`],
+            }
+        case 'convert_client_note_to_task':
+            return { title: 'Nota convertida en tarea', lines: [`${str(d.client_name) ?? ''}: ${str(d.task_title) ?? ''}${d.due_date ? ` · ${dateLabel(str(d.due_date))}` : ''}`] }
+        case 'delete_client_note':
+            return { title: 'Nota eliminada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
         case 'create_task': {
             const bits = [str(d.client_name), d.due_date ? dateLabel(str(d.due_date)) : null, d.hours != null ? `${num(d.hours)}h` : null, d.amount != null ? fmtUsd(num(d.amount)) : null].filter(Boolean)
             const meta = d.priority ? LABEL_META[d.priority as TaskLabel] : null

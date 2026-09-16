@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ClientForm } from '@/components/features/ClientForm'
 import { RecurringServicesPanel } from '@/components/features/RecurringServicesPanel'
 import { ClientActivityPanel } from '@/components/features/ClientActivityPanel'
+import { PinnedNotesStrip } from '@/components/features/PinnedNotesStrip'
 import { CLIENT_STAGES } from '@/lib/actions/crm'
 import { createClient, deleteClient, getClientStats, listClients, updateClient, type ClientInput } from '@/lib/actions'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
@@ -278,6 +279,8 @@ export default function ClientsPage() {
                                 ))}
                             </div>
                         )}
+                        {/* Notas fijadas: lo que hay que saber de este cliente, se vea la pestaña que se vea. */}
+                        {editing && <PinnedNotesStrip clientId={editing.id} />}
                     </SheetHeader>
                     <div className="flex-1 overflow-y-auto px-5 py-5">
                         {tab === 'fijos' && editing ? (

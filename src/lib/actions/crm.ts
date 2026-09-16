@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { Client, ClientNote, ClientStage, EmailLog } from '@/types'
+import { Client, ClientNote, ClientStage, EmailLog, Task } from '@/types'
 import { createClient, getClient, listClients } from './clients'
-import { ActionError, normalizeText, parseInput, round2 } from './validation'
+import { ActionError, normalizeText, parseInput, round2, uuidSchema } from './validation'
 
 export const CLIENT_STAGES: { id: ClientStage; label: string; hint: string }[] = [
     { id: 'lead', label: 'Lead', hint: 'Contacto nuevo, aún sin propuesta' },
@@ -77,13 +77,79 @@ export async function addClientNote(clientId: string, body: string): Promise<Cli
     return data as ClientNote
 }
 
+/**
+ * Notas del cliente en el orden en que se leen: fijadas primero, luego las
+ * vigentes (más reciente arriba), y al final las resueltas.
+ */
 export async function listClientNotes(clientId: string): Promise<ClientNote[]> {
     const { data, error } = await supabase.from('client_notes').select('*').eq('client_id', clientId).order('created_at', { ascending: false })
     if (error) throw new ActionError(`No se pudieron cargar las notas: ${error.message}`)
-    return (data || []) as ClientNote[]
+    const rows = (data || []) as ClientNote[]
+    const rank = (n: ClientNote) => (n.resolved_at ? 2 : n.pinned ? 0 : 1)
+    return rows.sort((a, b) => rank(a) - rank(b) || (a.created_at < b.created_at ? 1 : -1))
+}
+
+async function getClientNote(id: string): Promise<ClientNote> {
+    parseInput(uuidSchema, id)
+    const { data, error } = await supabase.from('client_notes').select('*').eq('id', id).maybeSingle()
+    if (error) throw new ActionError(`No se pudo consultar la nota: ${error.message}`)
+    if (!data) throw new ActionError('Esa nota ya no existe', 'NOT_FOUND')
+    return data as ClientNote
+}
+
+export const updateClientNoteSchema = z.object({
+    body: z.string().trim().min(2, 'La nota está vacía').max(2000).optional(),
+    pinned: z.boolean().optional(),
+    /** true = tacharla; false = reabrirla. */
+    resolved: z.boolean().optional(),
+})
+export type UpdateClientNoteInput = z.input<typeof updateClientNoteSchema>
+
+/** Editar el texto, fijar/soltar, resolver/reabrir: todo en una sola llamada, solo lo que venga. */
+export async function updateClientNote(id: string, raw: UpdateClientNoteInput): Promise<ClientNote> {
+    const input = parseInput(updateClientNoteSchema, raw)
+    const current = await getClientNote(id)
+    const patch: Record<string, unknown> = {}
+    if (input.body != null && input.body !== current.body) {
+        patch.body = input.body
+        patch.updated_at = new Date().toISOString()
+    }
+    if (input.pinned != null) patch.pinned = input.pinned
+    if (input.resolved != null) {
+        patch.resolved_at = input.resolved ? current.resolved_at ?? new Date().toISOString() : null
+        // Una nota resuelta deja de ser "lo que hay que saber".
+        if (input.resolved) patch.pinned = false
+    }
+    if (Object.keys(patch).length === 0) return current
+    const { data, error } = await supabase.from('client_notes').update(patch).eq('id', id).select('*').single()
+    if (error) throw new ActionError(`No se pudo actualizar la nota: ${error.message}`)
+    return data as ClientNote
+}
+
+/**
+ * La nota era en realidad algo por hacer: se crea la tarea (con el cliente
+ * enlazado) y la nota queda resuelta apuntando a ella, para no tenerla dos
+ * veces ni perder de dónde salió.
+ */
+export async function convertClientNoteToTask(id: string, dueDate?: string | null): Promise<{ note: ClientNote; task: Task }> {
+    const note = await getClientNote(id)
+    if (note.task_id) throw new ActionError('Esa nota ya se convirtió en tarea.')
+    // Import diferido: tasks.ts ya importa de este archivo (getPipeline), y un
+    // import cruzado en la cabecera dependería del orden de evaluación.
+    const { createTask } = await import('./tasks')
+    const task = await createTask({ title: note.body.slice(0, 300), client_id: note.client_id, due_date: dueDate ?? null, notes: 'Viene de una nota de la ficha del cliente.' })
+    const { data, error } = await supabase
+        .from('client_notes')
+        .update({ task_id: task.id, resolved_at: new Date().toISOString(), pinned: false })
+        .eq('id', id)
+        .select('*')
+        .single()
+    if (error) throw new ActionError(`La tarea se creó, pero no se pudo enlazar la nota: ${error.message}`)
+    return { note: data as ClientNote, task }
 }
 
 export async function deleteClientNote(id: string): Promise<void> {
+    parseInput(uuidSchema, id)
     const { error } = await supabase.from('client_notes').delete().eq('id', id)
     if (error) throw new ActionError(`No se pudo eliminar la nota: ${error.message}`)
 }
@@ -124,7 +190,8 @@ export async function getClientTimeline(clientId: string): Promise<TimelineEvent
         events.push({ type: 'email', date: e.sent_at, title: e.status === 'sent' ? kind : `${kind} (falló)`, detail: `${e.to_email}${e.redirected ? ' · desviado a prueba' : ''}${e.error ? ` · ${e.error}` : ''}`, ref_id: e.id })
     }
     for (const n of (notes.data || []) as ClientNote[]) {
-        events.push({ type: 'note', date: n.created_at, title: 'Nota', detail: n.body, ref_id: n.id })
+        const title = n.task_id ? 'Nota convertida en tarea' : n.resolved_at ? 'Nota (resuelta)' : n.pinned ? 'Nota fijada' : 'Nota'
+        events.push({ type: 'note', date: n.created_at, title, detail: n.body, ref_id: n.id })
     }
     for (const l of (logs.data || []) as { id: string; description: string; value: number | null; hours: number | null; status: string; created_at: string }[]) {
         events.push({ type: 'log', date: l.created_at, title: l.description, detail: l.hours ? `${l.hours} h` : l.value != null ? `$${Number(l.value).toFixed(2)}` : undefined, amount: l.value, ref_id: l.id })
