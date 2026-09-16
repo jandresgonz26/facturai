@@ -43,8 +43,13 @@ export interface RecurringLoadStatus {
     notDue: RecurringService[]
 }
 
+/** "trimestre", "semestre", "año" o "N meses", para hablar del periodo de un servicio fijo. */
+export function intervalLabel(months: number): string {
+    return months === 3 ? 'trimestre' : months === 6 ? 'semestre' : months === 12 ? 'año' : `${months} meses`
+}
+
 /** Suma meses a un periodo YYYY-MM. */
-function addMonthsToPeriod(period: string, months: number): string {
+export function addMonthsToPeriod(period: string, months: number): string {
     const [y, m] = period.split('-').map(Number)
     const total = m - 1 + months
     const ny = y + Math.floor(total / 12)

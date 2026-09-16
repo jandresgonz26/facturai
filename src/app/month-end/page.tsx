@@ -287,6 +287,14 @@ export default function MonthEndPage() {
                             <div className="px-4 py-3 border-b">
                                 <h2 className="font-semibold">Servicios fijos de {periodLabel(period)}</h2>
                                 <p className="text-xs text-muted-foreground">Solo se cargan los que falten. Ya cargados: {snapshot.recurring_services.already_loaded_this_period.length}.</p>
+                                {snapshot.recurring_services.not_due_yet.length > 0 && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        No tocan este mes:{' '}
+                                        {snapshot.recurring_services.not_due_yet
+                                            .map((s) => `${s.description} (cada ${s.interval_months} meses${s.next_period ? `, próximo ${s.next_period.split('-').reverse().join('/')}` : ''})`)
+                                            .join(' · ')}
+                                    </p>
+                                )}
                             </div>
                             {snapshot.recurring_services.to_load.length === 0 ? (
                                 <p className="px-4 py-6 text-sm text-muted-foreground flex items-center gap-2">

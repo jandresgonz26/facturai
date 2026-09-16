@@ -50,6 +50,8 @@ const KIND_EMOJI: Record<string, string> = {
     carried_over: '🔁',
     day_close: '🌙',
     quote_cold: '📄',
+    recurring_due: '📆',
+    recurring_upcoming: '📆',
     wip_overload: '🧱',
     weekly_review: '🧹',
 }
@@ -114,6 +116,17 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
     // ── Lo que de verdad urge, a cualquier hora ──
     for (const inv of (briefing?.unpaid_invoices ?? []).filter((i) => i.overdue)) {
         push('invoice_overdue', inv.id, `**Factura #${inv.invoice_number}** de ${inv.client_name}: ${inv.days_since_issue} días sin cobrarse (**${money(inv.total_amount)}**)`)
+    }
+
+    // Cobros por periodo (trimestral, etc.): justo porque no pasan cada mes se
+    // olvidan. Se avisa cuando toca y, la última semana del mes, cuando se acerca.
+    for (const r of briefing?.recurring_periods ?? []) {
+        const que = r.interval_months === 3 ? 'trimestre' : r.interval_months === 6 ? 'semestre' : r.interval_months === 12 ? 'año' : `periodo de ${r.interval_months} meses`
+        if (r.status === 'due') {
+            push('recurring_due', `${r.client_id}|${r.period}`, `**${r.client_name}**: ya toca facturarle el ${que} (${r.description}, **${money(r.amount_usd)}**)`)
+        } else {
+            push('recurring_upcoming', `${r.client_id}|${r.period}`, `**${r.client_name}**: el mes que viene toca facturarle el ${que} (${r.description}, **${money(r.amount_usd)}**)`)
+        }
     }
 
     // Tareas que se están evitando: el contador de posposiciones las delata.
