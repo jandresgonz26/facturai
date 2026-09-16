@@ -176,7 +176,13 @@ export function RecurringServicesPanel({ client }: { client: Client }) {
                                         {s.interval_months > 1 && (
                                             <>
                                                 {' '}· <span className="text-sky-600 font-medium">{freq?.label ?? `cada ${s.interval_months} meses`}</span>
-                                                {s.next_period && <> · próximo cobro: {fmtPeriod(s.next_period)}</>}
+                                                {/* next_period es el periodo que TOCA cobrar: si ya llegó y no se ha cargado, está pendiente, no "próximo". */}
+                                                {s.next_period &&
+                                                    (s.next_period <= currentPeriodStr() ? (
+                                                        <> · <span className="text-amber-600 font-medium">pendiente desde {fmtPeriod(s.next_period)}</span> — se carga al facturar</>
+                                                    ) : (
+                                                        <> · próximo cobro: {fmtPeriod(s.next_period)}</>
+                                                    ))}
                                             </>
                                         )}
                                         {!s.is_active && <> · <span className="text-amber-600">pausado</span></>}
