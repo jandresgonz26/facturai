@@ -647,6 +647,25 @@ export const agentTools = {
             }),
     }),
 
+    read_email_thread: tool({
+        description:
+            'Trae el TEXTO del hilo de uno de los correos de list_inbox_items, para resumirlo o citarlo cuando el usuario pregunte "¿de qué trata ese correo?" o "resúmeme el hilo de...". Puede no haber cuerpo disponible: correos que el puente clasificó como ruido automático nunca lo traen, y el de cualquier correo vence a los 30 días de sincronizado (se borra solo). Si body es null, dilo tal cual ("no tengo el cuerpo de ese, solo el asunto") en vez de inventar contenido. Las contraseñas u otras claves que pudiera traer el correo ya vienen tachadas desde el origen (verás "[omitido]"); si el usuario necesita ese dato, dile que lo busque en Spark directamente.',
+        inputSchema: z.object({
+            inbox_item_id: uuidSchema,
+        }),
+        execute: async ({ inbox_item_id }) =>
+            run(async () => {
+                const item = await actions.getInboxItem(inbox_item_id)
+                return {
+                    from: item.from_name ? `${item.from_name} <${item.from_email}>` : item.from_email,
+                    subject: item.subject,
+                    sent_at: item.sent_at,
+                    body: item.body,
+                    body_synced_at: item.body_synced_at,
+                }
+            }),
+    }),
+
     create_task_from_email: tool({
         description:
             'Convierte uno de los correos de list_inbox_items en tarea del tablero. Requiere confirmación. Propónlo SOLO cuando el correo parezca requerir una acción real del usuario, nunca para notificaciones automáticas. Si no pasas title, se genera uno a partir del remitente y el asunto. Hereda el cliente si el remitente coincidía con uno.',

@@ -8,9 +8,11 @@ import type { Task } from '@/types'
  * Correos traídos desde Spark por el puente que corre en el Mac
  * (scripts/spark-sync.mjs).
  *
- * Aquí solo hay cabeceras: quién escribió, sobre qué y cuándo. El cuerpo de los
- * correos nunca sale de la máquina del usuario, así que el asistente puede
- * mencionarlos y proponerlos como tarea, pero no leerlos.
+ * Siempre hay cabeceras: quién escribió, sobre qué y cuándo. El cuerpo del
+ * hilo (`body`) también se sube, pero solo cuando el puente decide que no es
+ * ruido automático, y con las contraseñas que pueda traer ya tachadas ahí
+ * mismo, en el Mac, antes de subir nada. `body` vence a los 30 días
+ * (pruneExpiredEmailBodies) aunque el registro de cabeceras se quede.
  */
 
 export interface InboxItem {
@@ -25,11 +27,17 @@ export interface InboxItem {
     task_id: string | null
     dismissed: boolean
     synced_at: string
+    /** Texto del hilo completo, redactado y truncado en origen; null si no se sincronizó o ya venció. */
+    body: string | null
+    body_synced_at: string | null
     clients?: { name: string } | null
     /** Calculado al leer, no almacenado. */
     is_noise?: boolean
     noise_reason?: string | null
 }
+
+/** Cuántos días se conserva el cuerpo del correo antes de borrarse solo. */
+const BODY_RETENTION_DAYS = 30
 
 const SELECT = '*, clients(name)'
 
@@ -162,4 +170,22 @@ export async function getInboxFreshness(): Promise<{ last_sync: string | null; p
         last_sync: rows[0]?.synced_at ?? null,
         pending: rows.filter((r) => !r.dismissed && !r.task_id).length,
     }
+}
+
+/**
+ * Borra el cuerpo (no el registro) de los correos sincronizados hace más de
+ * 30 días: es la parte de la promesa de privacidad que no puede vivir en el
+ * Mac, porque el Mac puede estar apagado semanas. La corre el cron del
+ * asistente en cada pasada.
+ */
+export async function pruneExpiredEmailBodies(): Promise<{ pruned: number }> {
+    const cutoff = new Date(Date.now() - BODY_RETENTION_DAYS * 86400000).toISOString()
+    const { data, error } = await supabase
+        .from('inbox_items')
+        .update({ body: null, body_synced_at: null })
+        .not('body', 'is', null)
+        .lt('body_synced_at', cutoff)
+        .select('id')
+    if (error) throw new ActionError(`No se pudo limpiar cuerpos vencidos: ${error.message}`)
+    return { pruned: (data || []).length }
 }

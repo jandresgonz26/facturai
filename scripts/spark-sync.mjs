@@ -7,9 +7,16 @@
  * lo deja en la base de FacturAI, para que el asistente pueda mencionarlo
  * desde Telegram aunque el Mac esté apagado después.
  *
- * PRIVACIDAD: solo se suben cabeceras (remitente, asunto, fecha). El cuerpo de
- * los correos se lee localmente para extraer esas cabeceras y se descarta; no
- * sale nunca de esta máquina.
+ * PRIVACIDAD: se sube el cuerpo del hilo (no solo cabeceras) para que el
+ * asistente pueda resumirlo, pero con salvaguardas decididas explícitamente
+ * por el usuario, todas aplicadas AQUÍ, antes de que nada salga del Mac:
+ *   - Solo si no parece ruido automático (mismo criterio que ya usa la app
+ *     para ocultar avisos de WordPress, seguridad, tickets, etc.), y solo si
+ *     el remitente no está silenciado.
+ *   - Las líneas que parecen traer una contraseña o clave se tachan antes de
+ *     subir nada (best-effort: es un filtro de texto, no infalible).
+ *   - En la nube el cuerpo vence a los 30 días (lo borra el cron del
+ *     asistente); las cabeceras se quedan igual que siempre.
  *
  * Uso:
  *   node --env-file=.env.local scripts/spark-sync.mjs [--days 14] [--limit 40] [--dry]
@@ -74,6 +81,65 @@ async function spark(args) {
     }
 }
 
+// ───────────── Ruido automático ─────────────
+// Copia deliberada (no importada) de src/lib/inbox-noise.ts: este script
+// corre por su cuenta vía launchd, sin pasar por el bundler de Next, así que
+// depender de un import cruzado ahí sería un punto de fallo silencioso más
+// (ya hubo uno con el PATH). Si esas reglas cambian, conviene revisar esta
+// copia también. Aquí decide solo si vale la pena bajar el cuerpo; el
+// veredicto real de qué se muestra lo sigue calculando la app al leer.
+const NOISE_LOCAL_PARTS = [
+    'noreply', 'no-reply', 'no_reply', 'donotreply', 'do-not-reply',
+    'notification', 'notifications', 'notificacion', 'notificaciones',
+    'wordpress', 'mailer', 'mailer-daemon', 'postmaster', 'bounce', 'bounces',
+    'alerts', 'alert', 'newsletter', 'noticias', 'automated', 'automatic',
+]
+const NOISE_DOMAINS = ['facebookmail.com', 'notify.wellsfargo.com', 'em1.cloudflare.com', 'news.domestika.org', 'notifications.hubspot.com']
+const NOISE_SUBJECTS = [
+    /^re:?\s*recibimos tu (consulta|mensaje|solicitud)/i,
+    /^recibimos tu (consulta|mensaje|solicitud)/i,
+    /gracias por (contactarnos|escribirnos|tu mensaje)/i,
+    /restablecer (la )?contrase(ñ|n)a|password reset/i,
+    /backup (error )?report|informe de copia/i,
+    /error de inicio de sesi(ó|o)n|failed login/i,
+    /\[ticket id:|ticket #\d+/i,
+    /su opini(ó|o)n es muy importante|encuesta de satisfacci(ó|o)n/i,
+    /^informe de (instagram|facebook|google ads|analytics)/i,
+    /activar la protecci(ó|o)n avanzada/i,
+    /notificaci(ó|o)n tributaria/i,
+    /pago registrado del recibo/i,
+    /informe de la exploraci(ó|o)n|scan report/i,
+]
+
+function isLikelyNoise(fromEmail, subject, { isKnownClient, mutedSenders }) {
+    const email = fromEmail.toLowerCase().trim()
+    const [local = '', domain = ''] = email.split('@')
+    if (mutedSenders.has(email)) return true
+    if (NOISE_SUBJECTS.some((re) => re.test(subject))) return true
+    if (isKnownClient) return false
+    if (NOISE_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return true
+    if (NOISE_LOCAL_PARTS.some((p) => local === p || local.startsWith(`${p}.`) || local.startsWith(`${p}-`) || local.startsWith(`${p}+`))) return true
+    return false
+}
+
+// ───────────── Redacción de secretos ─────────────
+// Best-effort, decidido explícitamente por el usuario: sus correos de hosting
+// traen credenciales en texto plano de vez en cuando. No es infalible (es un
+// filtro de texto), pero tacha el caso común "Usuario: X / Contraseña: Y".
+const SECRET_PATTERNS = [
+    /\b(contrase[nñ]as?|claves?|passwords?|pwd)\s*:?\s*(es|son)?\s*[:=]\s*(\S+)/gi,
+    /\b(token|api[\s_-]?key|secret|secreto)\s*[:=]\s*(\S+)/gi,
+]
+function redactSecrets(text) {
+    let out = text
+    for (const re of SECRET_PATTERNS) {
+        out = out.replace(re, (full, label) => `${label}: [omitido]`)
+    }
+    return out
+}
+
+const MAX_BODY_CHARS = 6000
+
 /**
  * Se filtra por "sin responder" y categoría personal porque es lo único que en
  * la práctica separa lo que pide acción del ruido: las estrellas el usuario las
@@ -91,29 +157,53 @@ async function listCandidateIds() {
     return ids
 }
 
-/** Extrae solo las cabeceras del mensaje pedido. El cuerpo se descarta aquí. */
-function parseHeaders(threadOut, wantedId) {
+/** Un mensaje dentro de un hilo: cabeceras + su propio cuerpo. */
+function parseMessages(threadOut) {
+    const HEADER_RE = /^\s{2}(Subject|From|To|Cc|Bcc|Date|Type):/
     const blocks = threadOut.split(/^\s{2}ID:\s*/m).slice(1)
+    const messages = []
     for (const block of blocks) {
-        const id = block.split('\n')[0].trim()
-        if (id !== wantedId) continue
+        const lines = block.split('\n')
+        const id = lines[0].trim()
         const grab = (label) => {
             const m = block.match(new RegExp(`^\\s{2}${label}:\\s*(.+)$`, 'm'))
             return m ? m[1].trim() : null
         }
         const from = grab('From')
-        if (!from) return null
-        // Formatos: 'Nombre <correo>' o solo 'correo'
+        if (!from) continue
+        // Cuerpo: todo lo que sigue a la última cabecera reconocida.
+        let bodyStart = -1
+        for (let i = 0; i < lines.length; i++) {
+            if (HEADER_RE.test(lines[i])) bodyStart = i + 1
+        }
+        const body =
+            bodyStart >= 0
+                ? lines
+                      .slice(bodyStart)
+                      .map((l) => l.replace(/^ {1,2}/, '')) // Spark indenta cada línea con 2 espacios.
+                      .join('\n')
+                      .trim()
+                : ''
         const withName = from.match(/^"?(.*?)"?\s*<([^>]+)>$/)
-        return {
+        messages.push({
             message_id: id,
             from_name: withName ? withName[1].trim() || null : null,
             from_email: (withName ? withName[2] : from).trim().toLowerCase(),
             subject: grab('Subject') || '(sin asunto)',
             date: grab('Date'),
-        }
+            body,
+        })
     }
-    return null
+    return messages
+}
+
+/** El hilo completo como un solo texto, para que el asistente pueda resumirlo de verdad, no solo el último mensaje. */
+function renderThread(messages) {
+    const text = messages
+        .map((m) => `--- ${m.from_name || m.from_email} (${m.date || 'sin fecha'}) ---\n${m.body || '(sin contenido)'}`)
+        .join('\n\n')
+    const redacted = redactSecrets(text)
+    return redacted.length > MAX_BODY_CHARS ? `${redacted.slice(0, MAX_BODY_CHARS)}\n\n[…hilo truncado…]` : redacted
 }
 
 /** La fecha viene como 'YYYY-MM-DD HH:mm' en hora local del Mac. */
@@ -137,23 +227,45 @@ async function main() {
     const accounts = [...accountsOut.matchAll(/^Email Account:\s*(\S+)/gm)].map((m) => m[1])
     const defaultAccount = accounts[0] || 'desconocida'
 
+    // Para decidir ruido y de quién es cada correo, antes de leer cuerpos.
+    const [clientsRes, mutedRes] = await Promise.all([
+        sb('clients?select=id,email&email=not.is.null'),
+        sb('muted_senders?select=from_email&muted=eq.true'),
+    ])
+    const clients = clientsRes.ok ? await clientsRes.json() : []
+    const byEmail = new Map(clients.map((c) => [String(c.email).toLowerCase().trim(), c.id]))
+    const mutedSenders = new Set(mutedRes.ok ? (await mutedRes.json()).map((m) => String(m.from_email).toLowerCase()) : [])
+
     const rows = []
+    let bodiesFetched = 0
     for (const id of ids) {
         try {
             const threadOut = await spark(['thread', id])
-            const h = parseHeaders(threadOut, id)
+            const messages = parseMessages(threadOut)
+            const h = messages.find((m) => m.message_id === id)
             if (!h) continue
+            const client_id = byEmail.get(h.from_email) ?? null
+            const noise = isLikelyNoise(h.from_email, h.subject, { isKnownClient: !!client_id, mutedSenders })
             // La cuenta destino aparece en el bloque; si no, se usa la primera.
             const toLine = threadOut.match(new RegExp(`^\\s{2}ID:\\s*${id}[\\s\\S]*?^\\s{2}To:\\s*(.+)$`, 'm'))
             const account = accounts.find((a) => toLine?.[1]?.toLowerCase().includes(a.toLowerCase())) || defaultAccount
-            rows.push({
+            const row = {
                 message_id: h.message_id,
                 account,
                 from_name: h.from_name,
                 from_email: h.from_email,
                 subject: h.subject,
                 sent_at: toIso(h.date),
-            })
+                client_id,
+                body: null,
+                body_synced_at: null,
+            }
+            if (!noise) {
+                row.body = renderThread(messages)
+                row.body_synced_at = new Date().toISOString()
+                bodiesFetched++
+            }
+            rows.push(row)
         } catch (e) {
             console.warn(`  · no se pudo leer el correo ${id}: ${e.message}`)
         }
@@ -164,20 +276,14 @@ async function main() {
         return
     }
 
-    // Se cruza con los clientes para saber de quién viene.
-    const clientsRes = await sb('clients?select=id,email&email=not.is.null')
-    const clients = clientsRes.ok ? await clientsRes.json() : []
-    const byEmail = new Map(clients.map((c) => [String(c.email).toLowerCase().trim(), c.id]))
-    for (const r of rows) r.client_id = byEmail.get(r.from_email) ?? null
-
-    // El filtro de ruido se aplica al leer, no aquí: así mejorar las reglas
-    // también reclasifica lo ya sincronizado, en vez de congelar el veredicto.
     if (DRY) {
         console.log('\n--- prueba en seco, no se sube nada ---')
         for (const r of rows) {
-            console.log(`  ${r.sent_at.slice(0, 10)}  ${r.from_email.padEnd(34)} ${r.client_id ? '[CLIENTE] ' : ''}${r.subject}`)
+            console.log(
+                `  ${r.sent_at.slice(0, 10)}  ${r.from_email.padEnd(34)} ${r.client_id ? '[CLIENTE] ' : ''}${r.body ? '[CUERPO] ' : '[solo asunto] '}${r.subject}`
+            )
         }
-        console.log(`\n${rows.length} correos. De clientes conocidos: ${rows.filter((r) => r.client_id).length}`)
+        console.log(`\n${rows.length} correos. De clientes conocidos: ${rows.filter((r) => r.client_id).length}. Con cuerpo: ${bodiesFetched}.`)
         return
     }
 
@@ -202,7 +308,7 @@ async function main() {
         process.exit(1)
     }
     const saved = await res.json()
-    console.log(`Listo: ${saved.length} correos sincronizados (${rows.filter((r) => r.client_id).length} de clientes conocidos).`)
+    console.log(`Listo: ${saved.length} correos sincronizados (${rows.filter((r) => r.client_id).length} de clientes conocidos, ${bodiesFetched} con cuerpo).`)
 }
 
 main().catch((e) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildCheckin, recordCheckin } from '@/lib/actions/assistant-checkin'
+import { pruneExpiredEmailBodies } from '@/lib/actions/inbox'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
 
@@ -31,6 +32,12 @@ export async function POST(req: NextRequest) {
 
     // dry_run permite probar qué diría sin mandarle nada al usuario.
     const dryRun = req.nextUrl.searchParams.get('dry_run') === '1'
+
+    // Mantenimiento aparte del aviso en sí: si falla, no debe impedir que el
+    // check-in se mande igual.
+    if (!dryRun) {
+        await pruneExpiredEmailBodies().catch((e) => console.warn('[cron/checkin] no se pudo limpiar cuerpos vencidos', e))
+    }
 
     try {
         const checkin = await buildCheckin()
