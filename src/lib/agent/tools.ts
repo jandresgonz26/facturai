@@ -904,11 +904,13 @@ export const agentTools = {
 
     create_task: tool({
         description:
-            'Crea una tarea en el tablero ("recuérdame llamar a X el lunes", "anota que tengo que hacer Y"). Requiere confirmación. El cliente, la fecha, las horas y el monto son opcionales: pásalos SOLO si el usuario los menciona. consequence y clarity son las dos respuestas de las que sale la prioridad calculada: dedúcelas del mensaje si están claras y, si no, pregúntalas ANTES de proponer la tarea (ver regla de TAREAS). Si indica horas o un monto y un cliente, luego esa tarea se puede registrar como ítem facturable.',
+            'Crea una tarea en el tablero ("recuérdame llamar a X el lunes", "anota que tengo que hacer Y"). Requiere confirmación. El cliente, la fecha, las horas y el monto son opcionales: pásalos SOLO si el usuario los menciona. client_id tiene que ser un id devuelto por list_clients en esta misma conversación: si el nombre que menciona el usuario NO aparece en la lista, OMITE client_id (nunca inventes ni adivines un id) y crea la tarea sin cliente; luego dile que ese nombre no está como cliente y ofrece crearlo como lead (create_lead) si es un prospecto. consequence y clarity son las dos respuestas de las que sale la prioridad calculada: dedúcelas del mensaje si están claras y, si no, pregúntalas ANTES de proponer la tarea (ver regla de TAREAS). Si indica horas o un monto y un cliente, luego esa tarea se puede registrar como ítem facturable.',
         inputSchema: z.object({
             title: z.string().min(3).max(300).describe('Qué hay que hacer'),
             notes: optionalText.describe('Detalle adicional, solo si lo da'),
-            client_id: uuidSchema.optional().describe('SOLO si la tarea es de un cliente concreto'),
+            client_id: z
+                .preprocess(blankToUndefined, uuidSchema.optional())
+                .describe('SOLO si la tarea es de un cliente concreto, y SOLO con un id que haya devuelto list_clients. Si el cliente no existe, omítelo.'),
             client_name: optionalText.describe('Nombre del cliente, para la confirmación'),
             due_date: optionalDate.describe('SOLO si el usuario indica para cuándo'),
             hours: z.number().positive().optional().describe('SOLO si el usuario dice cuántas horas de trabajo son'),
@@ -926,17 +928,33 @@ export const agentTools = {
         }),
         execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id }) =>
             run(async () => {
-                const task = await actions.createTask({ title, notes, client_id, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id })
+                // Un client_id que no existe (el modelo lo adivinó) no debe tumbar la
+                // tarea: se crea sin cliente y se avisa, que es lo que el usuario
+                // quiere de todos modos cuando dice "créala sin cliente".
+                let warning: string | null = null
+                let clientId = client_id
+                if (clientId) {
+                    const exists = await actions
+                        .getClient(clientId)
+                        .then(() => true)
+                        .catch(() => false)
+                    if (!exists) {
+                        clientId = undefined
+                        warning = `${client_name ?? 'Ese cliente'} no existe en FacturAI: la tarea quedó sin cliente. Si es un prospecto, se puede crear como lead y enlazarla después.`
+                    }
+                }
+                const task = await actions.createTask({ title, notes, client_id: clientId, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id })
                 const priority = scoreTask(task, await actions.getClientSignals().catch(() => emptySignals()))
                 return {
                     id: task.id,
                     title: task.title,
-                    client_name: task.clients?.name ?? client_name ?? null,
+                    client_name: task.clients?.name ?? (clientId ? client_name : null) ?? null,
                     due_date: task.due_date ?? null,
                     hours: task.hours ?? null,
                     amount: task.amount ?? null,
                     priority: priority.label,
                     why: priority.reason,
+                    warning,
                 }
             }),
     }),

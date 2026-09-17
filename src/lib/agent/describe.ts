@@ -433,6 +433,7 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             const meta = d.priority ? LABEL_META[d.priority as TaskLabel] : null
             const lines = [str(d.title) ?? '', bits.join(' · ')]
             if (meta) lines.push(`${meta.emoji} ${meta.text} · ${str(d.why) ?? ''}`)
+            if (d.warning) lines.push(`⚠️ ${str(d.warning)}`)
             return { title: 'Tarea creada', lines: lines.filter(Boolean) }
         }
         case 'complete_task':
