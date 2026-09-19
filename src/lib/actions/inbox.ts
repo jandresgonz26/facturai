@@ -75,7 +75,10 @@ export async function listInboxItems(filters: InboxFilters = {}): Promise<InboxI
     if (error) throw new ActionError(`No se pudieron cargar los correos: ${error.message}`)
 
     const muted = await mutedSenders().catch(() => new Set<string>())
-    const rows = ((data || []) as InboxItem[]).map((i) => {
+    const rows = ((data || []) as InboxItem[]).map((raw) => {
+        // Hay remitentes que mandan el nombre roto ("undefined - Releasit").
+        // El puente ya lo limpia al sincronizar; esto cubre lo ya guardado.
+        const i = { ...raw, from_name: raw.from_name?.replace(/^undefined\s*-\s*/i, '').trim() || null }
         // Si el remitente es la propia cuenta donde está el correo, lo escribió
         // él: no espera respuesta suya. (El puente ya no los sube, pero los
         // que entraron antes siguen ahí.)
