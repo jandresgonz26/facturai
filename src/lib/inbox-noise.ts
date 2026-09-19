@@ -102,6 +102,14 @@ export function classifyNoise(
     // A un cliente conocido no se le esconde por su dirección.
     if (opts.isKnownClient) return { isNoise: false, reason: null }
 
+    // Sin asunto y de alguien que no es cliente: en la práctica siempre es
+    // spam (el que escribe por trabajo pone asunto). A un cliente conocido
+    // esto no se le aplica, por si manda un correo apurado desde el móvil.
+    const subjectText = subject.trim().toLowerCase()
+    if (!subjectText || subjectText === '(no subject)' || subjectText === '(sin asunto)') {
+        return { isNoise: true, reason: 'sin asunto, remitente desconocido' }
+    }
+
     if (NOISE_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) {
         return { isNoise: true, reason: 'dominio de notificaciones' }
     }

@@ -240,9 +240,12 @@ function parseMessages(threadOut) {
                   )
                 : ''
         const withName = from.match(/^"?(.*?)"?\s*<([^>]+)>$/)
+        // Algunos remitentes mandan el nombre roto ("undefined - Releasit"):
+        // se limpia el prefijo para no mostrarlo tal cual en los avisos.
+        const rawName = withName ? withName[1].trim().replace(/^undefined\s*-\s*/i, '') : ''
         messages.push({
             message_id: id,
-            from_name: withName ? withName[1].trim() || null : null,
+            from_name: rawName || null,
             from_email: (withName ? withName[2] : from).trim().toLowerCase(),
             subject: grab('Subject') || '(sin asunto)',
             date: grab('Date'),
