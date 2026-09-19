@@ -418,7 +418,20 @@ async function main() {
         process.exit(1)
     }
     const saved = await res.json()
-    console.log(`Listo: ${saved.length} hilos sincronizados (${rows.filter((r) => r.client_id).length} de clientes conocidos).`)
+    const linked = rows.filter((r) => r.client_id).length
+    console.log(`Listo: ${saved.length} hilos sincronizados (${linked} de clientes conocidos).`)
+
+    // Si no se enlazó ninguno, el problema casi siempre está en las fichas (sin
+    // correo, o con uno de otro dominio). Decirlo aquí ahorra adivinar: el
+    // asistente prioriza mal cuando no sabe de qué cliente viene cada correo.
+    if (rows.length > 0 && linked === 0) {
+        const fichas = [...byDomain.keys()]
+        const escriben = [...new Set(rows.map((r) => r.from_email.split('@')[1]))].slice(0, 8)
+        console.log(`  · Ninguno se enlazó a un cliente.`)
+        console.log(`    Dominios en las fichas: ${fichas.join(', ') || '(ninguna ficha tiene correo)'}`)
+        console.log(`    Dominios que te escriben: ${escriben.join(', ')}`)
+        console.log(`    Ponle el correo a ese cliente en su ficha y se enlazarán solos.`)
+    }
 }
 
 main().catch((e) => {

@@ -444,7 +444,9 @@ export const agentTools = {
             items: z
                 .array(
                     z.object({
-                        service: optionalText.describe('Nombre corto del servicio (columna Servicio)'),
+                        service: optionalText.describe(
+                            'Categoría del servicio, con el nombre EXACTO de list_categories (ej. "SEO", "Desarrollo Web"). Es lo que hace que, al convertir la cotización en factura, el ítem quede en su categoría en vez de en la de por defecto. Si ninguna encaja, omítelo.'
+                        ),
                         description: z.string().min(2).describe('Descripción del ítem'),
                         quantity: z.number().positive().default(1),
                         unit_price: z.number().min(0).default(0).describe('Precio unitario (solo quote_type amount)'),

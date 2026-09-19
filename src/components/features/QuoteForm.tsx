@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Banknote, ClipboardList, Clock, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { QuoteItem, Quote, Client } from '@/types'
-import { createQuote, findOrCreateLead, listClients } from '@/lib/actions'
+import { QuoteItem, Quote, Client, ServiceCategory } from '@/types'
+import { createQuote, findOrCreateLead, listCategories, listClients } from '@/lib/actions'
 
 type QuoteType = 'amount' | 'hours'
 type QuoteTemplate = 'jamtech' | 'asiri'
@@ -132,12 +132,18 @@ export function QuoteForm({
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
     const [items, setItems] = useState<EditableItem[]>([emptyItem()])
     const [loading, setLoading] = useState(false)
+    /** Las mismas categorías que usa la facturación: el servicio de cada ítem sale de aquí. */
+    const [categories, setCategories] = useState<ServiceCategory[]>([])
 
     const isHours = quoteType === 'hours'
     const symbol = currency === 'EUR' ? '€' : '$'
     const template = templateForCompany(companyName)
 
     // Lista de clientes existentes, para buscar/seleccionar en vez de escribir el nombre a mano.
+    useEffect(() => {
+        listCategories().then(setCategories).catch(() => undefined)
+    }, [])
+
     useEffect(() => {
         listClients().then(setClients).catch(() => undefined)
     }, [])
@@ -479,13 +485,26 @@ export function QuoteForm({
                                 >
                                     <div className="md:col-span-3 space-y-1">
                                         <label className={subLabelCls}>Servicio</label>
-                                        <input
+                                        {/* Las mismas categorías que usa la facturación: así el ítem
+                                            llega a la factura con su categoría, en vez de caer
+                                            siempre en la de por defecto. Si una cotización vieja
+                                            traía texto libre, se conserva como opción para no
+                                            perderlo al editarla. */}
+                                        <select
                                             className={inputCls}
-                                            placeholder="Servicio Profesional"
-                                            type="text"
                                             value={item.service}
                                             onChange={(e) => updateItem(index, 'service', e.target.value)}
-                                        />
+                                        >
+                                            <option value="">Sin categoría</option>
+                                            {categories.map((c) => (
+                                                <option key={c.id} value={c.name}>
+                                                    {c.name}
+                                                </option>
+                                            ))}
+                                            {item.service && !categories.some((c) => c.name === item.service) && (
+                                                <option value={item.service}>{item.service} (no está en el sistema)</option>
+                                            )}
+                                        </select>
                                     </div>
                                     <div className={`${isHours ? 'md:col-span-6' : 'md:col-span-4'} space-y-1`}>
                                         <label className={subLabelCls}>Descripción</label>
