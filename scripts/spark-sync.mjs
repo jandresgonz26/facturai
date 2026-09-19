@@ -46,7 +46,14 @@ const argVal = (name, fallback) => {
     return i >= 0 && args[i + 1] ? args[i + 1] : fallback
 }
 const DAYS = Number(argVal('days', 14))
-const LIMIT = Number(argVal('limit', 40))
+// Candidatos a REVISAR. En la práctica hay ~107 sin responder en 3 semanas y
+// casi la mitad es ruido (notificaciones de sus propios sistemas, WordPress,
+// y correos que mandó él mismo), así que con un tope bajo el ruido desplazaba
+// al trabajo real y nunca llegaba a subirse.
+const LIMIT = Number(argVal('limit', 150))
+// Hilos ÚTILES que se suben como mucho. El tope se cuenta después de filtrar,
+// no antes: es lo que garantiza que sean 40 correos que importan.
+const MAX_THREADS = Number(argVal('max', 60))
 const DRY = args.includes('--dry')
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -106,6 +113,21 @@ const NOISE_SUBJECTS = [
     /^re:?\s*recibimos tu (consulta|mensaje|solicitud)/i,
     /^recibimos tu (consulta|mensaje|solicitud)/i,
     /gracias por (contactarnos|escribirnos|tu mensaje)/i,
+    // Notificaciones de sus propios sistemas (jami@jamtech.cloud): briefings y
+    // cotizaciones automáticas. Son decenas al día y no esperan respuesta.
+    /^nuevo briefing:/i,
+    /^recibimos tu briefing/i,
+    /jami cotiz(ó|o) sola/i,
+    /^tu cotizaci(ó|o)n de/i,
+    // Avisos de las webs que administra
+    /tu sitio se ha actualizado a wordpress/i,
+    /se acerca al l[ií]mite/i,
+    // Altas y verificaciones de plataformas
+    /^registro exitoso/i,
+    /nueva ip detectada/i,
+    /c(ó|o)digo de seguridad/i,
+    /te da la bienvenida/i,
+    /notificaci(ó|o)n de cobro seniat/i,
     /restablecer (la )?contrase(ñ|n)a|password reset/i,
     /backup (error )?report|informe de copia/i,
     /error de inicio de sesi(ó|o)n|failed login/i,
@@ -117,6 +139,12 @@ const NOISE_SUBJECTS = [
     /pago registrado del recibo/i,
     /informe de la exploraci(ó|o)n|scan report/i,
 ]
+
+/**
+ * Dominios de correo personal: coinciden muchísimos remitentes distintos, así
+ * que enlazar un cliente por dominio ahí sería un disparate.
+ */
+const GENERIC_DOMAINS = new Set(['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com', 'me.com', 'protonmail.com'])
 
 function isLikelyNoise(fromEmail, subject, { isKnownClient, mutedSenders }) {
     const email = fromEmail.toLowerCase().trim()
@@ -277,15 +305,29 @@ async function main() {
     ])
     const clients = clientsRes.ok ? await clientsRes.json() : []
     const byEmail = new Map(clients.map((c) => [String(c.email).toLowerCase().trim(), c.id]))
+    // También por dominio: los correos de un cliente llegan de varias personas
+    // (aromero@, maycres@, ifernandez@ … todos de asiri.es) y comparar solo
+    // contra la dirección exacta de la ficha daba siempre "0 clientes
+    // conocidos". Los dominios genéricos quedan fuera, claro.
+    const byDomain = new Map()
+    for (const c of clients) {
+        const domain = String(c.email).toLowerCase().trim().split('@')[1]
+        if (!domain || GENERIC_DOMAINS.has(domain)) continue
+        if (!byDomain.has(domain)) byDomain.set(domain, c.id)
+    }
     const mutedSenders = new Set(mutedRes.ok ? (await mutedRes.json()).map((m) => String(m.from_email).toLowerCase()) : [])
+    // Sus propias direcciones: un hilo cuyo último mensaje lo escribió él no
+    // espera respuesta suya, espera del otro lado.
+    const ownAddresses = new Set(accounts.map((a) => a.toLowerCase()))
 
     const rows = []
     // Varios candidatos de esta misma corrida pueden ser mensajes del mismo
     // hilo (ej. 4 respuestas seguidas todas "sin responder" a la vez): se
     // procesa cada hilo una sola vez, no una por mensaje.
     const threadKeysSeen = new Set()
-    let bodiesFetched = 0
+    const skipped = { noise: 0, own: 0 }
     for (const id of ids) {
+        if (rows.length >= MAX_THREADS) break
         try {
             const threadOut = await spark(['thread', id])
             const messages = parseMessages(threadOut)
@@ -299,12 +341,25 @@ async function main() {
             // completo y al día, así que esto es lo más reciente que existe
             // ahora mismo, venga de donde venga el id de arranque.
             const latest = messages[messages.length - 1]
-            const client_id = byEmail.get(latest.from_email) ?? null
-            const noise = isLikelyNoise(latest.from_email, latest.subject, { isKnownClient: !!client_id, mutedSenders })
+
+            // Si el último en escribir fue él, la pelota está del otro lado.
+            if (ownAddresses.has(latest.from_email)) {
+                skipped.own++
+                continue
+            }
+
+            const client_id = byEmail.get(latest.from_email) ?? byDomain.get(latest.from_email.split('@')[1]) ?? null
+            // El ruido ya no se sube: antes ocupaba sitio en el tope y
+            // desplazaba a los correos que sí importan.
+            if (isLikelyNoise(latest.from_email, latest.subject, { isKnownClient: !!client_id, mutedSenders })) {
+                skipped.noise++
+                continue
+            }
+
             // La cuenta destino aparece en el bloque; si no, se usa la primera.
             const toLine = threadOut.match(new RegExp(`^\\s{2}ID:\\s*${latest.message_id}[\\s\\S]*?^\\s{2}To:\\s*(.+)$`, 'm'))
             const account = accounts.find((a) => toLine?.[1]?.toLowerCase().includes(a.toLowerCase())) || defaultAccount
-            const row = {
+            rows.push({
                 thread_key: threadKey,
                 message_id: latest.message_id,
                 account,
@@ -313,19 +368,14 @@ async function main() {
                 subject: latest.subject,
                 sent_at: toIso(latest.date),
                 client_id,
-                body: null,
-                body_synced_at: null,
-            }
-            if (!noise) {
-                row.body = renderThread(messages)
-                row.body_synced_at = new Date().toISOString()
-                bodiesFetched++
-            }
-            rows.push(row)
+                body: renderThread(messages),
+                body_synced_at: new Date().toISOString(),
+            })
         } catch (e) {
             console.warn(`  · no se pudo leer el correo ${id}: ${e.message}`)
         }
     }
+    console.log(`Descartados: ${skipped.noise} automáticos, ${skipped.own} que respondiste tú.`)
 
     if (rows.length === 0) {
         console.log('No se pudo extraer ninguna cabecera.')
@@ -336,10 +386,10 @@ async function main() {
         console.log('\n--- prueba en seco, no se sube nada ---')
         for (const r of rows) {
             console.log(
-                `  ${r.sent_at.slice(0, 10)}  ${r.from_email.padEnd(34)} ${r.client_id ? '[CLIENTE] ' : ''}${r.body ? '[CUERPO] ' : '[solo asunto] '}${r.subject}`
+                `  ${r.sent_at.slice(0, 10)}  ${r.from_email.padEnd(34)} ${r.client_id ? '[CLIENTE] ' : ''}${r.subject}`
             )
         }
-        console.log(`\n${rows.length} correos. De clientes conocidos: ${rows.filter((r) => r.client_id).length}. Con cuerpo: ${bodiesFetched}.`)
+        console.log(`\n${rows.length} hilos que esperan respuesta. De clientes conocidos: ${rows.filter((r) => r.client_id).length}.`)
         return
     }
 
@@ -365,7 +415,7 @@ async function main() {
         process.exit(1)
     }
     const saved = await res.json()
-    console.log(`Listo: ${saved.length} correos sincronizados (${rows.filter((r) => r.client_id).length} de clientes conocidos, ${bodiesFetched} con cuerpo).`)
+    console.log(`Listo: ${saved.length} hilos sincronizados (${rows.filter((r) => r.client_id).length} de clientes conocidos).`)
 }
 
 main().catch((e) => {

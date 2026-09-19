@@ -1,5 +1,6 @@
 import type { Task } from '@/types'
 import { getBriefing } from './briefing'
+import { listInboxItems } from './inbox'
 import { getDayPlan, getClientSignals, listTasks } from './tasks'
 import { canSend, listNudges, markSent, type NudgeState } from './nudges'
 import { sortByPriority } from '@/lib/task-priority'
@@ -50,6 +51,7 @@ const KIND_EMOJI: Record<string, string> = {
     carried_over: '🔁',
     day_close: '🌙',
     quote_cold: '📄',
+    email_waiting: '📬',
     recurring_due: '📆',
     recurring_upcoming: '📆',
     hour_bag_full: '⏳',
@@ -58,6 +60,11 @@ const KIND_EMOJI: Record<string, string> = {
     wip_overload: '🧱',
     weekly_review: '🧹',
 }
+
+/** Días que puede llevar un correo sin respuesta antes de que valga la pena mencionarlo. */
+const EMAIL_WAITING_DAYS = 2
+/** Cuántos correos se mencionan como mucho: el resto lo cubre el resumen de la mañana. */
+const MAX_EMAIL_ALERTS = 2
 
 /** Más de esto empezado a la vez y ya no se termina nada. */
 const WIP_LIMIT = 2
@@ -117,12 +124,13 @@ function escalate(text: string, timesBefore: number): string {
  */
 export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: boolean } = {}): Promise<Checkin> {
     const moment = momentFor(now)
-    const [briefing, plan, allTasks, signals, nudgeRows] = await Promise.all([
+    const [briefing, plan, allTasks, signals, nudgeRows, inbox] = await Promise.all([
         getBriefing().catch(() => null),
         getDayPlan().catch(() => null),
         listTasks({ open_only: true }).catch(() => [] as Task[]),
         getClientSignals().catch(() => undefined),
         listNudges().catch(() => [] as NudgeState[]),
+        listInboxItems({ pending_only: true, limit: 40 }).catch(() => []),
     ])
 
     const byKey = new Map(nudgeRows.map((n) => [`${n.kind}|${n.ref_id}`, n]))
@@ -238,6 +246,18 @@ export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: bo
         if (left.length > 0) {
             push('day_close', todayISO(), `Del plan de hoy quedaron **${left.length} sin cerrar**: ${left.map((t) => `**${t.title}**`).join(', ')}. ¿Las mueves a mañana o las sueltas?`)
         }
+    }
+
+    // Correo esperando respuesta. Solo lo que lleva días parado: lo de hoy no
+    // es un problema todavía, y por la mañana el resumen ya cuenta lo nuevo.
+    // Primero los de clientes conocidos, y de ahí los más viejos.
+    const waiting = inbox
+        .filter((i) => daysSince(i.sent_at) >= EMAIL_WAITING_DAYS)
+        .sort((a, b) => (b.client_id ? 1 : 0) - (a.client_id ? 1 : 0) || (a.sent_at < b.sent_at ? -1 : 1))
+        .slice(0, MAX_EMAIL_ALERTS)
+    for (const i of waiting) {
+        const quien = i.clients?.name ?? i.from_name ?? i.from_email
+        push('email_waiting', i.thread_key, `**${quien}** lleva ${daysSince(i.sent_at)} días esperando respuesta: *${i.subject}*`)
     }
 
     // Cotizaciones sin respuesta: dinero parado esperando un "sí" o un "no".
