@@ -4,6 +4,7 @@ import { Client, Invoice, Log } from '@/types'
 import { getClient, getBillableClientIds } from './clients'
 import { getLogsByIds, LOG_SELECT } from './logs'
 import { promoteStageOnInvoice } from './crm'
+import { clearNudge } from './nudges'
 import { ActionError, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
 export async function getNextInvoiceNumber(): Promise<string> {
@@ -174,6 +175,10 @@ export async function markInvoicePaid(id: string, paidAt?: string | null): Promi
         .select('*, clients(*)')
         .single()
     if (error) throw new ActionError(`No se pudo marcar la factura como pagada: ${error.message}`)
+    // El asunto se resolvió: el aviso se olvida (si no, el contador de
+    // insistencia sigue subiendo y la próxima factura de ese cliente arranca
+    // con un tono de reclamo que ya no toca).
+    await clearNudge({ kind: 'invoice_overdue', ref_id: id }).catch(() => undefined)
     return data as Invoice
 }
 

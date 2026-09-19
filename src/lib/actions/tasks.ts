@@ -214,7 +214,16 @@ export async function moveTask(id: string, status: TaskStatus, actualMinutes?: n
     if (status !== 'done') patch.actual_minutes = null
     const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
     if (error) throw new ActionError(`No se pudo mover la tarea: ${error.message}`)
-    if (completing) await spawnNextOccurrence(data as Task)
+    if (completing) {
+        await spawnNextOccurrence(data as Task)
+        // Cerrada: se olvidan los avisos que la perseguían, para que el
+        // contador de insistencia no siga vivo si la tarea reaparece.
+        const { clearNudge } = await import('./nudges')
+        await Promise.all([
+            clearNudge({ kind: 'task_overdue', ref_id: id }).catch(() => undefined),
+            clearNudge({ kind: 'task_avoided', ref_id: id }).catch(() => undefined),
+        ])
+    }
     return data as Task
 }
 

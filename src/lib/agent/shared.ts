@@ -32,6 +32,8 @@ export const WRITE_TOOLS = [
     'set_availability',
     'create_task_from_email',
     'dismiss_inbox_item',
+    'snooze_alert',
+    'dismiss_alert',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -85,6 +87,9 @@ export const TOOL_LABELS: Record<string, string> = {
     create_task_from_email: 'Convertir el correo en tarea',
     dismiss_inbox_item: 'Descartar el correo',
     plan_task: 'Poner la tarea en el plan del día',
+    list_active_alerts: 'Revisando lo que te he estado avisando',
+    snooze_alert: 'Posponer el aviso',
+    dismiss_alert: 'Dejar de avisar de esto',
     create_task: 'Crear tarea',
     complete_task: 'Marcar tarea como hecha',
     register_task_as_log: 'Registrar tarea para facturar',

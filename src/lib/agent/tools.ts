@@ -771,6 +771,48 @@ export const agentTools = {
             }),
     }),
 
+    list_active_alerts: tool({
+        description:
+            'Los avisos que tienes vigentes ahora mismo (los mismos que mandas en los avisos automáticos), cada uno con su clave kind + ref_id. Úsala SIEMPRE antes de posponer o soltar un aviso, para saber de cuál habla el usuario ("suéltalo", "ya no me lo recuerdes", "recuérdamelo el lunes"). No manda nada ni marca nada.',
+        inputSchema: z.object({}),
+        execute: async () =>
+            run(async () => {
+                const checkin = await actions.buildCheckin(new Date(), { ignoreCooldown: true })
+                return checkin.items.map((i) => ({ kind: i.kind, ref_id: i.ref_id, text: i.text, times_sent_before: i.times_before }))
+            }),
+    }),
+
+    snooze_alert: tool({
+        description:
+            'Pospone un aviso hasta una fecha ("recuérdamelo el lunes", "esta semana no me lo menciones"). Requiere confirmación. Resuelve kind y ref_id con list_active_alerts; no los inventes. Para dejar de mencionarlo del todo usa dismiss_alert.',
+        inputSchema: z.object({
+            kind: z.string().min(1).describe('El kind tal cual lo devolvió list_active_alerts'),
+            ref_id: z.string().describe('El ref_id tal cual lo devolvió list_active_alerts (puede ir vacío)'),
+            until: dateSchema.describe('Hasta qué día no volver a mencionarlo, YYYY-MM-DD'),
+            label: z.string().min(1).describe('De qué aviso se trata, en palabras, para la confirmación'),
+        }),
+        execute: async ({ kind, ref_id, until, label }) =>
+            run(async () => {
+                await actions.snoozeNudge({ kind, ref_id }, new Date(`${until}T12:00:00Z`))
+                return { label, until }
+            }),
+    }),
+
+    dismiss_alert: tool({
+        description:
+            'Deja de mencionar un aviso para siempre ("suéltalo", "ya no me lo recuerdes", "olvídate de eso"). Requiere confirmación. Resuelve kind y ref_id con list_active_alerts; no los inventes. Si el usuario solo quiere posponerlo, usa snooze_alert.',
+        inputSchema: z.object({
+            kind: z.string().min(1).describe('El kind tal cual lo devolvió list_active_alerts'),
+            ref_id: z.string().describe('El ref_id tal cual lo devolvió list_active_alerts (puede ir vacío)'),
+            label: z.string().min(1).describe('De qué aviso se trata, en palabras, para la confirmación'),
+        }),
+        execute: async ({ kind, ref_id, label }) =>
+            run(async () => {
+                await actions.dismissNudge({ kind, ref_id })
+                return { label }
+            }),
+    }),
+
     get_day_plan: tool({
         description:
             'El plan de un día: qué tareas están comprometidas para ese día, cuáles se arrastran de días anteriores sin cerrarse, cuáles están disponibles para elegir, y cuánto tiempo estimado suman contra lo que cabe en un día realista (capacity_minutes). Úsala al armar el plan de la mañana y al revisar el cierre del día. Sin fecha, usa hoy.',

@@ -207,6 +207,20 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'delete_client_note':
             return { title: `Eliminar nota de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }], note: 'No se puede deshacer.' }
+        case 'snooze_alert':
+            return {
+                title: 'Posponer aviso',
+                rows: [
+                    { label: 'Aviso', value: str(input.label) ?? '-' },
+                    { label: 'Hasta', value: input.until ? dateLabel(str(input.until)) : '-' },
+                ],
+            }
+        case 'dismiss_alert':
+            return {
+                title: 'Dejar de avisar de esto',
+                rows: [{ label: 'Aviso', value: str(input.label) ?? '-' }],
+                note: 'No se vuelve a mencionar, ni siquiera si sigue pendiente.',
+            }
         case 'create_task': {
             const rows: Row[] = [{ label: 'Tarea', value: str(input.title) ?? '-' }]
             if (input.client_name) rows.push({ label: 'Cliente', value: str(input.client_name)! })
@@ -428,6 +442,10 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Nota convertida en tarea', lines: [`${str(d.client_name) ?? ''}: ${str(d.task_title) ?? ''}${d.due_date ? ` · ${dateLabel(str(d.due_date))}` : ''}`] }
         case 'delete_client_note':
             return { title: 'Nota eliminada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
+        case 'snooze_alert':
+            return { title: 'Aviso pospuesto', lines: [`${str(d.label) ?? ''} · hasta ${d.until ? dateLabel(str(d.until)) : ''}`] }
+        case 'dismiss_alert':
+            return { title: 'No vuelvo a mencionarlo', lines: [str(d.label) ?? ''] }
         case 'create_task': {
             const bits = [str(d.client_name), d.due_date ? dateLabel(str(d.due_date)) : null, d.hours != null ? `${num(d.hours)}h` : null, d.amount != null ? fmtUsd(num(d.amount)) : null].filter(Boolean)
             const meta = d.priority ? LABEL_META[d.priority as TaskLabel] : null

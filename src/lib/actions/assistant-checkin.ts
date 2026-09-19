@@ -52,6 +52,9 @@ const KIND_EMOJI: Record<string, string> = {
     quote_cold: '📄',
     recurring_due: '📆',
     recurring_upcoming: '📆',
+    hour_bag_full: '⏳',
+    month_billing: '📑',
+    recurring_pending: '📑',
     wip_overload: '🧱',
     weekly_review: '🧹',
 }
@@ -60,6 +63,20 @@ const KIND_EMOJI: Record<string, string> = {
 const WIP_LIMIT = 2
 /** Días que puede esperar una tarea sin planificarse antes de repasarla. */
 const STALE_DAYS = 14
+
+/**
+ * Ventana de cierre de mes: del 25 al 5. Antes del 25 avisar de que "faltan
+ * fijos por cargar" es ruido — todavía no toca facturar; después del 5 ya va
+ * tarde y conviene insistir.
+ */
+const MONTH_CLOSE_FROM_DAY = 25
+const MONTH_CLOSE_UNTIL_DAY = 5
+
+const dayOfMonth = (now: Date) => Number(todayISO(now).split('-')[2])
+const inMonthCloseWindow = (now: Date) => {
+    const d = dayOfMonth(now)
+    return d >= MONTH_CLOSE_FROM_DAY || d <= MONTH_CLOSE_UNTIL_DAY
+}
 
 const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
 
@@ -93,7 +110,12 @@ function escalate(text: string, timesBefore: number): string {
     return `${text} · te lo he dicho ${timesBefore + 1} veces. ¿Lo hacemos hoy, lo partimos en algo más chico, o lo soltamos? Si me dices que lo suelte, no vuelvo a mencionarlo.`
 }
 
-export async function buildCheckin(now = new Date()): Promise<Checkin> {
+/**
+ * `ignoreCooldown` sirve para LISTAR lo vigente sin mandarlo: el asistente
+ * necesita ver sus propios avisos (con su clave) cuando el usuario dice
+ * "suéltalo" o "recuérdamelo el lunes". Lo ya descartado nunca se lista.
+ */
+export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: boolean } = {}): Promise<Checkin> {
     const moment = momentFor(now)
     const [briefing, plan, allTasks, signals, nudgeRows] = await Promise.all([
         getBriefing().catch(() => null),
@@ -109,7 +131,8 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
 
     const push = (kind: string, ref_id: string, text: string) => {
         const st = stateOf(kind, ref_id)
-        if (!canSend(st, now)) return
+        const allowed = opts.ignoreCooldown ? !st?.dismissed : canSend(st, now)
+        if (!allowed) return
         items.push({ kind, ref_id, text: escalate(text, st?.times_sent ?? 0), times_before: st?.times_sent ?? 0 })
     }
 
@@ -126,6 +149,39 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
             push('recurring_due', `${r.client_id}|${r.period}`, `**${r.client_name}**: ya toca facturarle el ${que} (${r.description}, **${money(r.amount_usd)}**)`)
         } else {
             push('recurring_upcoming', `${r.client_id}|${r.period}`, `**${r.client_name}**: el mes que viene toca facturarle el ${que} (${r.description}, **${money(r.amount_usd)}**)`)
+        }
+    }
+
+    // ── Dinero listo para cobrar ──
+    // Una bolsa llena es trabajo ya hecho esperando factura: no depende del
+    // calendario, se avisa el día que se llena.
+    for (const b of (briefing?.hour_bags ?? []).filter((h) => h.hours >= 10)) {
+        push(
+            'hour_bag_full',
+            b.client_id,
+            `**Bolsa de ${b.client_name}** completa (${b.hours}h): toca empaquetarla y facturársela a ${b.parent_name ?? 'su cliente principal'}`
+        )
+    }
+
+    // Cierre de mes: lo que hay que facturar, solo en la ventana en que toca.
+    if (inMonthCloseWindow(now)) {
+        const period = briefing?.period ?? ''
+        for (const r of briefing?.recurring_not_loaded ?? []) {
+            push(
+                'recurring_pending',
+                `${r.client_id}|${period}`,
+                `**${r.client_name}**: ${r.count} servicio${r.count === 1 ? '' : 's'} fijo${r.count === 1 ? '' : 's'} sin cargar este mes (**${money(r.total_usd)}**)`
+            )
+        }
+        const pend = briefing?.clients_with_pending ?? []
+        if (pend.length > 0) {
+            const total = pend.reduce((s, c) => s + c.pending_total, 0)
+            const names = pend.slice(0, 3).map((c) => `**${c.client_name}**`).join(', ')
+            push(
+                'month_billing',
+                period,
+                `Cierre de mes: ${pend.length} cliente${pend.length === 1 ? '' : 's'} con trabajo sin facturar (**${money(total)}**) — ${names}${pend.length > 3 ? ' y más' : ''}`
+            )
         }
     }
 
@@ -193,8 +249,10 @@ export async function buildCheckin(now = new Date()): Promise<Checkin> {
 
     if (items.length === 0) return { moment, message: null, items }
 
-    // Se limita a lo que una persona puede atender de una sentada.
-    const shown = items.slice(0, 5)
+    // Se limita a lo que una persona puede atender de una sentada. Al listar
+    // (ignoreCooldown) no se recorta: ahí se quieren ver todos para poder
+    // señalar cualquiera.
+    const shown = opts.ignoreCooldown ? items : items.slice(0, 5)
     const greeting =
         moment === 'morning' ? '☀️ **Buenos días.**' : moment === 'midday' ? '⏳ **¿Cómo va el día?**' : '🌙 **Cerrando el día.**'
     const closing =
