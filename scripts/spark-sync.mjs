@@ -146,6 +146,34 @@ const NOISE_SUBJECTS = [
  */
 const GENERIC_DOMAINS = new Set(['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com', 'me.com', 'protonmail.com'])
 
+/** Partes de dominio que no identifican a nadie: quedan fuera al buscar el nombre. */
+const DOMAIN_STOPWORDS = new Set(['com', 'es', 'net', 'org', 'io', 'co', 'cloud', 'it', 've', 'info', 'app', 'www', 'mail', 'support', 'correo'])
+/** Palabras que aparecen en media razón social: por sí solas no distinguen a un cliente. */
+const NAME_STOPWORDS = new Set([
+    'marketing', 'group', 'grupo', 'sl', 'srl', 'ca', 'sa', 'inc', 'llc', 'corp', 'company', 'compania',
+    'studio', 'agencia', 'agency', 'solutions', 'services', 'servicios', 'digital', 'media', 'business', 'the', 'and',
+])
+
+const normalizeName = (s) =>
+    String(s || '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+
+/**
+ * La palabra que de verdad identifica a un cliente dentro de su razón social:
+ * "ASIRI MARKETING SL" → "asiri", "Atlantic Repostería" → "reposteria".
+ * Sin ella, comparar nombres enlazaría a cualquiera que lleve "marketing".
+ */
+function distinctiveToken(clientName) {
+    const tokens = normalizeName(clientName)
+        .split(' ')
+        .filter((t) => t.length >= 5 && !NAME_STOPWORDS.has(t))
+    return tokens.sort((a, b) => b.length - a.length)[0] || null
+}
+
 function isLikelyNoise(fromEmail, subject, { isKnownClient, mutedSenders }) {
     const email = fromEmail.toLowerCase().trim()
     const [local = '', domain = ''] = email.split('@')
@@ -303,17 +331,35 @@ async function main() {
 
     // Para decidir ruido y de quién es cada correo, antes de leer cuerpos.
     const [clientsRes, mutedRes] = await Promise.all([
-        sb('clients?select=id,email&email=not.is.null'),
+        // También los que no tienen correo en la ficha: se pueden reconocer por nombre.
+        sb('clients?select=id,name,email'),
         sb('muted_senders?select=from_email&muted=eq.true'),
     ])
     const clients = clientsRes.ok ? await clientsRes.json() : []
-    const byEmail = new Map(clients.map((c) => [String(c.email).toLowerCase().trim(), c.id]))
+    const byEmail = new Map(clients.filter((c) => c.email).map((c) => [String(c.email).toLowerCase().trim(), c.id]))
+    // Reconocer por nombre: en la práctica casi ninguna ficha tiene correo, y
+    // esperar a que se rellenen a mano dejaba al asistente sin saber de qué
+    // cliente viene cada correo. "Andrés Romero | Asiri Marketing" y el
+    // dominio asiri.es llevan los dos a "ASIRI MARKETING SL".
+    const clientTokens = clients
+        .map((c) => ({ id: c.id, token: distinctiveToken(c.name) }))
+        .filter((c) => c.token)
+
+    const matchClientByName = (fromEmail, fromName) => {
+        const domain = (fromEmail.split('@')[1] || '').toLowerCase()
+        // De un dominio genérico no se deduce nada, pero el nombre visible sí
+        // sirve: hay clientes que escriben desde Gmail ("Total Envíos USA").
+        const domainParts = GENERIC_DOMAINS.has(domain) ? [] : domain.split('.').filter((p) => !DOMAIN_STOPWORDS.has(p))
+        const haystack = [...domainParts, normalizeName(fromName).replace(/ /g, '')].join(' ').trim()
+        if (!haystack) return null
+        return clientTokens.find((c) => haystack.includes(c.token))?.id ?? null
+    }
     // También por dominio: los correos de un cliente llegan de varias personas
     // (aromero@, maycres@, ifernandez@ … todos de asiri.es) y comparar solo
     // contra la dirección exacta de la ficha daba siempre "0 clientes
     // conocidos". Los dominios genéricos quedan fuera, claro.
     const byDomain = new Map()
-    for (const c of clients) {
+    for (const c of clients.filter((x) => x.email)) {
         const domain = String(c.email).toLowerCase().trim().split('@')[1]
         if (!domain || GENERIC_DOMAINS.has(domain)) continue
         if (!byDomain.has(domain)) byDomain.set(domain, c.id)
@@ -351,7 +397,11 @@ async function main() {
                 continue
             }
 
-            const client_id = byEmail.get(latest.from_email) ?? byDomain.get(latest.from_email.split('@')[1]) ?? null
+            const client_id =
+                byEmail.get(latest.from_email) ??
+                byDomain.get(latest.from_email.split('@')[1]) ??
+                matchClientByName(latest.from_email, latest.from_name) ??
+                null
             // El ruido ya no se sube: antes ocupaba sitio en el tope y
             // desplazaba a los correos que sí importan.
             if (isLikelyNoise(latest.from_email, latest.subject, { isKnownClient: !!client_id, mutedSenders })) {
