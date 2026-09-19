@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildCheckin, recordCheckin } from '@/lib/actions/assistant-checkin'
 import { pruneExpiredEmailBodies } from '@/lib/actions/inbox'
+import { USER_TIMEZONE } from '@/lib/actions/validation'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
+import { appendAssistantMessage } from '@/lib/telegram/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,8 +51,23 @@ export async function POST(req: NextRequest) {
         }
 
         // mdToTelegramHtml escapa el contenido dinámico y convierte las negritas.
+        // El aviso se deja además en la conversación del bot: si el usuario
+        // responde ("muévelas a mañana", "sí", "la primera"), el asistente tiene
+        // que saber a qué está respondiendo. La marca de hora importa porque la
+        // respuesta puede llegar al día siguiente.
+        const sentAt = new Intl.DateTimeFormat('es-VE', {
+            timeZone: USER_TIMEZONE,
+            weekday: 'long',
+            day: '2-digit',
+            month: '2-digit',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date())
         for (const chatId of chatIds) {
             await sendMessage(chatId, mdToTelegramHtml(checkin.message))
+            await appendAssistantMessage(chatId, `[Aviso automático enviado el ${sentAt}]\n\n${checkin.message}`).catch((e) =>
+                console.warn('[cron/checkin] no se pudo guardar el aviso en la conversación', e)
+            )
         }
         await recordCheckin(checkin.items)
 
