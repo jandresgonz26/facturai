@@ -43,6 +43,21 @@ const NOISE_SUBJECTS: { pattern: RegExp; reason: string }[] = [
     { pattern: /^re:?\s*recibimos tu (consulta|mensaje|solicitud)/i, reason: 'autorespuesta de formulario' },
     { pattern: /^recibimos tu (consulta|mensaje|solicitud)/i, reason: 'autorespuesta de formulario' },
     { pattern: /gracias por (contactarnos|escribirnos|tu mensaje)/i, reason: 'autorespuesta de formulario' },
+    // Notificaciones de sus propios sistemas (jami@jamtech.cloud): briefings y
+    // cotizaciones automáticas, decenas al día, ninguna espera respuesta.
+    { pattern: /^nuevo briefing:/i, reason: 'notificación de tu propio sistema' },
+    { pattern: /^recibimos tu briefing/i, reason: 'notificación de tu propio sistema' },
+    { pattern: /jami cotiz(ó|o) sola/i, reason: 'notificación de tu propio sistema' },
+    { pattern: /^tu cotizaci(ó|o)n de/i, reason: 'copia de algo que enviaste tú' },
+    { pattern: /^propuesta de .* para /i, reason: 'copia de algo que enviaste tú' },
+    // Avisos de las webs que administra y altas de plataformas
+    { pattern: /tu sitio se ha actualizado a wordpress/i, reason: 'aviso automático de WordPress' },
+    { pattern: /se acerca al l[ií]mite/i, reason: 'aviso automático de hosting' },
+    { pattern: /^registro exitoso/i, reason: 'alta automática de plataforma' },
+    { pattern: /nueva ip detectada/i, reason: 'aviso de seguridad de plataforma' },
+    { pattern: /c(ó|o)digo de seguridad/i, reason: 'código de verificación' },
+    { pattern: /te da la bienvenida/i, reason: 'alta automática de plataforma' },
+    { pattern: /notificaci(ó|o)n de cobro seniat/i, reason: 'notificación automática de organismo' },
     { pattern: /restablecer (la )?contrase(ñ|n)a|password reset/i, reason: 'restablecimiento de contraseña' },
     { pattern: /backup (error )?report|informe de copia/i, reason: 'informe automático de respaldo' },
     { pattern: /error de inicio de sesi(ó|o)n|failed login/i, reason: 'alerta de inicio de sesión' },

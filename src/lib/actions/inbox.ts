@@ -76,6 +76,12 @@ export async function listInboxItems(filters: InboxFilters = {}): Promise<InboxI
 
     const muted = await mutedSenders().catch(() => new Set<string>())
     const rows = ((data || []) as InboxItem[]).map((i) => {
+        // Si el remitente es la propia cuenta donde está el correo, lo escribió
+        // él: no espera respuesta suya. (El puente ya no los sube, pero los
+        // que entraron antes siguen ahí.)
+        if (i.from_email.toLowerCase() === i.account.toLowerCase()) {
+            return { ...i, is_noise: true, noise_reason: 'lo enviaste tú' }
+        }
         const verdict = classifyNoise(i.from_email, i.subject, { isKnownClient: !!i.client_id, mutedSenders: muted })
         return { ...i, is_noise: verdict.isNoise, noise_reason: verdict.reason }
     })
