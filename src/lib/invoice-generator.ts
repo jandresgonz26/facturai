@@ -38,12 +38,12 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
     const tableRows = [
         new TableRow({
             children: [
-                new TableCell({ children: [new Paragraph({ text: "No.", style: "TableHeader" })], width: { size: 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
-                new TableCell({ children: [new Paragraph({ text: "PRODUCTO / SERVICIO", style: "TableHeader" })], width: { size: 30, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
-                new TableCell({ children: [new Paragraph({ text: "DESCRIPCIÓN", style: "TableHeader" })], width: { size: 30, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
-                new TableCell({ children: [new Paragraph({ text: "P. UNIT.", style: "TableHeader" })], width: { size: 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
-                new TableCell({ children: [new Paragraph({ text: "CANT", style: "TableHeader" })], width: { size: 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
-                new TableCell({ children: [new Paragraph({ text: "IMPORTE", style: "TableHeader" })], width: { size: 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "No.", style: "TableHeader" })], width: { size: inBs ? 6 : 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "PRODUCTO / SERVICIO", style: "TableHeader" })], width: { size: inBs ? 25 : 30, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "DESCRIPCIÓN", style: "TableHeader" })], width: { size: inBs ? 27 : 30, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "P. UNIT.", style: "TableHeader" })], width: { size: inBs ? 17 : 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "CANT", style: "TableHeader" })], width: { size: inBs ? 8 : 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
+                new TableCell({ children: [new Paragraph({ text: "IMPORTE", style: "TableHeader" })], width: { size: inBs ? 17 : 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
             ],
         }),
         ...items.map((item, index) => {

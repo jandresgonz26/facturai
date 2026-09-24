@@ -147,14 +147,25 @@ export const generateInvoicePdf = async (
             halign: 'center',
             valign: 'middle',
         },
-        columnStyles: {
-            0: { halign: 'center', cellWidth: 18 }, // 10%
-            1: { cellWidth: 54 }, // 30%
-            2: { cellWidth: 54 }, // 30%
-            3: { halign: 'right', cellWidth: 18 }, // 10%
-            4: { halign: 'center', cellWidth: 18 }, // 10%
-            5: { halign: 'right', cellWidth: 18 }, // 10%
-        },
+        // En Bs los montos son largos (25.604,98): las columnas de montos se
+        // ensanchan a costa de las de texto para que no partan el número.
+        columnStyles: inBs
+            ? {
+                  0: { halign: 'center', cellWidth: 12 },
+                  1: { cellWidth: 44 },
+                  2: { cellWidth: 46 },
+                  3: { halign: 'right', cellWidth: 30 },
+                  4: { halign: 'center', cellWidth: 16 },
+                  5: { halign: 'right', cellWidth: 32 },
+              }
+            : {
+                  0: { halign: 'center', cellWidth: 18 }, // 10%
+                  1: { cellWidth: 54 }, // 30%
+                  2: { cellWidth: 54 }, // 30%
+                  3: { halign: 'right', cellWidth: 18 }, // 10%
+                  4: { halign: 'center', cellWidth: 18 }, // 10%
+                  5: { halign: 'right', cellWidth: 18 }, // 10%
+              },
         theme: 'grid',
     })
 
@@ -162,7 +173,7 @@ export const generateInvoicePdf = async (
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
 
     // ── Totals ──
-    const totalsX = pageWidth - margin - 25 // Align perfectly with the IMPORTE column
+    const totalsX = pageWidth - margin - (inBs ? 36 : 25) // Align perfectly with the IMPORTE column
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
     doc.text('Subtotal', totalsX, y, { align: 'right' })
