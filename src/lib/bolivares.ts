@@ -27,6 +27,19 @@ export function fmtRate(rate: number): string {
     return `${Number(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs/USD`
 }
 
+/**
+ * Datos fiscales de la empresa que exige la factura en bolívares. Son fijos
+ * (no dependen de Configuración): van tal cual, en este orden.
+ */
+export const BS_INVOICE_COMPANY_LINES = [
+    'Razón social: JAM Tech, C.A.',
+    'RIF: J-40305911-0',
+    'Urb, Los Olivos, calle Canarias, Casa G-10.',
+    'Puerto Ordaz – Edo. Bolívar.',
+    'Venezuela',
+    'Tel: 0286-9719393',
+] as const
+
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 /**

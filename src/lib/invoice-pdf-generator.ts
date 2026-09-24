@@ -4,7 +4,7 @@ import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
 import { resolvePaymentNote } from './payment-note'
-import { bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
+import { BS_INVOICE_COMPANY_LINES, bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
 
 export const generateInvoicePdf = async (
     invoice: Invoice,
@@ -188,18 +188,35 @@ export const generateInvoicePdf = async (
     }
 
     // ── Footer ──
-    y += 20
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
-    doc.text(companyName, pageWidth / 2, y, { align: 'center' })
-    y += 5
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.text(`Rif: ${companyRif}`, pageWidth / 2, y, { align: 'center' })
-    y += 4
-    doc.text(companyPhone, pageWidth / 2, y, { align: 'center' })
-    y += 4
-    doc.text(companyEmail, pageWidth / 2, y, { align: 'center' })
+    if (inBs) {
+        // Factura en Bs: los datos fiscales fijos de la empresa, alineados a la izquierda.
+        const lineHeight = 6
+        y += 20
+        if (y + BS_INVOICE_COMPANY_LINES.length * lineHeight > doc.internal.pageSize.getHeight() - margin) {
+            doc.addPage()
+            y = margin + 5
+        }
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+        doc.setTextColor(0, 0, 0)
+        for (const line of BS_INVOICE_COMPANY_LINES) {
+            doc.text(line, margin, y)
+            y += lineHeight
+        }
+    } else {
+        y += 20
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10)
+        doc.text(companyName, pageWidth / 2, y, { align: 'center' })
+        y += 5
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.text(`Rif: ${companyRif}`, pageWidth / 2, y, { align: 'center' })
+        y += 4
+        doc.text(companyPhone, pageWidth / 2, y, { align: 'center' })
+        y += 4
+        doc.text(companyEmail, pageWidth / 2, y, { align: 'center' })
+    }
 
     // ── Generate ──
     const pdfBlob = doc.output('blob')

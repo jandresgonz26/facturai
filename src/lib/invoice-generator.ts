@@ -1,7 +1,7 @@
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, AlignmentType, WidthType, BorderStyle, ImageRun, ShadingType, Header } from 'docx'
 // file-saver not used — Data URI approach preserves filename in async contexts
 import { Invoice, Log, Client } from '@/types'
-import { bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
+import { BS_INVOICE_COMPANY_LINES, bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
 import { resolvePaymentNote } from './payment-note'
@@ -260,25 +260,29 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
 
                     new Paragraph({ text: "", spacing: { after: 800 } }),
 
-                    // Footer
-                    new Paragraph({
-                        children: [
-                            new TextRun({ text: companyName, bold: true }),
-                        ],
-                        alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                        text: `Rif: ${companyRif}`,
-                        alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                        text: companyPhone,
-                        alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                        text: companyEmail,
-                        alignment: AlignmentType.CENTER,
-                    }),
+                    // Footer: en la factura en Bs, los datos fiscales fijos de la empresa.
+                    ...(inBs
+                        ? BS_INVOICE_COMPANY_LINES.map((line) => new Paragraph({ text: line, spacing: { after: 120 } }))
+                        : [
+                              new Paragraph({
+                                  children: [
+                                      new TextRun({ text: companyName, bold: true }),
+                                  ],
+                                  alignment: AlignmentType.CENTER,
+                              }),
+                              new Paragraph({
+                                  text: `Rif: ${companyRif}`,
+                                  alignment: AlignmentType.CENTER,
+                              }),
+                              new Paragraph({
+                                  text: companyPhone,
+                                  alignment: AlignmentType.CENTER,
+                              }),
+                              new Paragraph({
+                                  text: companyEmail,
+                                  alignment: AlignmentType.CENTER,
+                              }),
+                          ]),
                 ],
             },
         ],
