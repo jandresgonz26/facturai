@@ -57,14 +57,24 @@ export function formatReminderTime(iso: string): string {
     }).format(new Date(iso))
 }
 
-export async function createReminder(input: { text: string; at: string; task_id?: string | null }): Promise<Reminder> {
+/**
+ * Cuándo avisar: a una hora local ("a las 3") o dentro de X minutos ("en 10
+ * minutos"). Lo relativo se calcula aquí y no en el modelo: el modelo puede
+ * equivocarse de hora actual (p. ej. tomar la de un aviso viejo del chat).
+ */
+export type ReminderWhen = { at: string; in_minutes?: undefined } | { in_minutes: number; at?: undefined }
+
+export async function createReminder(input: { text: string; task_id?: string | null } & ReminderWhen): Promise<Reminder> {
     const text = input.text.trim()
     if (text.length < 2) throw new ActionError('Falta de qué quieres que te recuerde', 'VALIDATION')
     if (input.task_id) parseInput(uuidSchema, input.task_id)
-    const when = localDateTimeToUtc(input.at)
+    const when = input.in_minutes != null ? new Date(Date.now() + Math.round(input.in_minutes) * 60000) : localDateTimeToUtc(input.at!)
     // Un minuto de margen: "recuérdame ahora en un rato" dicho justo en el borde.
     if (when.getTime() < Date.now() - 60000) {
-        throw new ActionError(`Esa hora ya pasó (${formatReminderTime(when.toISOString())}). Dime otra.`, 'VALIDATION')
+        throw new ActionError(
+            `Esa hora ya pasó (${formatReminderTime(when.toISOString())}); ahora mismo son las ${formatReminderTime(new Date().toISOString())}. Vuelve a calcularla desde la hora actual o usa in_minutes.`,
+            'VALIDATION'
+        )
     }
     const { data, error } = await supabase
         .from('reminders')

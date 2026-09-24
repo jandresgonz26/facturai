@@ -835,15 +835,22 @@ export const agentTools = {
             'Programa un aviso por Telegram a una hora concreta ("recuérdame a las 3 llamar a Ignacio", "avísame en 2 horas que revise el correo"). Requiere confirmación. Úsala para avisos sueltos; si además es trabajo que debe quedar en el tablero, mejor create_task con remind_at (una sola confirmación). La hora va en la zona horaria del usuario.',
         inputSchema: z.object({
             text: z.string().min(2).max(300).describe('Qué hay que recordarle, redactado como se lo dirías ("Llamar a Ignacio por la propuesta")'),
+            in_minutes: z
+                .number()
+                .int()
+                .min(1)
+                .max(60 * 24 * 7)
+                .optional()
+                .describe('Para plazos relativos ("en 10 minutos" = 10, "en 2 horas" = 120). El servidor calcula la hora: NO la calcules tú. Usa esto O at, nunca los dos'),
             at: z
-                .string()
-                .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
-                .describe('Cuándo, YYYY-MM-DDTHH:mm en hora local del usuario. "En 2 horas" = ahora + 2h; "a las 3" sin más = 15:00 del día que toque'),
+                .preprocess(blankToUndefined, z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional())
+                .describe('Para una hora concreta ("a las 3", "mañana a las 9"): YYYY-MM-DDTHH:mm en hora local del usuario. Usa esto O in_minutes'),
             task_id: z.preprocess(blankToUndefined, uuidSchema.optional()).describe('SOLO si es para una tarea existente, con id de list_tasks'),
         }),
-        execute: async ({ text, at, task_id }) =>
+        execute: async ({ text, in_minutes, at, task_id }) =>
             run(async () => {
-                const r = await actions.createReminder({ text, at, task_id })
+                if (in_minutes == null && !at) throw new Error('Falta cuándo: pasa in_minutes (relativo) o at (hora concreta)')
+                const r = await actions.createReminder(in_minutes != null ? { text, in_minutes, task_id } : { text, at: at!, task_id })
                 return { id: r.id, text: r.text, when: actions.formatReminderTime(r.remind_at), task_title: r.tasks?.title ?? null }
             }),
     }),
@@ -1017,9 +1024,16 @@ export const agentTools = {
             source_email_id: optionalText.describe('Si la tarea nace de un correo de list_starred_emails, copia aquí su id tal cual, para no duplicarla después'),
             remind_at: z
                 .preprocess(blankToUndefined, z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional())
-                .describe('SOLO si pide que se lo recuerdes ("recuérdame mañana…", "avísame a las 4"): YYYY-MM-DDTHH:mm en su hora local. Sin hora dicha, usa las 09:00 de ese día. Le llega un aviso por Telegram a esa hora'),
+                .describe('SOLO si pide que se lo recuerdes a una hora concreta ("recuérdame mañana…", "avísame a las 4"): YYYY-MM-DDTHH:mm en su hora local. Sin hora dicha, usa las 09:00 de ese día. Le llega un aviso por Telegram a esa hora'),
+            remind_in_minutes: z
+                .number()
+                .int()
+                .min(1)
+                .max(60 * 24 * 7)
+                .optional()
+                .describe('En vez de remind_at, para plazos relativos ("en 2 horas" = 120). El servidor calcula la hora'),
         }),
-        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id, remind_at }) =>
+        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id, remind_at, remind_in_minutes }) =>
             run(async () => {
                 // Un client_id que no existe (el modelo lo adivinó) no debe tumbar la
                 // tarea: se crea sin cliente y se avisa, que es lo que el usuario
@@ -1041,9 +1055,10 @@ export const agentTools = {
                 // La tarea ya existe: si el recordatorio falla (hora pasada, etc.)
                 // no se deshace, se avisa para que el asistente proponga otra hora.
                 let reminder: string | null = null
-                if (remind_at) {
+                if (remind_at || remind_in_minutes != null) {
                     try {
-                        const r = await actions.createReminder({ text: task.title, at: remind_at, task_id: task.id })
+                        const when = remind_in_minutes != null ? { in_minutes: remind_in_minutes } : { at: remind_at! }
+                        const r = await actions.createReminder({ text: task.title, task_id: task.id, ...when })
                         reminder = actions.formatReminderTime(r.remind_at)
                     } catch (e) {
                         warning = [warning, `La tarea quedó creada pero no el recordatorio: ${errorMessage(e)}`].filter(Boolean).join(' ')

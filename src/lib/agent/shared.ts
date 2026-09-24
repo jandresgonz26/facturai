@@ -122,6 +122,14 @@ export function dateTimeLabel(local?: string | null): string {
     return `${dateLabel(m[1])}, ${h % 12 || 12}:${m[3]} ${h < 12 ? 'am' : 'pm'}`
 }
 
+/** 90 → "En 1 h 30 min", contado desde que se confirma. */
+export function inMinutesLabel(minutes?: number | null): string {
+    if (minutes == null) return '-'
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return `En ${[h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ')} (desde que confirmes)`
+}
+
 export function fmtUsd(n: number | null | undefined): string {
     if (n == null || isNaN(Number(n))) return '-'
     return `$${Number(n).toFixed(2)}`

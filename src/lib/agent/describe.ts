@@ -2,7 +2,7 @@
  * Descripción legible (en español) de lo que propone o hizo cada herramienta
  * de escritura. Compartida por la tarjeta del chat web y por el bot de Telegram.
  */
-import { TOOL_LABELS, dateLabel, dateTimeLabel, fmtMoney, fmtUsd, periodLabel } from './shared'
+import { TOOL_LABELS, dateLabel, dateTimeLabel, fmtMoney, fmtUsd, inMinutesLabel, periodLabel } from './shared'
 import { CLARITY_OPTIONS, CONSEQUENCE_OPTIONS, LABEL_META, type TaskLabel } from '@/lib/task-priority'
 import type { Quote } from '@/types'
 
@@ -212,7 +212,7 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 title: 'Programar recordatorio',
                 rows: [
                     { label: 'Qué', value: str(input.text) ?? '-' },
-                    { label: 'Cuándo', value: dateTimeLabel(str(input.at)) },
+                    { label: 'Cuándo', value: input.in_minutes != null ? inMinutesLabel(num(input.in_minutes)) : dateTimeLabel(str(input.at)) },
                 ],
                 note: 'Te llega por Telegram a esa hora.',
             }
@@ -244,7 +244,8 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
             if (input.hours != null) rows.push({ label: 'Horas', value: `${num(input.hours)}h` })
             if (input.amount != null) rows.push({ label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` })
-            if (input.remind_at) rows.push({ label: 'Te aviso', value: dateTimeLabel(str(input.remind_at)) })
+            if (input.remind_in_minutes != null) rows.push({ label: 'Te aviso', value: inMinutesLabel(num(input.remind_in_minutes)) })
+            else if (input.remind_at) rows.push({ label: 'Te aviso', value: dateTimeLabel(str(input.remind_at)) })
             return { title: 'Nueva tarea', rows, note: 'Queda en el tablero, en "Por hacer", con la prioridad calculada.' }
         }
         case 'complete_task':
