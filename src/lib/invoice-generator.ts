@@ -14,7 +14,7 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
     // Fetch company settings
     const settings = await getCompanySettings()
     const companyName = settings?.company_name || 'JAMTech C.A.'
-    const companyRif = settings?.rif || 'J-40505911-0'
+    const companyRif = settings?.rif || 'J-40305911-0'
     const companyPhone = settings?.phone || '+58(424)922-5108'
     const companyEmail = settings?.email || 'info@jamtech.cloud'
 

@@ -2,7 +2,7 @@
 create table company_settings (
   id uuid default gen_random_uuid() primary key,
   company_name text not null default 'JAMTech C.A.',
-  rif text not null default 'J-40505911-0',
+  rif text not null default 'J-40305911-0',
   phone text not null default '+58(424)922-5108',
   email text not null default 'hello@jamtechcorp.com',
   logo_url text,
@@ -12,7 +12,7 @@ create table company_settings (
 
 -- Insert default settings
 insert into company_settings (company_name, rif, phone, email)
-values ('JAMTech C.A.', 'J-40505911-0', '+58(424)922-5108', 'hello@jamtechcorp.com');
+values ('JAMTech C.A.', 'J-40305911-0', '+58(424)922-5108', 'hello@jamtechcorp.com');
 
 -- Enable RLS for company_settings
 alter table company_settings enable row level security;

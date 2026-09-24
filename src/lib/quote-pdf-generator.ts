@@ -25,7 +25,7 @@ const buildFileName = (quote: Quote, formattedDate: string) => {
 // ─────────────────────────────────────────────────────────────
 const renderJamtechTemplate = async (quote: Quote, settings: CompanySettings | null) => {
     const companyName = quote.company_name || settings?.company_name || 'JAMTech C.A.'
-    const companyRif = settings?.rif || 'J-40505911-0'
+    const companyRif = settings?.rif || 'J-40305911-0'
     const companyPhone = settings?.phone || '+58(424)922-5108'
     const companyEmail = settings?.email || 'info@jamtech.cloud'
 
