@@ -62,6 +62,7 @@ const optionalText = z.preprocess(blank, z.string().trim().max(200).optional())
 export const clientInputSchema = z.object({
     name: z.string('El nombre es obligatorio').trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(120),
     preferred_input_currency: z.enum(['USD', 'EUR'], 'Moneda inválida'),
+    invoice_currency: z.enum(['USD', 'VES']).optional(),
     billing_modality: z.enum(['standard', 'hour_bag'], 'Modalidad inválida'),
     parent_client_id: z.preprocess(blank, uuidSchema.optional()),
     hour_bag_price: z.preprocess(
@@ -91,6 +92,7 @@ function toRow(input: ClientInput) {
     return {
         name: input.name,
         preferred_input_currency: input.preferred_input_currency,
+        ...(input.invoice_currency ? { invoice_currency: input.invoice_currency } : {}),
         billing_modality: input.billing_modality,
         parent_client_id: input.parent_client_id ?? null,
         hour_bag_price: isHourBag ? input.hour_bag_price! : null,

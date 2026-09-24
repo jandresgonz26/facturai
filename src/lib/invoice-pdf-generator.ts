@@ -4,6 +4,7 @@ import { Invoice, Log, Client } from '@/types'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
 import { resolvePaymentNote } from './payment-note'
+import { bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
 
 export const generateInvoicePdf = async (
     invoice: Invoice,
@@ -114,14 +115,14 @@ export const generateInvoicePdf = async (
     y += 5
 
     // ── Items Table ──
-    const tableBody = items.map((item, index) => [
-        (index + 1).toString(),
-        item.service_categories?.name || 'Servicio Profesional',
-        item.description,
-        (item.value || 0).toFixed(2),
-        '1',
-        (item.value || 0).toFixed(2),
-    ])
+    // Cliente en bolívares: la factura se emite solo en Bs (líneas y total).
+    const inBs = isBolivarInvoice(invoice)
+    const bsLines = inBs ? bolivarLines(invoice, items.map((i) => Number(i.value || 0))) : []
+    const num = (n: number) => (inBs ? n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toFixed(2))
+    const tableBody = items.map((item, index) => {
+        const amount = inBs ? bsLines[index] : item.value || 0
+        return [(index + 1).toString(), item.service_categories?.name || 'Servicio Profesional', item.description, num(amount), '1', num(amount)]
+    })
 
     autoTable(doc, {
         startY: y,
@@ -161,12 +162,12 @@ export const generateInvoicePdf = async (
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
     doc.text('Subtotal', totalsX, y, { align: 'right' })
-    doc.text(invoice.total_amount.toFixed(2), pageWidth - margin, y, { align: 'right' })
+    doc.text(num(inBs ? Number(invoice.ves_total) : invoice.total_amount), pageWidth - margin, y, { align: 'right' })
 
     y += 5
     doc.setFontSize(10)
     doc.text('Total', totalsX, y, { align: 'right' })
-    doc.text(`$${invoice.total_amount.toFixed(2)}`, pageWidth - margin, y, { align: 'right' })
+    doc.text(inBs ? fmtBs(Number(invoice.ves_total)) : `$${invoice.total_amount.toFixed(2)}`, pageWidth - margin, y, { align: 'right' })
 
     // ── Condiciones de pago (nota de la factura, o la del cliente si no hay override) ──
     const paymentNote = resolvePaymentNote(invoice, client)

@@ -24,6 +24,7 @@ export default function SettingsPage() {
     const [email, setEmail] = useState('')
     const [logoUrl, setLogoUrl] = useState<string | null>(null)
     const [eurUsdRate, setEurUsdRate] = useState<string>('')
+    const [vesUsdRate, setVesUsdRate] = useState<string>('')
     const [monthlyGoal, setMonthlyGoal] = useState<string>('')
 
     const applySettings = (data: Awaited<ReturnType<typeof getCompanySettings>>) => {
@@ -34,6 +35,7 @@ export default function SettingsPage() {
             setEmail(data.email)
             setLogoUrl(data.logo_url)
             setEurUsdRate(data.eur_usd_rate?.toString() || '')
+            setVesUsdRate(data.ves_usd_rate?.toString() || '')
             setMonthlyGoal(data.monthly_goal?.toString() || '')
         }
     }
@@ -64,6 +66,7 @@ export default function SettingsPage() {
             email,
             logo_url: logoUrl,
             eur_usd_rate: eurUsdRate ? parseFloat(eurUsdRate) : null,
+            ves_usd_rate: vesUsdRate ? parseFloat(vesUsdRate) : null,
             monthly_goal: monthlyGoal ? parseFloat(monthlyGoal) : null,
         })
 
@@ -201,6 +204,24 @@ export default function SettingsPage() {
                         />
                         <p className="text-xs text-muted-foreground">
                             Si se define, esta tasa se usará en lugar de la automática. Útil para coincidir con Google.
+                        </p>
+                    </div>
+
+                    {/* Tasa Bs/USD manual */}
+                    <div className="space-y-2 pt-4 border-t">
+                        <Label htmlFor="vesUsdRate" className="text-amber-600 font-semibold">
+                            Tasa Bs/USD manual (facturas en bolívares)
+                        </Label>
+                        <Input
+                            id="vesUsdRate"
+                            type="number"
+                            step="0.0001"
+                            placeholder="Vacío = tasa oficial del BCV del día"
+                            value={vesUsdRate}
+                            onChange={(e) => setVesUsdRate(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Si la defines, las facturas nuevas en Bs usan esta tasa en vez de la del BCV. Cada factura se puede ajustar después (tasa o total pagado en Bs).
                         </p>
                     </div>
 

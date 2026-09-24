@@ -36,6 +36,8 @@ export const WRITE_TOOLS = [
     'dismiss_alert',
     'create_reminder',
     'cancel_reminder',
+    'set_invoice_bolivares',
+    'set_client_invoice_currency',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -93,6 +95,8 @@ export const TOOL_LABELS: Record<string, string> = {
     list_reminders: 'Revisando tus recordatorios',
     create_reminder: 'Programar recordatorio',
     cancel_reminder: 'Cancelar recordatorio',
+    set_invoice_bolivares: 'Monto en bolívares de la factura',
+    set_client_invoice_currency: 'Moneda de factura del cliente',
     snooze_alert: 'Posponer el aviso',
     dismiss_alert: 'Dejar de avisar de esto',
     create_task: 'Crear tarea',

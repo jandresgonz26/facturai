@@ -1,11 +1,16 @@
 import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, AlignmentType, WidthType, BorderStyle, ImageRun, ShadingType, Header } from 'docx'
 // file-saver not used — Data URI approach preserves filename in async contexts
 import { Invoice, Log, Client } from '@/types'
+import { bolivarLines, fmtBs, isBolivarInvoice } from './bolivares'
 import { getCompanySettings } from './settings'
 import { loadHeaderImage } from './pdf-assets'
 import { resolvePaymentNote } from './payment-note'
 
 export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client: Client): Promise<{ base64: string; fileName: string }> => {
+    // Cliente en bolívares: la factura se emite solo en Bs (líneas y total).
+    const inBs = isBolivarInvoice(invoice)
+    const bsLines = inBs ? bolivarLines(invoice, items.map((i) => Number(i.value || 0))) : []
+    const num = (n: number) => (inBs ? n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toFixed(2))
     // Fetch company settings
     const settings = await getCompanySettings()
     const companyName = settings?.company_name || 'JAMTech C.A.'
@@ -41,18 +46,19 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                 new TableCell({ children: [new Paragraph({ text: "IMPORTE", style: "TableHeader" })], width: { size: 10, type: WidthType.PERCENTAGE }, shading: tableHeaderShading, margins: cellMargin }),
             ],
         }),
-        ...items.map((item, index) => (
-            new TableRow({
+        ...items.map((item, index) => {
+            const amount = num(inBs ? bsLines[index] : item.value || 0)
+            return new TableRow({
                 children: [
                     new TableCell({ children: [new Paragraph({ text: (index + 1).toString(), alignment: AlignmentType.CENTER })], margins: cellMargin }),
                     new TableCell({ children: [new Paragraph({ text: item.service_categories?.name || "Servicio Profesional" })], margins: cellMargin }),
                     new TableCell({ children: [new Paragraph({ text: item.description })], margins: cellMargin }),
-                    new TableCell({ children: [new Paragraph({ text: (item.value || 0).toFixed(2), alignment: AlignmentType.RIGHT })], margins: cellMargin }),
+                    new TableCell({ children: [new Paragraph({ text: amount, alignment: AlignmentType.RIGHT })], margins: cellMargin }),
                     new TableCell({ children: [new Paragraph({ text: "1", alignment: AlignmentType.CENTER })], margins: cellMargin }),
-                    new TableCell({ children: [new Paragraph({ text: (item.value || 0).toFixed(2), alignment: AlignmentType.RIGHT })], margins: cellMargin }),
+                    new TableCell({ children: [new Paragraph({ text: amount, alignment: AlignmentType.RIGHT })], margins: cellMargin }),
                 ],
             })
-        )),
+        }),
     ]
 
     const doc = new Document({
@@ -226,14 +232,14 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                                 children: [
                                     new TableCell({ children: [], width: { size: 70, type: WidthType.PERCENTAGE } }),
                                     new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Subtotal", bold: true })], alignment: AlignmentType.RIGHT })] }),
-                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: invoice.total_amount.toFixed(2), bold: true })], alignment: AlignmentType.RIGHT })] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: num(inBs ? Number(invoice.ves_total) : invoice.total_amount), bold: true })], alignment: AlignmentType.RIGHT })] }),
                                 ]
                             }),
                             new TableRow({
                                 children: [
                                     new TableCell({ children: [], width: { size: 70, type: WidthType.PERCENTAGE } }),
                                     new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Total", bold: true })], alignment: AlignmentType.RIGHT })] }),
-                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `$${invoice.total_amount.toFixed(2)}`, bold: true })], alignment: AlignmentType.RIGHT })] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: inBs ? fmtBs(Number(invoice.ves_total)) : `$${invoice.total_amount.toFixed(2)}`, bold: true })], alignment: AlignmentType.RIGHT })] }),
                                 ]
                             })
                         ]

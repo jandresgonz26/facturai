@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, StickyNote, Trash2 } from 'lucide-react'
+import { Banknote, CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, StickyNote, Trash2 } from 'lucide-react'
 import { Client, EmailKind, EmailLog, Invoice, Log, ServiceCategory } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,7 @@ import {
     markInvoicePaid,
     markInvoiceSent,
     revertInvoiceToDraft,
+    setInvoiceBolivares,
     updateInvoiceDueDate,
     updateInvoiceItem,
     updateInvoicePaymentNote,
@@ -29,6 +30,7 @@ import { EmailDialog } from '@/components/features/EmailDialog'
 import { downloadInvoice } from '@/lib/invoice-download'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 import { periodLabel } from '@/lib/agent/shared'
+import { fmtBs, fmtRate, isBolivarInvoice } from '@/lib/bolivares'
 
 const STATUS_LABELS: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', paid: 'Pagada' }
 const STATUS_CLASS: Record<string, string> = {
@@ -40,6 +42,9 @@ const fmt = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '')
 const usd = (n: number) => `$${Number(n).toFixed(2)}`
 
 type Confirm = { kind: 'paid' | 'revert' | 'delete' | 'sent'; invoice: Invoice } | null
+
+/** La factura va (o debería ir) en bolívares: ya tiene monto en Bs o su cliente se factura en Bs. */
+const usesBolivares = (inv: Invoice) => isBolivarInvoice(inv) || inv.clients?.invoice_currency === 'VES'
 
 export default function InvoicesPage() {
     const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -69,6 +74,10 @@ export default function InvoicesPage() {
     const [noteMode, setNoteMode] = useState<'default' | 'custom' | 'none'>('default')
     const [noteText, setNoteText] = useState('')
     const [savingNote, setSavingNote] = useState(false)
+    const [bsEdit, setBsEdit] = useState<Invoice | null>(null)
+    const [bsMode, setBsMode] = useState<'rate' | 'total'>('rate')
+    const [bsValue, setBsValue] = useState('')
+    const [paidBs, setPaidBs] = useState('')
 
     const load = async () => {
         try {
@@ -123,7 +132,10 @@ export default function InvoicesPage() {
     const executeConfirm = () => {
         if (!confirm) return
         const { kind, invoice } = confirm
-        if (kind === 'paid') return run(() => markInvoicePaid(invoice.id, paidDate || undefined), 'Factura marcada como pagada')
+        if (kind === 'paid') {
+            const totalBs = paidBs ? parseFloat(paidBs) : undefined
+            return run(() => markInvoicePaid(invoice.id, paidDate || undefined, totalBs), 'Factura marcada como pagada')
+        }
         if (kind === 'sent') return run(() => markInvoiceSent(invoice.id), 'Factura marcada como enviada')
         if (kind === 'revert') return run(() => revertInvoiceToDraft(invoice.id), 'Factura devuelta a borrador')
         if (kind === 'delete') return run(() => deleteInvoice(invoice.id), 'Factura eliminada; sus ítems vuelven a pendientes')
@@ -134,6 +146,24 @@ export default function InvoicesPage() {
         const inv = dueEdit
         setDueEdit(null)
         return run(() => updateInvoiceDueDate(inv.id, dueValue || null), dueValue ? 'Vencimiento guardado' : 'Vencimiento eliminado')
+    }
+
+    const openBsEdit = (inv: Invoice) => {
+        setBsEdit(inv)
+        setBsMode('rate')
+        setBsValue(inv.ves_rate != null ? String(inv.ves_rate) : '')
+    }
+
+    const saveBs = (clear = false) => {
+        if (!bsEdit) return
+        const inv = bsEdit
+        const value = parseFloat(bsValue)
+        if (!clear && !(value > 0)) return void toast.error(bsMode === 'rate' ? 'Pon la tasa en Bs por USD' : 'Pon el total en Bs')
+        setBsEdit(null)
+        return run(
+            () => setInvoiceBolivares(inv.id, clear ? { clear: true } : bsMode === 'rate' ? { rate: value } : { total_bs: value }),
+            clear ? 'La factura vuelve a emitirse en USD' : 'Monto en Bs guardado'
+        )
     }
 
     const openItemsEdit = async (inv: Invoice) => {
@@ -290,7 +320,14 @@ export default function InvoicesPage() {
                                         </p>
                                     )}
                                 </div>
-                                <div className="font-bold text-lg font-mono sm:text-right sm:w-28">{usd(inv.total_amount)}</div>
+                                <div className="sm:text-right sm:w-36">
+                                    <div className="font-bold text-lg font-mono">{usd(inv.total_amount)}</div>
+                                    {isBolivarInvoice(inv) && (
+                                        <div className="text-xs font-mono text-amber-700 dark:text-amber-300" title={inv.ves_rate ? `Tasa ${fmtRate(inv.ves_rate)}` : undefined}>
+                                            {fmtBs(Number(inv.ves_total))}
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-1 flex-wrap">
                                     <Button variant="outline" size="icon" title={inv.status === 'paid' ? 'Reenviar factura por correo' : 'Enviar factura por correo'} className="text-teal-600" onClick={() => setEmailDialog({ kind: 'invoice', id: inv.id })}>
                                         <Mail />
@@ -303,6 +340,11 @@ export default function InvoicesPage() {
                                     {inv.status === 'draft' && (
                                         <Button variant="outline" size="icon" title="Corregir conceptos" className="text-indigo-600" onClick={() => openItemsEdit(inv)}>
                                             <Pencil />
+                                        </Button>
+                                    )}
+                                    {usesBolivares(inv) && (
+                                        <Button variant="outline" size="icon" title="Monto en bolívares (tasa o total pagado)" className="text-amber-600" onClick={() => openBsEdit(inv)}>
+                                            <Banknote />
                                         </Button>
                                     )}
                                     <Button
@@ -320,7 +362,7 @@ export default function InvoicesPage() {
                                         </Button>
                                     )}
                                     {inv.status !== 'paid' ? (
-                                        <Button variant="outline" size="icon" title="Marcar como pagada" className="text-emerald-600" onClick={() => { setPaidDate(today); setConfirm({ kind: 'paid', invoice: inv }) }}>
+                                        <Button variant="outline" size="icon" title="Marcar como pagada" className="text-emerald-600" onClick={() => { setPaidDate(today); setPaidBs(''); setConfirm({ kind: 'paid', invoice: inv }) }}>
                                             <CheckCircle />
                                         </Button>
                                     ) : (
@@ -359,6 +401,21 @@ export default function InvoicesPage() {
                         <div className="space-y-1">
                             <Label htmlFor="paid-date">Fecha de pago</Label>
                             <Input id="paid-date" type="date" max={today} value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                            {usesBolivares(confirm.invoice) && (
+                                <div className="space-y-1 pt-2">
+                                    <Label htmlFor="paid-bs">Total recibido en Bs (opcional)</Label>
+                                    <Input
+                                        id="paid-bs"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder={isBolivarInvoice(confirm.invoice) ? `Hoy: ${fmtBs(Number(confirm.invoice.ves_total))}` : 'Ej: 34178.55'}
+                                        value={paidBs}
+                                        onChange={(e) => setPaidBs(e.target.value)}
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">Si pagaron otro monto en Bs, ponlo aquí: queda como total de la factura y de ahí sale la tasa.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                     <DialogFooter>
@@ -366,6 +423,52 @@ export default function InvoicesPage() {
                         <Button className={confirm ? confirmCopy[confirm.kind].cls : ''} onClick={executeConfirm} disabled={working}>
                             {working ? 'Procesando…' : confirm ? confirmCopy[confirm.kind].cta : ''}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!bsEdit} onOpenChange={(o) => !o && setBsEdit(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Monto en bolívares · Factura #{bsEdit?.invoice_number}</DialogTitle>
+                        <DialogDescription>
+                            {bsEdit?.clients?.name} · {bsEdit ? usd(bsEdit.total_amount) : ''}.{' '}
+                            {bsEdit && isBolivarInvoice(bsEdit)
+                                ? `Ahora: ${fmtBs(Number(bsEdit.ves_total))}${bsEdit.ves_rate ? ` (${fmtRate(bsEdit.ves_rate)})` : ''}.`
+                                : 'Todavía se emite en USD.'}{' '}
+                            El PDF y el correo al cliente salen solo en Bs.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={bsMode} onValueChange={(x) => { setBsMode(x as 'rate' | 'total'); setBsValue(x === 'rate' ? String(bsEdit?.ves_rate ?? '') : String(bsEdit?.ves_total ?? '')) }}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="rate">Poner la tasa (Bs por USD)</SelectItem>
+                                <SelectItem value="total">Poner el total en Bs (lo que pagaron)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Input
+                            type="number"
+                            step={bsMode === 'rate' ? '0.0001' : '0.01'}
+                            min="0"
+                            placeholder={bsMode === 'rate' ? 'Ej: 854.4637' : 'Ej: 34178.55'}
+                            value={bsValue}
+                            onChange={(e) => setBsValue(e.target.value)}
+                        />
+                        {bsEdit && parseFloat(bsValue) > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                                {bsMode === 'rate'
+                                    ? `Total en la factura: ${fmtBs(Math.round(bsEdit.total_amount * parseFloat(bsValue) * 100) / 100)}`
+                                    : `Tasa resultante: ${fmtRate(parseFloat(bsValue) / bsEdit.total_amount)}`}
+                            </p>
+                        )}
+                    </div>
+                    <DialogFooter className="gap-2">
+                        {bsEdit && isBolivarInvoice(bsEdit) && (
+                            <Button variant="ghost" className="sm:mr-auto" onClick={() => saveBs(true)} disabled={working}>Emitir en USD</Button>
+                        )}
+                        <Button variant="outline" onClick={() => setBsEdit(null)}>Cancelar</Button>
+                        <Button onClick={() => saveBs()} disabled={working}>Guardar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

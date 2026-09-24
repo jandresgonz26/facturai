@@ -14,6 +14,7 @@ import { LoaderCircle } from 'lucide-react'
 export type ClientFormValues = {
     name: string
     preferred_input_currency: 'USD' | 'EUR'
+    invoice_currency: 'USD' | 'VES'
     billing_modality: 'standard' | 'hour_bag'
     parent_client_id: string
     hour_bag_price: string
@@ -32,6 +33,7 @@ export function clientToForm(c?: Client | null, defaultStage: ClientStage = 'act
     return {
         name: c?.name ?? '',
         preferred_input_currency: c?.preferred_input_currency ?? 'USD',
+        invoice_currency: c?.invoice_currency ?? 'USD',
         billing_modality: c?.billing_modality ?? 'standard',
         parent_client_id: c?.parent_client_id ?? '',
         hour_bag_price: c?.hour_bag_price ? String(c.hour_bag_price) : '',
@@ -68,6 +70,7 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
         await onSubmit({
             name: v.name,
             preferred_input_currency: v.preferred_input_currency,
+            invoice_currency: v.invoice_currency,
             billing_modality: v.billing_modality,
             parent_client_id: v.parent_client_id || undefined,
             hour_bag_price: v.hour_bag_price ? Number(v.hour_bag_price) : undefined,
@@ -94,13 +97,24 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
                     </div>
                     <div className="space-y-1">
                         <Label>Moneda</Label>
-                        <Select value={v.preferred_input_currency} onValueChange={(x: 'USD' | 'EUR') => set('preferred_input_currency', x)}>
+                        {/* Bs no es una moneda de carga: los precios se siguen poniendo en USD
+                            y solo la factura sale en bolívares, a la tasa del día. */}
+                        <Select
+                            value={v.invoice_currency === 'VES' ? 'VES' : v.preferred_input_currency}
+                            onValueChange={(x: 'USD' | 'EUR' | 'VES') =>
+                                setV((s) => ({ ...s, preferred_input_currency: x === 'EUR' ? 'EUR' : 'USD', invoice_currency: x === 'VES' ? 'VES' : 'USD' }))
+                            }
+                        >
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="USD">USD</SelectItem>
                                 <SelectItem value="EUR">EUR</SelectItem>
+                                <SelectItem value="VES">Bs (factura en bolívares)</SelectItem>
                             </SelectContent>
                         </Select>
+                        {v.invoice_currency === 'VES' && (
+                            <p className="text-[11px] text-muted-foreground">Cargas los precios en USD; la factura sale solo en Bs, a la tasa BCV del día (editable en cada factura).</p>
+                        )}
                     </div>
                     <div className="space-y-1">
                         <Label htmlFor="c-tax">ID fiscal (CIF/RIF/NIT)</Label>

@@ -1,5 +1,6 @@
 import type { Client, Invoice, Log, Quote } from '@/types'
 import { resolvePaymentNote } from '../payment-note'
+import { fmtBs, isBolivarInvoice } from '../bolivares'
 
 /** Identidad de la empresa que firma el correo. */
 export interface EmailIdentity {
@@ -20,6 +21,8 @@ export interface EmailContent {
 }
 
 const money = (n: number, currency: 'USD' | 'EUR' = 'USD') => `${currency === 'EUR' ? '€' : '$'}${Number(n).toFixed(2)} ${currency}`
+/** Total de una factura tal como sale en el documento: en Bs si es de un cliente en bolívares. */
+const invoiceMoney = (invoice: Invoice) => (isBolivarInvoice(invoice) ? fmtBs(Number(invoice.ves_total)) : money(invoice.total_amount))
 const fmtDate = (d?: string | null) => (d ? d.split('T')[0].split('-').reverse().join('/') : '')
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -74,7 +77,7 @@ export function invoiceEmail(invoice: Invoice, items: Log[], client: Client, ide
         ['Número de factura', `#${invoice.invoice_number}`],
         ['Fecha de emisión', fmtDate(invoice.issue_date)],
         ['Conceptos', `${items.length}`],
-        ['Total', money(invoice.total_amount)],
+        ['Total', invoiceMoney(invoice)],
     ]
     if (invoice.due_date) details.push(['Pagar antes de', fmtDate(invoice.due_date)])
     const paymentNote = resolvePaymentNote(invoice, client)
@@ -96,7 +99,7 @@ export function paymentThanksEmail(invoice: Invoice, client: Client, identity: E
     ]
     const details: [string, string][] = [
         ['Número de factura', `#${invoice.invoice_number}`],
-        ['Monto recibido', money(invoice.total_amount)],
+        ['Monto recibido', invoiceMoney(invoice)],
         ['Fecha de pago', fmtDate(invoice.paid_at ?? null) || fmtDate(new Date().toISOString())],
     ]
     const closing = 'Muchas gracias por su confianza y por su puntualidad. Es un gusto seguir trabajando con usted.'

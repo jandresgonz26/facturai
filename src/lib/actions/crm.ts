@@ -283,3 +283,17 @@ export async function setClientPaymentTerms(clientId: string, paymentTerms: stri
     if (error) throw new ActionError(`No se pudieron guardar las condiciones de pago: ${error.message}`)
     return data as Client
 }
+
+/**
+ * Cómo se le emite la factura a un cliente: USD (como siempre) o VES (solo en
+ * bolívares, a la tasa del día). Los precios se siguen registrando en USD.
+ */
+export async function setClientInvoiceCurrency(clientId: string, currency: 'USD' | 'VES'): Promise<Client> {
+    await getClient(clientId)
+    const patch: Record<string, unknown> = { invoice_currency: currency }
+    // Bs no es moneda de carga: un cliente que se factura en Bs carga en USD.
+    if (currency === 'VES') patch.preferred_input_currency = 'USD'
+    const { data, error } = await supabase.from('clients').update(patch).eq('id', clientId).select('*').single()
+    if (error) throw new ActionError(`No se pudo cambiar la moneda de factura (¿falta schema_update_bolivares.sql?): ${error.message}`)
+    return data as Client
+}

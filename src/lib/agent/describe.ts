@@ -2,6 +2,7 @@
  * Descripción legible (en español) de lo que propone o hizo cada herramienta
  * de escritura. Compartida por la tarjeta del chat web y por el bot de Telegram.
  */
+import { fmtBs, fmtRate } from '@/lib/bolivares'
 import { TOOL_LABELS, dateLabel, dateTimeLabel, fmtMoney, fmtUsd, inMinutesLabel, periodLabel } from './shared'
 import { CLARITY_OPTIONS, CONSEQUENCE_OPTIONS, LABEL_META, type TaskLabel } from '@/lib/task-priority'
 import type { Quote } from '@/types'
@@ -66,8 +67,24 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 rows: [
                     { label: 'Cliente', value: client },
                     { label: 'Fecha de pago', value: input.paid_at ? dateLabel(str(input.paid_at)) : 'Hoy' },
+                    ...(input.total_bs != null ? [{ label: 'Pagaron', value: fmtBs(num(input.total_bs) ?? 0) }] : []),
                 ],
                 note: input.paid_at ? 'Esta fecha queda impresa en el recibo y en el correo de agradecimiento.' : undefined,
+            }
+        case 'set_invoice_bolivares':
+            return {
+                title: `Monto en Bs de la factura #${str(input.invoice_number) ?? ''}`,
+                rows: [
+                    { label: 'Cliente', value: client },
+                    input.rate != null ? { label: 'Tasa', value: fmtRate(num(input.rate) ?? 0) } : { label: 'Total en Bs', value: fmtBs(num(input.total_bs) ?? 0) },
+                ],
+                note: 'El PDF y el correo al cliente salen con este monto en Bs.',
+            }
+        case 'set_client_invoice_currency':
+            return {
+                title: `Moneda de factura de ${client}`,
+                rows: [{ label: 'Factura en', value: input.currency === 'VES' ? 'Bolívares (precios en USD)' : 'USD' }],
+                note: 'Aplica a las facturas nuevas; las ya emitidas no cambian.',
             }
         case 'update_invoice_item': {
             const rows: Row[] = [{ label: 'Cliente', value: client }]
@@ -370,7 +387,7 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         case 'bill_client_month': {
             const excluded = Array.isArray(d.excluded_new_items) ? (d.excluded_new_items as Rec[]) : []
             const lines = [
-                `Total ${fmtUsd(num(d.total_amount))} · ${num(d.items_count)} ítems · emitida ${dateLabel(str(d.issue_date))}`,
+                `Total ${fmtUsd(num(d.total_amount))}${d.total_bs != null ? ` (${fmtBs(num(d.total_bs) ?? 0)} en la factura)` : ''} · ${num(d.items_count)} ítems · emitida ${dateLabel(str(d.issue_date))}`,
                 `Fijos cargados: ${num(d.recurring_loaded) ?? 0} · Ítems nuevos: ${num(d.extras_added) ?? 0}`,
             ]
             if (excluded.length) {
@@ -389,8 +406,15 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
         case 'mark_invoice_paid':
             return {
                 title: `Factura #${str(d.invoice_number)} marcada como pagada`,
-                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
+                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))}${d.total_bs != null ? ` · ${fmtBs(num(d.total_bs) ?? 0)}` : ''} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
             }
+        case 'set_invoice_bolivares':
+            return {
+                title: `Factura #${str(d.invoice_number)} en Bs`,
+                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))} → ${fmtBs(num(d.total_bs) ?? 0)} (${fmtRate(num(d.rate) ?? 0)})`],
+            }
+        case 'set_client_invoice_currency':
+            return { title: 'Moneda de factura actualizada', lines: [`${str(d.client_name)}: factura en ${d.currency === 'VES' ? 'bolívares' : 'USD'}`] }
         case 'update_invoice_item':
             return {
                 title: `Ítem corregido en la factura #${str(d.invoice_number)}`,

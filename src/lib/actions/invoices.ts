@@ -5,6 +5,7 @@ import { getClient, getBillableClientIds } from './clients'
 import { getLogsByIds, LOG_SELECT } from './logs'
 import { promoteStageOnInvoice } from './crm'
 import { clearNudge } from './nudges'
+import { getVesRate } from '@/lib/currency'
 import { ActionError, dateSchema, descriptionSchema, parseInput, round2, todayISO, uuidSchema } from './validation'
 
 export async function getNextInvoiceNumber(): Promise<string> {
@@ -81,6 +82,15 @@ export async function createInvoice(raw: CreateInvoiceInput): Promise<{ invoice:
         ...(isFixedServiceInvoice ? {} : { payment_note: '' }),
     }
     if (input.due_date) row.due_date = input.due_date
+    // Cliente en bolívares: la factura nace con la tasa del día fijada, para que
+    // el documento no cambie de monto cada vez que se descargue.
+    if (client.invoice_currency === 'VES') {
+        const { rate } = await getVesRate().catch((e) => {
+            throw new ActionError(e instanceof Error ? e.message : 'No se pudo obtener la tasa Bs/USD')
+        })
+        row.ves_rate = rate
+        row.ves_total = round2(total_amount * rate)
+    }
 
     let { data: invoice, error: invError } = await supabase.from('invoices').insert(row).select('*').single()
     if (invError && input.due_date && (invError.code === '42703' || /due_date/.test(invError.message))) {
@@ -158,9 +168,11 @@ export async function getInvoiceWithItems(id: string): Promise<{ invoice: Invoic
  * correo de agradecimiento y el sello de la factura reflejen cuándo pagó de
  * verdad, no cuándo se registró en el sistema.
  */
-export async function markInvoicePaid(id: string, paidAt?: string | null): Promise<Invoice> {
+export async function markInvoicePaid(id: string, paidAt?: string | null, paidTotalBs?: number | null): Promise<Invoice> {
     const invoice = await getInvoice(id)
     if (invoice.status === 'paid') throw new ActionError(`La factura #${invoice.invoice_number} ya está marcada como pagada.`)
+    // Lo que de verdad pagaron en Bs: queda como total de la factura y de ahí sale la tasa.
+    if (paidTotalBs != null) await setInvoiceBolivares(id, { total_bs: paidTotalBs })
     let paid_at = new Date().toISOString()
     if (paidAt) {
         const date = parseInput(dateSchema, paidAt)
@@ -274,5 +286,35 @@ export async function updateInvoiceDueDate(id: string, due_date: string | null):
     if (due_date) parseInput(dateSchema, due_date)
     const { data, error } = await supabase.from('invoices').update({ due_date }).eq('id', id).select('*, clients(*)').single()
     if (error) throw new ActionError(`No se pudo guardar el vencimiento: ${error.message}`)
+    return data as Invoice
+}
+
+/**
+ * Fija el monto en bolívares de una factura: con una tasa (Bs por USD) o con
+ * el total en Bs que pagó el cliente (y de ahí sale la tasa). Sirve en
+ * cualquier estado, porque el total real a veces solo se sabe al cobrar.
+ * clear = volver a emitirla en USD.
+ */
+export async function setInvoiceBolivares(
+    id: string,
+    input: { rate?: number | null; total_bs?: number | null; clear?: boolean }
+): Promise<Invoice> {
+    const invoice = await getInvoice(id)
+    const usd = Number(invoice.total_amount)
+    let patch: { ves_rate: number | null; ves_total: number | null }
+    if (input.clear) {
+        patch = { ves_rate: null, ves_total: null }
+    } else if (input.total_bs != null) {
+        if (!(input.total_bs > 0)) throw new ActionError('El total en Bs tiene que ser mayor que cero.')
+        if (!(usd > 0)) throw new ActionError('La factura no tiene monto en USD para calcular la tasa.')
+        patch = { ves_total: round2(input.total_bs), ves_rate: Math.round((input.total_bs / usd) * 10000) / 10000 }
+    } else if (input.rate != null) {
+        if (!(input.rate > 0)) throw new ActionError('La tasa tiene que ser mayor que cero.')
+        patch = { ves_rate: input.rate, ves_total: round2(usd * input.rate) }
+    } else {
+        throw new ActionError('Indica la tasa o el total en Bs.')
+    }
+    const { data, error } = await supabase.from('invoices').update(patch).eq('id', id).select('*, clients(*)').single()
+    if (error) throw new ActionError(`No se pudo guardar el monto en Bs (¿falta schema_update_bolivares.sql?): ${error.message}`)
     return data as Invoice
 }

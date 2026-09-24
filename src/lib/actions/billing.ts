@@ -179,6 +179,9 @@ export async function billClientMonth(raw: BillClientMonthInput) {
         issue_date: invoice.issue_date,
         due_date: invoice.due_date ?? null,
         total_amount: invoice.total_amount,
+        // Cliente en bolívares: el total que sale en la factura.
+        total_bs: invoice.ves_total ?? null,
+        ves_rate: invoice.ves_rate ?? null,
         // '' = no lleva nota de pago por defecto (había algún ítem que no es de un servicio
         // fijo); null/undefined = hereda la condición de pago del cliente, como siempre.
         payment_note: invoice.payment_note ?? null,

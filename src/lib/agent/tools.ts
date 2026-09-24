@@ -4,6 +4,7 @@ import * as actions from '@/lib/actions'
 import { dateSchema, periodSchema, uuidSchema, errorMessage } from '@/lib/actions/validation'
 import { BLOCK_META, currentBlock, emptySignals, scoreTask, sortByPriority, suggestNow } from '@/lib/task-priority'
 import { formatTime } from '@/lib/schedule'
+import { isBolivarInvoice } from '@/lib/bolivares'
 
 /** Resultado uniforme: el modelo siempre recibe ok/data o ok/error legible. */
 export type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -178,6 +179,8 @@ export const agentTools = {
                     // '' = override explícito "sin nota"; texto = nota propia de esta factura.
                     payment_note: i.payment_note ?? null,
                     client_payment_terms: i.clients?.payment_terms ?? null,
+                    // Factura en bolívares: lo que se le cobra al cliente es total_bs, no total_amount.
+                    ...(isBolivarInvoice(i) ? { total_bs: i.ves_total, ves_rate: i.ves_rate } : {}),
                 }))
             }),
     }),
@@ -386,7 +389,7 @@ export const agentTools = {
 
     mark_invoice_paid: tool({
         description:
-            'Marca una factura como pagada. Por defecto la fecha de pago es hoy. Requiere confirmación. Resuelve antes el invoice_id con list_invoices.',
+            'Marca una factura como pagada. Por defecto la fecha de pago es hoy. Requiere confirmación. Resuelve antes el invoice_id con list_invoices. Si la factura es en bolívares y el usuario dice cuánto pagaron en Bs (o lo trae un comprobante), pásalo en total_bs.',
         inputSchema: z.object({
             invoice_id: uuidSchema,
             invoice_number: z.string().min(1),
@@ -394,11 +397,30 @@ export const agentTools = {
             paid_at: optionalDate.describe(
                 'SOLO si el usuario indica que el pago fue en una fecha distinta de hoy (ej. "pagó hace 3 días", "pagó el 5 de septiembre"). Formato YYYY-MM-DD. Si el usuario solo dice "ya me pagó" sin más contexto, omite el campo.'
             ),
+            total_bs: z.number().positive().optional().describe('SOLO en facturas en bolívares, si se sabe el total en Bs que pagaron: queda como total de la factura y de ahí sale la tasa'),
         }),
-        execute: async ({ invoice_id, invoice_number, client_name, paid_at }) =>
+        execute: async ({ invoice_id, invoice_number, client_name, paid_at, total_bs }) =>
             run(async () => {
-                const inv = await actions.markInvoicePaid(invoice_id, paid_at)
-                return { invoice_number, client_name, total_amount: inv.total_amount, paid_at: inv.paid_at }
+                const inv = await actions.markInvoicePaid(invoice_id, paid_at, total_bs)
+                return { invoice_number, client_name, total_amount: inv.total_amount, total_bs: inv.ves_total ?? null, paid_at: inv.paid_at }
+            }),
+    }),
+
+    set_invoice_bolivares: tool({
+        description:
+            'Fija el monto en bolívares de una factura: con la tasa (Bs por USD) o con el total en Bs que pagó el cliente. Requiere confirmación. Pasa rate O total_bs, no los dos. Resuelve antes el invoice_id con list_invoices. Sirve en cualquier estado de la factura.',
+        inputSchema: z.object({
+            invoice_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            rate: z.number().positive().optional().describe('Bs por 1 USD (ej. 854.46)'),
+            total_bs: z.number().positive().optional().describe('Total en Bs de la factura (lo que pagaron)'),
+        }),
+        execute: async ({ invoice_id, invoice_number, client_name, rate, total_bs }) =>
+            run(async () => {
+                if ((rate == null) === (total_bs == null)) throw new Error('Pasa la tasa o el total en Bs (uno de los dos)')
+                const inv = await actions.setInvoiceBolivares(invoice_id, rate != null ? { rate } : { total_bs })
+                return { invoice_number, client_name, total_amount: inv.total_amount, total_bs: inv.ves_total, rate: inv.ves_rate }
             }),
     }),
 
@@ -542,6 +564,17 @@ export const agentTools = {
             run(async () => {
                 const c = await actions.setClientPaymentTerms(client_id, payment_terms || null)
                 return { client_name, payment_terms: c.payment_terms ?? null }
+            }),
+    }),
+
+    set_client_invoice_currency: tool({
+        description:
+            'Cambia en qué moneda se le emite la factura a un cliente: "VES" = solo en bolívares (los precios se siguen registrando en USD y la factura sale en Bs a la tasa del día), "USD" = como siempre. Requiere confirmación. Solo afecta a las facturas nuevas.',
+        inputSchema: z.object({ client_id: uuidSchema, client_name: clientNameField, currency: z.enum(['USD', 'VES']) }),
+        execute: async ({ client_id, client_name, currency }) =>
+            run(async () => {
+                const c = await actions.setClientInvoiceCurrency(client_id, currency)
+                return { client_name, currency: c.invoice_currency ?? currency }
             }),
     }),
 

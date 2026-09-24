@@ -4,6 +4,8 @@ export interface Client {
     id: string
     name: string
     preferred_input_currency: 'USD' | 'EUR'
+    /** VES = la factura se emite en bolívares (los precios se siguen cargando en USD). */
+    invoice_currency?: 'USD' | 'VES'
     stage?: ClientStage
     source?: string | null
     next_action?: string | null
@@ -67,6 +69,9 @@ export interface Invoice {
      * 'texto...'     = nota propia de esta factura puntual.
      */
     payment_note?: string | null
+    /** Factura en bolívares: tasa Bs/USD usada y total en Bs (el que se imprime). null = en USD. */
+    ves_rate?: number | null
+    ves_total?: number | null
     created_at: string
     clients?: Client
 }
@@ -79,6 +84,7 @@ export interface CompanySettings {
     email: string
     logo_url: string | null
     eur_usd_rate?: number | null
+    ves_usd_rate?: number | null
     monthly_goal?: number | null
     created_at: string
     updated_at: string
