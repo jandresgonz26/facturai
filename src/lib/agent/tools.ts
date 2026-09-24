@@ -832,7 +832,7 @@ export const agentTools = {
 
     create_reminder: tool({
         description:
-            'Programa un aviso por Telegram a una hora concreta ("recuérdame a las 3 llamar a Ignacio", "avísame en 2 horas que revise el correo"). Requiere confirmación. Úsala para avisos sueltos; si además es trabajo que debe quedar en el tablero, mejor create_task con remind_at (una sola confirmación). La hora va en la zona horaria del usuario.',
+            'Programa un aviso por Telegram SIN crear tarea. Requiere confirmación. Úsala SOLO si el usuario pide expresamente que no quede en el tablero ("solo avísame", "sin tarea"). Para "recuérdame X" lo normal es create_task con remind_in_minutes o remind_at.',
         inputSchema: z.object({
             text: z.string().min(2).max(300).describe('Qué hay que recordarle, redactado como se lo dirías ("Llamar a Ignacio por la propuesta")'),
             in_minutes: z
@@ -845,7 +845,9 @@ export const agentTools = {
             at: z
                 .preprocess(blankToUndefined, z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional())
                 .describe('Para una hora concreta ("a las 3", "mañana a las 9"): YYYY-MM-DDTHH:mm en hora local del usuario. Usa esto O in_minutes'),
-            task_id: z.preprocess(blankToUndefined, uuidSchema.optional()).describe('SOLO si es para una tarea existente, con id de list_tasks'),
+            task_id: z
+                .preprocess(blankToUndefined, uuidSchema.optional())
+                .describe('Casi nunca: SOLO para avisar de una tarea que YA existe, con el id exacto que devolvió list_tasks en esta conversación. Si no lo tienes, omítelo; nunca lo inventes'),
         }),
         execute: async ({ text, in_minutes, at, task_id }) =>
             run(async () => {

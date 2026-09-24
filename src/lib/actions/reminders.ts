@@ -67,7 +67,14 @@ export type ReminderWhen = { at: string; in_minutes?: undefined } | { in_minutes
 export async function createReminder(input: { text: string; task_id?: string | null } & ReminderWhen): Promise<Reminder> {
     const text = input.text.trim()
     if (text.length < 2) throw new ActionError('Falta de qué quieres que te recuerde', 'VALIDATION')
-    if (input.task_id) parseInput(uuidSchema, input.task_id)
+    // Un task_id que no existe (el modelo lo adivinó) no debe tumbar el aviso,
+    // que es lo que el usuario pidió: se guarda suelto.
+    let taskId: string | null = null
+    if (input.task_id) {
+        parseInput(uuidSchema, input.task_id)
+        const { data: task } = await supabase.from('tasks').select('id').eq('id', input.task_id).maybeSingle()
+        taskId = task ? input.task_id : null
+    }
     const when = input.in_minutes != null ? new Date(Date.now() + Math.round(input.in_minutes) * 60000) : localDateTimeToUtc(input.at!)
     // Un minuto de margen: "recuérdame ahora en un rato" dicho justo en el borde.
     if (when.getTime() < Date.now() - 60000) {
@@ -78,10 +85,10 @@ export async function createReminder(input: { text: string; task_id?: string | n
     }
     const { data, error } = await supabase
         .from('reminders')
-        .insert({ text, remind_at: when.toISOString(), task_id: input.task_id ?? null })
+        .insert({ text, remind_at: when.toISOString(), task_id: taskId })
         .select('*, tasks(title, status)')
         .single()
-    if (error) throw new ActionError(`No se pudo guardar el recordatorio (¿falta schema_update_reminders.sql?): ${error.message}`)
+    if (error) throw new ActionError(`No se pudo guardar el recordatorio: ${error.message}`)
     return data as Reminder
 }
 
