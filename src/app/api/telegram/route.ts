@@ -42,7 +42,7 @@ function withLock(chatId: string, fn: () => Promise<void>): Promise<void> {
 
 const HELP = [
     '<b>Asistente de FacturAI</b>',
-    'Escribe o manda un audio con lo que necesites, igual que en la web:',
+    'Escribe, manda un audio o una foto (con lo que quieres que haga) igual que en la web:',
     '• «Factúrale el mes a Asiri y agrégale soporte por 100 euros»',
     '• «Registra 2 horas de soporte a Arco Iris»',
     '• «¿Quién me debe?» · «¿Cuánto facturé en agosto?»',
@@ -54,8 +54,42 @@ const HELP = [
     '/nuevo — empezar conversación de cero',
 ].join('\n')
 
-function newUserMessage(text: string): UIMessage {
-    return { id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, role: 'user', parts: [{ type: 'text', text }] }
+interface TgImage {
+    mediaType: string
+    dataUrl: string
+}
+
+function newUserMessage(text: string, image?: TgImage): UIMessage {
+    const parts: UIMessage['parts'] = [{ type: 'text', text }]
+    if (image) parts.push({ type: 'file', mediaType: image.mediaType, url: image.dataUrl })
+    return { id: `tg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, role: 'user', parts }
+}
+
+/**
+ * La imagen solo se le muestra al modelo en el turno en que llega. En la
+ * sesión guardada queda "[imagen]": guardar el base64 inflaría cada turno
+ * siguiente (se reenvía el historial entero) y lo que importaba de ella ya
+ * quedó dicho en la respuesta del asistente.
+ */
+function withoutImages(m: UIMessage): UIMessage {
+    return { ...m, parts: m.parts.map((p) => (p.type === 'file' ? { type: 'text' as const, text: '[imagen]' } : p)) }
+}
+
+/** Límite propio, por debajo de los 20 MB de Telegram: una foto normal pesa bastante menos. */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+/** La foto o imagen-archivo del mensaje, si trae una. */
+function imageFileOf(msg: TgMessage): { file_id: string; mediaType: string; size?: number } | null {
+    if (msg.photo?.length) {
+        // Telegram manda la misma foto en varios tamaños; el último es el mayor.
+        const biggest = msg.photo[msg.photo.length - 1]
+        return { file_id: biggest.file_id, mediaType: 'image/jpeg', size: biggest.file_size }
+    }
+    const mime = msg.document?.mime_type ?? ''
+    if (msg.document && /^image\/(jpeg|png|webp|gif)$/.test(mime)) {
+        return { file_id: msg.document.file_id, mediaType: mime, size: msg.document.file_size }
+    }
+    return null
 }
 
 /** Envía al chat solo lo nuevo de la respuesta del asistente respecto a la versión anterior del mismo mensaje. */
@@ -161,7 +195,7 @@ async function continueIfComplete(chatId: string, history: UIMessage[], idx: num
     return newHistory
 }
 
-async function runTurn(chatId: string, text: string): Promise<void> {
+async function runTurn(chatId: string, text: string, image?: TgImage): Promise<void> {
     await sendChatAction(chatId, 'typing')
     try {
         let history = await loadSession(chatId)
@@ -176,9 +210,9 @@ async function runTurn(chatId: string, text: string): Promise<void> {
             history = [...history.slice(0, pending.idx), assistant, ...history.slice(pending.idx + 1)]
             history = await continueIfComplete(chatId, history, pending.idx)
         }
-        const messages = [...history, newUserMessage(text)]
-        const assistant = await runAgentTurn(messages)
-        await saveSession(chatId, [...messages, assistant])
+        const userMessage = newUserMessage(text, image)
+        const assistant = await runAgentTurn([...history, userMessage])
+        await saveSession(chatId, [...history, withoutImages(userMessage), assistant])
         await deliver(chatId, assistant)
     } catch (e) {
         console.error('[telegram] turno fallido', e)
@@ -228,7 +262,30 @@ async function handleMessage(msg: TgMessage): Promise<void> {
         return
     }
 
-    let text = (msg.text ?? '').trim()
+    let text = (msg.text ?? msg.caption ?? '').trim()
+
+    const imageFile = imageFileOf(msg)
+    if (imageFile) {
+        if (imageFile.size && imageFile.size > MAX_IMAGE_BYTES) {
+            await sendMessage(chatId, '🖼️ Esa imagen pesa demasiado. Mándala como foto normal (comprimida) y la leo.')
+            return
+        }
+        await sendChatAction(chatId, 'typing')
+        let image: TgImage
+        try {
+            const bytes = await getFileBytes(imageFile.file_id)
+            image = { mediaType: imageFile.mediaType, dataUrl: `data:${imageFile.mediaType};base64,${Buffer.from(bytes).toString('base64')}` }
+        } catch (e) {
+            await sendMessage(chatId, `⚠️ No pude descargar la imagen: ${escapeHtml(e instanceof Error ? e.message : '')}`)
+            return
+        }
+        return void (await runTurn(chatId, text || 'Te mando esta imagen. Dime qué ves y qué propones hacer con ella.', image))
+    }
+
+    if (msg.document) {
+        await sendMessage(chatId, 'Por ahora leo fotos y capturas, no otros archivos (PDF, Word…). Mándame una captura de lo importante.')
+        return
+    }
 
     if (msg.voice || msg.audio) {
         await sendChatAction(chatId, 'typing')
@@ -248,7 +305,7 @@ async function handleMessage(msg: TgMessage): Promise<void> {
     }
 
     if (!text) {
-        await sendMessage(chatId, 'Solo entiendo texto o notas de voz por ahora.')
+        await sendMessage(chatId, 'Solo entiendo texto, notas de voz y fotos por ahora.')
         return
     }
 

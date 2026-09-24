@@ -121,6 +121,12 @@ export interface TgMessage {
     text?: string
     voice?: { file_id: string; duration: number }
     audio?: { file_id: string; duration: number }
+    /** Una foto llega en varios tamaños, de menor a mayor. */
+    photo?: { file_id: string; width: number; height: number; file_size?: number }[]
+    /** Imagen mandada "como archivo" (sin comprimir), PDF, etc. */
+    document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number }
+    /** Texto que acompaña a una foto o archivo. */
+    caption?: string
 }
 export interface TgCallbackQuery {
     id: string
