@@ -17,6 +17,7 @@ export interface Client {
     postal_code?: string
     city?: string
     email?: string
+    phone?: string | null
     parent_client_id?: string | null
     billing_modality: 'standard' | 'hour_bag'
     hour_bag_price?: number | null

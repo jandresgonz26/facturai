@@ -202,6 +202,7 @@ export const generateInvoiceDoc = async (invoice: Invoice, items: Log[], client:
                     }),
                     client.contact_name ? new Paragraph({ text: client.contact_name }) : new Paragraph({ text: "" }),
                     client.tax_id ? new Paragraph({ text: client.tax_id }) : new Paragraph({ text: "" }),
+                    ...(client.phone ? [new Paragraph({ text: client.phone })] : []),
                     client.billing_address ? new Paragraph({ text: client.billing_address }) : new Paragraph({ text: "" }),
                     (client.city || client.postal_code) ? new Paragraph({
                         text: `${client.city || ''}${client.city && client.postal_code ? ', ' : ''}${client.postal_code || ''}`

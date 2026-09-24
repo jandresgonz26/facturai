@@ -99,6 +99,10 @@ export const generateInvoicePdf = async (
         doc.text(client.tax_id, margin, y)
         y += 5
     }
+    if (client.phone) {
+        doc.text(client.phone, margin, y)
+        y += 5
+    }
     if (client.billing_address) {
         doc.text(client.billing_address, margin, y)
         y += 5

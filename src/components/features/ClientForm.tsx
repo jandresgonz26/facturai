@@ -24,6 +24,7 @@ export type ClientFormValues = {
     postal_code: string
     city: string
     email: string
+    phone: string
     stage: ClientStage
     source: string
     payment_terms: string
@@ -43,6 +44,7 @@ export function clientToForm(c?: Client | null, defaultStage: ClientStage = 'act
         postal_code: c?.postal_code ?? '',
         city: c?.city ?? '',
         email: c?.email ?? '',
+        phone: c?.phone ?? '',
         stage: c?.stage ?? defaultStage,
         source: c?.source ?? '',
         payment_terms: c?.payment_terms ?? '',
@@ -80,6 +82,8 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
             postal_code: v.postal_code || undefined,
             city: v.city || undefined,
             email: v.email || undefined,
+            // Vacío solo se manda si había uno que borrar.
+            phone: v.phone.trim() || (initial?.phone ? '' : undefined),
             stage: v.stage,
             source: v.source || undefined,
             payment_terms: v.payment_terms || undefined,
@@ -176,13 +180,17 @@ export function ClientForm({ clients, initial, submitting, defaultStage, onSubmi
             <div className="space-y-3">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Contacto y dirección</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
+                    <div className="sm:col-span-2 space-y-1">
                         <Label htmlFor="c-contact">Nombre de contacto / razón social</Label>
                         <Input id="c-contact" placeholder="Ej: Juan Pérez" value={v.contact_name} onChange={(e) => set('contact_name', e.target.value)} />
                     </div>
                     <div className="space-y-1">
                         <Label htmlFor="c-email">Correo electrónico</Label>
                         <Input id="c-email" type="email" placeholder="cliente@correo.com" value={v.email} onChange={(e) => set('email', e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="c-phone">Teléfono</Label>
+                        <Input id="c-phone" type="tel" placeholder="Ej: +58 424 123 4567" value={v.phone} onChange={(e) => set('phone', e.target.value)} />
                     </div>
                     <div className="sm:col-span-2 space-y-1">
                         <Label htmlFor="c-addr">Dirección de facturación</Label>
