@@ -815,6 +815,52 @@ export const agentTools = {
             }),
     }),
 
+    list_reminders: tool({
+        description:
+            'Lista los recordatorios a una hora concreta que aún no se han mandado (id, texto, cuándo, tarea enlazada). Úsala para "¿qué recordatorios tengo?" y para conseguir el id antes de cancel_reminder.',
+        inputSchema: z.object({}),
+        execute: async () =>
+            run(async () =>
+                (await actions.listPendingReminders()).map((r) => ({
+                    id: r.id,
+                    text: r.text,
+                    when: actions.formatReminderTime(r.remind_at),
+                    task_title: r.tasks?.title ?? null,
+                }))
+            ),
+    }),
+
+    create_reminder: tool({
+        description:
+            'Programa un aviso por Telegram a una hora concreta ("recuérdame a las 3 llamar a Ignacio", "avísame en 2 horas que revise el correo"). Requiere confirmación. Úsala para avisos sueltos; si además es trabajo que debe quedar en el tablero, mejor create_task con remind_at (una sola confirmación). La hora va en la zona horaria del usuario.',
+        inputSchema: z.object({
+            text: z.string().min(2).max(300).describe('Qué hay que recordarle, redactado como se lo dirías ("Llamar a Ignacio por la propuesta")'),
+            at: z
+                .string()
+                .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+                .describe('Cuándo, YYYY-MM-DDTHH:mm en hora local del usuario. "En 2 horas" = ahora + 2h; "a las 3" sin más = 15:00 del día que toque'),
+            task_id: z.preprocess(blankToUndefined, uuidSchema.optional()).describe('SOLO si es para una tarea existente, con id de list_tasks'),
+        }),
+        execute: async ({ text, at, task_id }) =>
+            run(async () => {
+                const r = await actions.createReminder({ text, at, task_id })
+                return { id: r.id, text: r.text, when: actions.formatReminderTime(r.remind_at), task_title: r.tasks?.title ?? null }
+            }),
+    }),
+
+    cancel_reminder: tool({
+        description: 'Cancela un recordatorio programado ("ya no me avises de eso"). Requiere confirmación. Resuelve el id con list_reminders.',
+        inputSchema: z.object({
+            reminder_id: uuidSchema,
+            text: z.string().min(1).describe('De qué era el recordatorio, para la confirmación'),
+        }),
+        execute: async ({ reminder_id }) =>
+            run(async () => {
+                const r = await actions.cancelReminder(reminder_id)
+                return { text: r.text, when: actions.formatReminderTime(r.remind_at) }
+            }),
+    }),
+
     get_day_plan: tool({
         description:
             'El plan de un día: qué tareas están comprometidas para ese día, cuáles se arrastran de días anteriores sin cerrarse, cuáles están disponibles para elegir, y cuánto tiempo estimado suman contra lo que cabe en un día realista (capacity_minutes). Úsala al armar el plan de la mañana y al revisar el cierre del día. Sin fecha, usa hoy.',
@@ -969,8 +1015,11 @@ export const agentTools = {
                 .describe('Si ya sabe cómo hacerla: known (mecánica, la ha hecho antes), partial (hay que investigar un poco), unknown (no sabe por dónde empezar)'),
             estimated_minutes: z.number().int().positive().optional().describe('SOLO si el usuario dice cuánto cree que le toma, en minutos'),
             source_email_id: optionalText.describe('Si la tarea nace de un correo de list_starred_emails, copia aquí su id tal cual, para no duplicarla después'),
+            remind_at: z
+                .preprocess(blankToUndefined, z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional())
+                .describe('SOLO si pide que se lo recuerdes ("recuérdame mañana…", "avísame a las 4"): YYYY-MM-DDTHH:mm en su hora local. Sin hora dicha, usa las 09:00 de ese día. Le llega un aviso por Telegram a esa hora'),
         }),
-        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id }) =>
+        execute: async ({ title, notes, client_id, client_name, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id, remind_at }) =>
             run(async () => {
                 // Un client_id que no existe (el modelo lo adivinó) no debe tumbar la
                 // tarea: se crea sin cliente y se avisa, que es lo que el usuario
@@ -989,8 +1038,20 @@ export const agentTools = {
                 }
                 const task = await actions.createTask({ title, notes, client_id: clientId, due_date, hours, amount, consequence, clarity, estimated_minutes, source_email_id })
                 const priority = scoreTask(task, await actions.getClientSignals().catch(() => emptySignals()))
+                // La tarea ya existe: si el recordatorio falla (hora pasada, etc.)
+                // no se deshace, se avisa para que el asistente proponga otra hora.
+                let reminder: string | null = null
+                if (remind_at) {
+                    try {
+                        const r = await actions.createReminder({ text: task.title, at: remind_at, task_id: task.id })
+                        reminder = actions.formatReminderTime(r.remind_at)
+                    } catch (e) {
+                        warning = [warning, `La tarea quedó creada pero no el recordatorio: ${errorMessage(e)}`].filter(Boolean).join(' ')
+                    }
+                }
                 return {
                     id: task.id,
+                    reminder,
                     title: task.title,
                     client_name: task.clients?.name ?? (clientId ? client_name : null) ?? null,
                     due_date: task.due_date ?? null,

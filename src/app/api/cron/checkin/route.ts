@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildCheckin, recordCheckin } from '@/lib/actions/assistant-checkin'
 import { buildMorningEmailDigest } from '@/lib/actions/email-digest'
 import { pruneExpiredEmailBodies } from '@/lib/actions/inbox'
+import { buildWeeklySummary } from '@/lib/actions/weekly-summary'
 import { USER_TIMEZONE } from '@/lib/actions/validation'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
 
     // dry_run permite probar qué diría sin mandarle nada al usuario.
     const dryRun = req.nextUrl.searchParams.get('dry_run') === '1'
+    // weekly=1 (solo en dry_run) arma el resumen semanal aunque no sea lunes, para probarlo.
+    const forceWeekly = dryRun && req.nextUrl.searchParams.get('weekly') === '1'
 
     // Mantenimiento aparte del aviso en sí: si falla, no debe impedir que el
     // check-in se mande igual.
@@ -53,7 +56,15 @@ export async function POST(req: NextRequest) {
         }) : null
         const digestMessage = digest ? `📬 **Mientras no estabas** · ${digest.thread_count} correos\n\n${digest.text}` : null
 
-        if (!checkin.message && !digestMessage) {
+        // Lunes por la mañana: cómo fue la semana en dinero. Va primero, abre la semana.
+        const isMonday = new Intl.DateTimeFormat('en-US', { timeZone: USER_TIMEZONE, weekday: 'short' }).format(new Date()) === 'Mon'
+        const weekly = (checkin.moment === 'morning' && isMonday) || forceWeekly ? await buildWeeklySummary().catch((e) => {
+            console.warn('[cron/checkin] no se pudo armar el resumen semanal', e)
+            return null
+        }) : null
+        const weeklyMessage = weekly?.text ?? null
+
+        if (!checkin.message && !digestMessage && !weeklyMessage) {
             return NextResponse.json({ ok: true, moment: checkin.moment, sent: false, reason: 'nada que amerite escribir' })
         }
         if (dryRun) {
@@ -64,6 +75,7 @@ export async function POST(req: NextRequest) {
                 dry_run: true,
                 message: checkin.message,
                 email_digest: digestMessage,
+                weekly_summary: weeklyMessage,
                 items: checkin.items,
             })
         }
@@ -81,7 +93,7 @@ export async function POST(req: NextRequest) {
             hour: 'numeric',
             minute: '2-digit',
         }).format(new Date())
-        const toSend = [checkin.message, digestMessage].filter((m): m is string => !!m)
+        const toSend = [weeklyMessage, checkin.message, digestMessage].filter((m): m is string => !!m)
         for (const chatId of chatIds) {
             for (const body of toSend) {
                 await sendMessage(chatId, mdToTelegramHtml(body))
@@ -98,6 +110,7 @@ export async function POST(req: NextRequest) {
             sent: true,
             items: checkin.items.length,
             email_digest_threads: digest?.thread_count ?? 0,
+            weekly_summary: !!weeklyMessage,
         })
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)

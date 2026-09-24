@@ -2,7 +2,7 @@
  * Descripción legible (en español) de lo que propone o hizo cada herramienta
  * de escritura. Compartida por la tarjeta del chat web y por el bot de Telegram.
  */
-import { TOOL_LABELS, dateLabel, fmtMoney, fmtUsd, periodLabel } from './shared'
+import { TOOL_LABELS, dateLabel, dateTimeLabel, fmtMoney, fmtUsd, periodLabel } from './shared'
 import { CLARITY_OPTIONS, CONSEQUENCE_OPTIONS, LABEL_META, type TaskLabel } from '@/lib/task-priority'
 import type { Quote } from '@/types'
 
@@ -207,6 +207,17 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'delete_client_note':
             return { title: `Eliminar nota de ${client}`, rows: [{ label: 'Nota', value: str(input.body) ?? '-' }], note: 'No se puede deshacer.' }
+        case 'create_reminder':
+            return {
+                title: 'Programar recordatorio',
+                rows: [
+                    { label: 'Qué', value: str(input.text) ?? '-' },
+                    { label: 'Cuándo', value: dateTimeLabel(str(input.at)) },
+                ],
+                note: 'Te llega por Telegram a esa hora.',
+            }
+        case 'cancel_reminder':
+            return { title: 'Cancelar recordatorio', rows: [{ label: 'Qué', value: str(input.text) ?? '-' }] }
         case 'snooze_alert':
             return {
                 title: 'Posponer aviso',
@@ -233,6 +244,7 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
             if (input.hours != null) rows.push({ label: 'Horas', value: `${num(input.hours)}h` })
             if (input.amount != null) rows.push({ label: 'Monto', value: `${num(input.amount)?.toFixed(2)} (moneda del cliente)` })
+            if (input.remind_at) rows.push({ label: 'Te aviso', value: dateTimeLabel(str(input.remind_at)) })
             return { title: 'Nueva tarea', rows, note: 'Queda en el tablero, en "Por hacer", con la prioridad calculada.' }
         }
         case 'complete_task':
@@ -442,6 +454,10 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Nota convertida en tarea', lines: [`${str(d.client_name) ?? ''}: ${str(d.task_title) ?? ''}${d.due_date ? ` · ${dateLabel(str(d.due_date))}` : ''}`] }
         case 'delete_client_note':
             return { title: 'Nota eliminada', lines: [`${str(d.client_name) ?? ''}: ${str(d.body) ?? ''}`] }
+        case 'create_reminder':
+            return { title: 'Recordatorio programado', lines: [`${str(d.text) ?? ''} · ${str(d.when) ?? ''}`] }
+        case 'cancel_reminder':
+            return { title: 'Recordatorio cancelado', lines: [str(d.text) ?? ''] }
         case 'snooze_alert':
             return { title: 'Aviso pospuesto', lines: [`${str(d.label) ?? ''} · hasta ${d.until ? dateLabel(str(d.until)) : ''}`] }
         case 'dismiss_alert':
@@ -451,6 +467,7 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             const meta = d.priority ? LABEL_META[d.priority as TaskLabel] : null
             const lines = [str(d.title) ?? '', bits.join(' · ')]
             if (meta) lines.push(`${meta.emoji} ${meta.text} · ${str(d.why) ?? ''}`)
+            if (d.reminder) lines.push(`⏰ Te aviso el ${str(d.reminder)}`)
             if (d.warning) lines.push(`⚠️ ${str(d.warning)}`)
             return { title: 'Tarea creada', lines: lines.filter(Boolean) }
         }

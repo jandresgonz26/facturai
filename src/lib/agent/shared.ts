@@ -34,6 +34,8 @@ export const WRITE_TOOLS = [
     'dismiss_inbox_item',
     'snooze_alert',
     'dismiss_alert',
+    'create_reminder',
+    'cancel_reminder',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -88,6 +90,9 @@ export const TOOL_LABELS: Record<string, string> = {
     dismiss_inbox_item: 'Descartar el correo',
     plan_task: 'Poner la tarea en el plan del día',
     list_active_alerts: 'Revisando lo que te he estado avisando',
+    list_reminders: 'Revisando tus recordatorios',
+    create_reminder: 'Programar recordatorio',
+    cancel_reminder: 'Cancelar recordatorio',
     snooze_alert: 'Posponer el aviso',
     dismiss_alert: 'Dejar de avisar de esto',
     create_task: 'Crear tarea',
@@ -107,6 +112,14 @@ export function dateLabel(date?: string | null): string {
     if (!date) return 'Hoy'
     const [y, m, d] = date.split('-')
     return `${d}/${m}/${y}`
+}
+
+/** "2026-09-24T15:00" (hora local del usuario) → "24/09/2026, 3:00 pm". */
+export function dateTimeLabel(local?: string | null): string {
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(local ?? '')
+    if (!m) return local ?? '-'
+    const h = Number(m[2])
+    return `${dateLabel(m[1])}, ${h % 12 || 12}:${m[3]} ${h < 12 ? 'am' : 'pm'}`
 }
 
 export function fmtUsd(n: number | null | undefined): string {
