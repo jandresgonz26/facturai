@@ -22,9 +22,17 @@ function LoginForm() {
         setWorking(true)
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
         if (error) {
-            // El mensaje de Supabase viene en inglés y no distingue causas a
-            // propósito (para no revelar si el correo existe); aquí tampoco.
-            setError('Correo o contraseña incorrectos.')
+            // Credenciales malas: mensaje genérico a propósito (no revelar si el
+            // correo existe). Cualquier otra causa sí se dice, porque esconderla
+            // detrás de "contraseña incorrecta" hace imposible saber qué pasa.
+            const code = (error as { code?: string }).code
+            const status = (error as { status?: number }).status
+            if (code === 'invalid_credentials' || code === 'invalid_grant') setError('Correo o contraseña incorrectos.')
+            else if (code === 'email_not_confirmed') setError('Esta cuenta aún no está confirmada en Supabase.')
+            else if (code === 'over_request_rate_limit' || status === 429) setError('Demasiados intentos seguidos. Espera unos minutos y vuelve a probar.')
+            else if (code === 'user_banned') setError('Esta cuenta está bloqueada en Supabase.')
+            else if (!status || status >= 500) setError(`No se pudo conectar con el servidor de usuarios (${error.message}). Puede que Supabase esté caído o en pausa.`)
+            else setError(`No se pudo entrar: ${error.message}`)
             setWorking(false)
             return
         }
