@@ -19,7 +19,9 @@ export function proveedorActivo(): 'anthropic' | 'openai' | null {
 export function anthropicProvider() {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new Error('Falta configurar ANTHROPIC_API_KEY en el servidor.')
-    return createAnthropic({ apiKey })
+    // Las claves de usuario (sk-ant-usr-…) no van atadas a un workspace y la API exige indicarlo en una cabecera.
+    const workspace = process.env.ANTHROPIC_WORKSPACE_ID
+    return createAnthropic({ apiKey, headers: workspace ? { 'anthropic-workspace-id': workspace } : undefined })
 }
 
 /** Modelo del chat (web y Telegram): el más capaz, porque conversa y decide escrituras. */

@@ -53,6 +53,7 @@ Variables de entorno:
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. La usan Telegram, el cron y el bridge de Spark, que corren sin usuario |
 | `SUPABASE_DB_URL` | Conexión directa a Postgres para migraciones (`npm run migrate`) y `scripts/create-user.mjs` |
 | `ANTHROPIC_API_KEY` | Asistente (Claude). Es el proveedor principal desde octubre de 2026 |
+| `ANTHROPIC_WORKSPACE_ID` | Solo si la clave es de usuario (`sk-ant-usr-…`): ID del workspace de la consola de Anthropic |
 | `ANTHROPIC_MODEL` | Modelo del chat (por defecto `claude-opus-5-5`) |
 | `ANTHROPIC_MODEL_RUTINAS` | Modelo de las rutinas automáticas y borradores (por defecto `claude-sonnet-5-5`) |
 | `ANTHROPIC_EFFORT` | Esfuerzo de razonamiento: `low`, `medium` (por defecto) o `high` |
