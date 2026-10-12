@@ -8,8 +8,10 @@ interface AgentContextValue {
     toggle: () => void
     /** Abre el asistente y le manda ese mensaje, para arrancar desde una pantalla concreta. */
     openWith: (prompt: string) => void
+    /** Abre el asistente con el texto ya escrito en el campo, sin mandarlo (para completarlo). */
+    openDraft: (prompt: string) => void
     /** El panel lo consume una sola vez al abrirse; devuelve null si no hay nada pendiente. */
-    consumePrompt: () => string | null
+    consumePrompt: () => { text: string; send: boolean } | null
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null)
@@ -17,11 +19,15 @@ const AgentContext = createContext<AgentContextValue | null>(null)
 /** Estado global del panel del asistente + atajo ⌘K / Ctrl+K. */
 export function AgentProvider({ children }: { children: React.ReactNode }) {
     const [open, setOpen] = useState(false)
-    const pending = useRef<string | null>(null)
+    const pending = useRef<{ text: string; send: boolean } | null>(null)
     const toggle = useCallback(() => setOpen((v) => !v), [])
 
     const openWith = useCallback((prompt: string) => {
-        pending.current = prompt
+        pending.current = { text: prompt, send: true }
+        setOpen(true)
+    }, [])
+    const openDraft = useCallback((prompt: string) => {
+        pending.current = { text: prompt, send: false }
         setOpen(true)
     }, [])
 
@@ -42,7 +48,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
         return () => window.removeEventListener('keydown', onKey)
     }, [toggle])
 
-    const value = useMemo(() => ({ open, setOpen, toggle, openWith, consumePrompt }), [open, toggle, openWith, consumePrompt])
+    const value = useMemo(() => ({ open, setOpen, toggle, openWith, openDraft, consumePrompt }), [open, toggle, openWith, openDraft, consumePrompt])
     return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>
 }
 

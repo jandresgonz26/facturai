@@ -123,11 +123,18 @@ export function AgentPanel() {
         // Si otra pantalla lo abrió con una pregunta ya cargada (ej. el plan del
         // día desde Tareas), se manda sola; si no, solo se enfoca el campo.
         const seeded = consumePrompt()
-        if (seeded && !busy && !hasPendingApproval) {
-            void sendMessage({ text: seeded })
+        if (seeded?.send && !busy && !hasPendingApproval) {
+            void sendMessage({ text: seeded.text })
             return
         }
-        setTimeout(() => textareaRef.current?.focus(), 150)
+        // Un borrador (ej. "Ventas: cotízale a ") se deja escrito con el cursor al final.
+        if (seeded && !seeded.send) setInput(seeded.text)
+        setTimeout(() => {
+            const el = textareaRef.current
+            if (!el) return
+            el.focus()
+            el.setSelectionRange(el.value.length, el.value.length)
+        }, 150)
         // Solo debe dispararse al abrir, no en cada cambio de estado del chat.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open])
