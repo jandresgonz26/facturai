@@ -46,6 +46,10 @@ export function isWriteTool(name: string): name is WriteToolName {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
+    brevo_resumen: 'Consultando las listas de Brevo',
+    brevo_campanas: 'Consultando las campañas de Brevo',
+    redactar_boletin: 'Redactando el boletín Aprende con Jami',
+    leads_web: 'Consultando los leads de la web',
     list_clients: 'Consultando clientes',
     get_billing_snapshot: 'Revisando pendientes y servicios fijos',
     get_pending_logs: 'Consultando ítems pendientes',
@@ -142,4 +146,40 @@ export function fmtUsd(n: number | null | undefined): string {
 export function fmtMoney(n: number | null | undefined, currency?: string | null): string {
     if (n == null || isNaN(Number(n))) return '-'
     return currency === 'EUR' ? `€${Number(n).toFixed(2)}` : `$${Number(n).toFixed(2)}`
+}
+
+// ───────────── Oficina: departamentos ─────────────
+// Cada herramienta pertenece a un departamento. Sirve para atribuir la actividad del
+// asistente (tarjetas del chat, registro de eventos y la oficina en 3D), no para
+// restringir qué puede hacer: en el chat todas las herramientas siguen disponibles.
+export const DEPARTAMENTOS = {
+    operaciones: { nombre: 'Operaciones', emoji: '📋', color: '#6FC043', descripcion: 'Tareas, plan del día, correo y recordatorios' },
+    ventas: { nombre: 'Ventas', emoji: '🤝', color: '#4BBFD0', descripcion: 'Leads, clientes, cotizaciones y seguimiento' },
+    finanzas: { nombre: 'Finanzas', emoji: '💸', color: '#1B6CA8', descripcion: 'Actividades, facturas, cobros e ingresos' },
+    marketing: { nombre: 'Marketing', emoji: '📣', color: '#F2A93B', descripcion: 'Boletín Aprende con Jami, Brevo y contenido' },
+} as const
+export type Departamento = keyof typeof DEPARTAMENTOS
+
+const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
+    ventas: [
+        'list_pipeline', 'get_client_timeline', 'create_lead', 'update_client_stage', 'update_client_email',
+        'add_client_note', 'list_client_notes', 'update_client_note', 'convert_client_note_to_task', 'delete_client_note',
+        'list_quotes', 'create_quote', 'send_quote_email', 'leads_web',
+    ],
+    finanzas: [
+        'get_billing_snapshot', 'get_pending_logs', 'find_past_items', 'list_categories', 'list_invoices', 'get_invoice_items',
+        'update_invoice_item', 'get_revenue_summary', 'add_log', 'add_hour_log', 'load_recurring_services', 'bill_client_month',
+        'mark_invoice_paid', 'set_invoice_bolivares', 'set_invoice_payment_note', 'add_service_category', 'convert_quote_to_invoice',
+        'send_invoice_email', 'send_payment_thanks', 'set_client_payment_terms', 'set_client_invoice_currency',
+        'register_task_as_log', 'add_recurring_service', 'preview_email',
+    ],
+    marketing: ['brevo_resumen', 'brevo_campanas', 'redactar_boletin'],
+    operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
+}
+
+export function departamentoDe(tool: string): Departamento {
+    for (const [dep, tools] of Object.entries(TOOLS_POR_DEPARTAMENTO)) {
+        if (tools.includes(tool)) return dep as Departamento
+    }
+    return 'operaciones'
 }

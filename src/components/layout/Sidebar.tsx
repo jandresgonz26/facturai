@@ -8,6 +8,7 @@ import {
     ClipboardList,
     FileText,
     LayoutDashboard,
+    Building2,
     ListTodo,
     LogOut,
     Menu,
@@ -23,6 +24,7 @@ import { supabase } from '@/lib/supabase'
 
 const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/oficina', label: 'Oficina', icon: Building2 },
     { href: '/tasks', label: 'Tareas', icon: ListTodo },
     { href: '/clients', label: 'Clientes', icon: Users },
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },

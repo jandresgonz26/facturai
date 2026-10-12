@@ -41,7 +41,7 @@ Facturación para JAMTech: registro de actividades, servicios fijos mensuales, b
 
 ## Configuración
 
-1. Copia `.env.example` a `.env.local` y rellena las variables. La clave de OpenAI vive solo en el servidor.
+1. Copia `.env.example` a `.env.local` y rellena las variables. Las claves de IA viven solo en el servidor.
 2. Ejecuta en el SQL Editor de Supabase los esquemas en orden (`schema.sql` y los `schema_update_*.sql`). Para el asistente es necesario **`schema_update_agent.sql`** (trazabilidad de servicios fijos por periodo y fecha de vencimiento en facturas) y para la meta mensual del dashboard **`schema_update_dashboard.sql`**. La app funciona sin esas migraciones, pero con ellas la carga de fijos es idempotente de forma fiable y la meta es configurable en Ajustes.
 3. `npm install` y `npm run dev`.
 
@@ -52,8 +52,14 @@ Variables de entorno:
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Base de datos (navegador, con sesión) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Solo servidor. La usan Telegram, el cron y el bridge de Spark, que corren sin usuario |
 | `SUPABASE_DB_URL` | Conexión directa a Postgres para migraciones (`npm run migrate`) y `scripts/create-user.mjs` |
-| `OPENAI_API_KEY` | Asistente y transcripción (solo servidor) |
-| `OPENAI_MODEL` | Modelo de chat con llamadas a funciones (por defecto `gpt-5.4-mini`) |
+| `ANTHROPIC_API_KEY` | Asistente (Claude). Es el proveedor principal desde octubre de 2026 |
+| `ANTHROPIC_MODEL` | Modelo del chat (por defecto `claude-opus-5-5`) |
+| `ANTHROPIC_MODEL_RUTINAS` | Modelo de las rutinas automáticas y borradores (por defecto `claude-sonnet-5-5`) |
+| `ANTHROPIC_EFFORT` | Esfuerzo de razonamiento: `low`, `medium` (por defecto) o `high` |
+| `BREVO_API_KEY` | Listas y campañas de Brevo para el departamento de Marketing (la misma clave que usa la web) |
+| `SUPABASE_DB_SCHEMA` | Esquema donde viven las tablas (por defecto `facturai`) |
+| `OPENAI_API_KEY` | Transcripción del micrófono; también sirve de respaldo del asistente si falta la clave de Anthropic |
+| `OPENAI_MODEL` | Modelo de respaldo con OpenAI (por defecto `gpt-5.4-mini`) |
 | `OPENAI_TRANSCRIBE_MODEL` | Modelo de transcripción del micrófono (por defecto `gpt-4o-mini-transcribe`) |
 | `AGENT_APPROVAL_SECRET` | Opcional. Firma HMAC de las confirmaciones del asistente |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ALLOWED_CHAT_IDS` | Bot de Telegram (opcional) |
@@ -108,3 +114,21 @@ Un lead es un cliente en etapa temprana: misma ficha, mismos datos. Etapas: **Le
 - **Facturas**: filtros por cliente, estado y mes; estados borrador/enviada/pagada; fecha de vencimiento (sale en el documento como "Pagar antes de" y marca la factura como vencida).
 
 Arquitectura: `src/lib/actions/` contiene la lógica de negocio validada (zod) que comparten los botones de la interfaz y las herramientas del asistente; `src/lib/agent/` define las herramientas y el prompt; `src/app/api/agent` y `src/app/api/transcribe` son las rutas de servidor; `src/components/agent/` es el panel de chat.
+
+## Base de datos compartida con la web (octubre de 2026)
+
+FacturAI ya no tiene proyecto propio de Supabase: vive en el proyecto de la web de JAM Tech (`dibumwvpkyuqkiplgqtj`), dentro de su propio esquema **`facturai`**. Las tablas de la web siguen en `public` y no se tocan.
+
+- El cliente de Supabase (`src/lib/supabase.ts`) apunta al esquema con `db: { schema: 'facturai' }`; `scripts/run-sql.mjs` y `scripts/spark-sync.mjs` también.
+- La clave pública (`anon`) **no** tiene acceso al esquema; solo los usuarios con sesión y el servidor (service role).
+- Se inicia sesión con el mismo usuario del panel de la web.
+- `scripts/exportar-db.mjs` saca una copia completa (estructura + datos) a `migracion/`, que está fuera de Git. `scripts/diagnostico-db.mjs` mide la base.
+- El puente web → CRM vive en la base (`supabase/facturai-sync.sql` del repo de la web): cada lead del regalo de Jami entra como lead con nota y tarea de seguimiento, y cada pedido pagado de la oferta de WhatsApp entra como cliente activo con su ítem por facturar y la tarea de agendar.
+
+## Oficina JAM (equipo de IA por departamentos)
+
+El asistente es la cara visible de cuatro departamentos: 📋 Operaciones, 🤝 Ventas, 💸 Finanzas y 📣 Marketing (`src/lib/agent/shared.ts`). Cada herramienta pertenece a uno; su uso queda registrado en `agent_events` (`schema_update_oficina.sql`) y se ve en **/oficina**, una oficina en 3D (three.js) donde cada personaje trabaja, descansa o levanta la mano cuando espera una confirmación. Tocar a un personaje abre el chat con ese departamento.
+
+- **Chat** (web y Telegram): Claude con todas las herramientas; cada escritura sigue pasando por la tarjeta de confirmación.
+- **Marketing** (`src/lib/agent/tools-marketing.ts`): listas y campañas de Brevo, leads de la web y `redactar_boletin`, que investiga en la web y devuelve un borrador de "Aprende con Jami" con sus reglas editoriales.
+- **Rutinas automáticas** (`src/lib/agent/rutinas.ts`): `POST /api/cron/oficina` con `x-cron-secret` hace que cada departamento revise su área con herramientas de solo lectura y mande un informe corto por Telegram (`?dep=ventas` para uno solo, `?dry_run=1` para verlo sin enviarlo). El informe queda en la sesión de Telegram, así que se puede responder "hazlo" y el asistente sabe de qué se trata. Sugerencia de horarios en Dokploy: Finanzas y Ventas a las 8:00 de lunes a viernes, Operaciones a las 7:30 todos los días, Marketing los lunes a las 9:00.

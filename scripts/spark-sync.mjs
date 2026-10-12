@@ -75,6 +75,9 @@ const sb = (path, init = {}) =>
             apikey: SUPABASE_KEY,
             Authorization: `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
+            // Las tablas viven en el esquema `facturai` del proyecto compartido con la web
+            'Accept-Profile': process.env.SUPABASE_DB_SCHEMA || 'facturai',
+            'Content-Profile': process.env.SUPABASE_DB_SCHEMA || 'facturai',
             ...(init.headers || {}),
         },
     })

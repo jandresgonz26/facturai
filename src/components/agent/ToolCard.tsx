@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, CircleCheck, CircleX, Download, FileText, LoaderCircle, TriangleAlert, X } from 'lucide-react'
-import { TOOL_LABELS, dateLabel, fmtUsd, isWriteTool } from '@/lib/agent/shared'
+import { DEPARTAMENTOS, TOOL_LABELS, dateLabel, departamentoDe, fmtUsd, isWriteTool } from '@/lib/agent/shared'
 import { describeInput, describeResult, findEmailPreview, num, str, type EmailPreviewLike, type Rec } from '@/lib/agent/describe'
 import { downloadInvoice, saveBlobToFile } from '@/lib/invoice-download'
 import { generateQuotePdf } from '@/lib/quote-pdf-generator'
@@ -206,7 +206,8 @@ interface Props {
 }
 
 export function ToolCard({ toolName, part, onApprove, onDeny, busy, context }: Props) {
-    const label = TOOL_LABELS[toolName] ?? toolName
+    const dep = DEPARTAMENTOS[departamentoDe(toolName)]
+    const label = `${dep.emoji} ${TOOL_LABELS[toolName] ?? toolName}`
     const write = isWriteTool(toolName)
 
     // ── Lecturas: una línea discreta ──

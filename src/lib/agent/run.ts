@@ -1,28 +1,53 @@
 import { convertToModelMessages, readUIMessageStream, stepCountIs, streamText, type UIMessage } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
 import { agentTools, toolApproval } from './tools'
+import { marketingTools } from './tools-marketing'
 import { buildSystemPrompt } from './system-prompt'
+import { modeloPara } from './modelo'
+import { registrarEvento, type FuenteEvento } from './eventos'
+import { TOOL_LABELS, departamentoDe, isWriteTool } from './shared'
+
+/** Todas las herramientas de la oficina: las de siempre más las de Marketing. */
+export const oficinaTools = { ...agentTools, ...marketingTools }
 
 /** Configuración única del agente, compartida por el chat web y el bot de Telegram. */
-export async function createAgentStream(messages: UIMessage[]) {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error('Falta configurar OPENAI_API_KEY en el servidor.')
-    const openai = createOpenAI({ apiKey })
-    const modelId = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
+export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat') {
+    const { model, providerOptions } = modeloPara('chat')
     const system = await buildSystemPrompt()
+    const excluir = (process.env.AGENT_TOOLS_EXCLUDE || '').split(',').filter(Boolean)
+    const tools = excluir.length
+        ? (Object.fromEntries(Object.entries(oficinaTools).filter(([k]) => !excluir.includes(k))) as typeof oficinaTools)
+        : oficinaTools
     return streamText({
-        model: openai(modelId),
+        model,
         system,
         messages: await convertToModelMessages(messages),
-        tools: process.env.AGENT_TOOLS_EXCLUDE
-            ? (Object.fromEntries(Object.entries(agentTools).filter(([k]) => !process.env.AGENT_TOOLS_EXCLUDE!.split(',').includes(k))) as typeof agentTools)
-            : agentTools,
+        tools,
         toolApproval,
+        providerOptions,
         stopWhen: stepCountIs(8),
         experimental_toolApprovalSecret: process.env.AGENT_APPROVAL_SECRET || undefined,
         onError: ({ error }) => console.error('[agent]', error),
         includeRawChunks: process.env.AGENT_DEBUG_RAW === '1',
         onChunk: process.env.AGENT_DEBUG_RAW === '1' ? ({ chunk }) => { if (chunk.type === 'raw') console.log('[agent raw]', JSON.stringify(chunk.rawValue).slice(0, 600)) } : undefined,
+        // Cada herramienta usada queda como evento de su departamento (alimenta la oficina).
+        onStepFinish: async ({ toolCalls, toolResults }) => {
+            for (const call of toolCalls) {
+                const name = call.toolName
+                const result = toolResults.find((r) => r.toolCallId === call.toolCallId)
+                const out = result?.output as { ok?: boolean } | undefined
+                const estado = !result
+                    ? isWriteTool(name) ? 'espera_aprobacion' : 'en_curso'
+                    : out && out.ok === false ? 'error' : 'hecho'
+                await registrarEvento({
+                    departamento: departamentoDe(name),
+                    tipo: 'herramienta',
+                    titulo: TOOL_LABELS[name] ?? name,
+                    estado,
+                    fuente,
+                    detalle: { tool: name, input: call.input },
+                })
+            }
+        },
         onFinish: ({ finishReason, usage, warnings }) => {
             if (finishReason !== 'stop' && finishReason !== 'tool-calls') {
                 console.warn('[agent] finishReason', finishReason, JSON.stringify({ usage, warnings }))
@@ -38,7 +63,7 @@ export async function createAgentStream(messages: UIMessage[]) {
  * mensaje del asistente (caso de aprobación), la respuesta se fusiona en él.
  */
 export async function runAgentTurn(messages: UIMessage[], continueFrom?: UIMessage): Promise<UIMessage> {
-    const result = await createAgentStream(messages)
+    const result = await createAgentStream(messages, 'telegram')
     let last: UIMessage | undefined = continueFrom
     for await (const m of readUIMessageStream({ stream: result.toUIMessageStream(), message: continueFrom })) {
         last = m

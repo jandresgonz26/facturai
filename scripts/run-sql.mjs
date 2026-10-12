@@ -26,6 +26,8 @@ const sql = await readFile(file, 'utf8')
 const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } })
 await client.connect()
 try {
+    // Las tablas de FacturAI viven en el esquema `facturai` del proyecto compartido con la web.
+    await client.query(`set search_path = ${process.env.SUPABASE_DB_SCHEMA || 'facturai'}, public`)
     await client.query(sql)
     console.log(`OK: ${file} ejecutado correctamente.`)
 } catch (e) {

@@ -42,3 +42,6 @@ next-env.d.ts
 
 # OneDrive conflicts
 *-OsoPCGaming*
+
+# Copia de la base para la mudanza (datos reales, nunca al repo)
+/migracion/
