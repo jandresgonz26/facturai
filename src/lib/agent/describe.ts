@@ -71,6 +71,15 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
                 ],
                 note: input.paid_at ? 'Esta fecha queda impresa en el recibo y en el correo de agradecimiento.' : undefined,
             }
+        case 'set_invoice_paid_date':
+            return {
+                title: `Corregir la fecha de pago de la factura #${str(input.invoice_number) ?? ''}`,
+                rows: [
+                    { label: 'Cliente', value: client },
+                    { label: 'Pagada el', value: dateLabel(str(input.paid_at)) },
+                ],
+                note: 'Esta fecha queda impresa en el recibo y en el correo de agradecimiento.',
+            }
         case 'set_invoice_bolivares':
             return {
                 title: `Monto en Bs de la factura #${str(input.invoice_number) ?? ''}`,
@@ -407,6 +416,11 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return {
                 title: `Factura #${str(d.invoice_number)} marcada como pagada`,
                 lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))}${d.total_bs != null ? ` · ${fmtBs(num(d.total_bs) ?? 0)}` : ''} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
+            }
+        case 'set_invoice_paid_date':
+            return {
+                title: `Fecha de pago corregida en la factura #${str(d.invoice_number)}`,
+                lines: [`${str(d.client_name)} · ${fmtUsd(num(d.total_amount))} · pagada el ${dateLabel(str(d.paid_at)?.split('T')[0])}`],
             }
         case 'set_invoice_bolivares':
             return {

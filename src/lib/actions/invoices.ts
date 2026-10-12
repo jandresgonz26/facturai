@@ -194,6 +194,18 @@ export async function markInvoicePaid(id: string, paidAt?: string | null, paidTo
     return data as Invoice
 }
 
+/** Corrige la fecha de pago de una factura que ya está pagada (sale impresa en el recibo y en el correo de agradecimiento). */
+export async function setInvoicePaidDate(id: string, paidAt: string): Promise<Invoice> {
+    const invoice = await getInvoice(id)
+    if (invoice.status !== 'paid') throw new ActionError(`La factura #${invoice.invoice_number} no está marcada como pagada; usa "marcar como pagada" con la fecha.`)
+    const date = parseInput(dateSchema, paidAt)
+    if (date > todayISO()) throw new ActionError('La fecha de pago no puede ser futura.')
+    const paid_at = date === todayISO() ? new Date().toISOString() : `${date}T12:00:00.000Z`
+    const { data, error } = await supabase.from('invoices').update({ paid_at }).eq('id', id).select('*, clients(*)').single()
+    if (error) throw new ActionError(`No se pudo corregir la fecha de pago: ${error.message}`)
+    return data as Invoice
+}
+
 export async function revertInvoiceToDraft(id: string): Promise<Invoice> {
     await getInvoice(id)
     const { data, error } = await supabase

@@ -406,6 +406,22 @@ export const agentTools = {
             }),
     }),
 
+    set_invoice_paid_date: tool({
+        description:
+            'Corrige la fecha de pago de una factura que YA está marcada como pagada (ej. se marcó hoy pero el cliente pagó el viernes). Requiere confirmación. Resuelve el invoice_id con list_invoices. No sirve para facturas sin pagar: para esas usa mark_invoice_paid con paid_at.',
+        inputSchema: z.object({
+            invoice_id: uuidSchema,
+            invoice_number: z.string().min(1),
+            client_name: clientNameField,
+            paid_at: dateSchema.describe('Fecha real del pago, YYYY-MM-DD'),
+        }),
+        execute: async ({ invoice_id, invoice_number, client_name, paid_at }) =>
+            run(async () => {
+                const inv = await actions.setInvoicePaidDate(invoice_id, paid_at)
+                return { invoice_number, client_name, total_amount: inv.total_amount, paid_at: inv.paid_at }
+            }),
+    }),
+
     set_invoice_bolivares: tool({
         description:
             'Fija el monto en bolívares de una factura: con la tasa (Bs por USD) o con el total en Bs que pagó el cliente. Requiere confirmación. Pasa rate O total_bs, no los dos. Resuelve antes el invoice_id con list_invoices. Sirve en cualquier estado de la factura.',
