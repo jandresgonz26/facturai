@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
+import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Bot, CircleCheck, CircleDashed, Hand, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,10 @@ const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-VE', { day: 
 
 export default function OficinaPage() {
     const { openWith } = useAgent()
+    const { resolvedTheme } = useTheme()
+    const [montado, setMontado] = useState(false)
+    useEffect(() => setMontado(true), [])
+    const oscuro = montado && resolvedTheme === 'dark'
     const [estado, setEstado] = useState<Estado | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -81,8 +86,8 @@ export default function OficinaPage() {
             {error && <p className="text-sm text-destructive flex items-center gap-1 mb-3"><TriangleAlert className="w-4 h-4" /> {error}</p>}
 
             <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
-                <div className="rounded-xl border bg-card overflow-hidden aspect-[16/10] min-h-[320px]">
-                    <Oficina3D estados={estados} onSelect={hablar} className="w-full h-full" />
+                <div className="rounded-2xl border overflow-hidden aspect-[16/10] min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-30px_rgba(11,15,20,0.45)] bg-[radial-gradient(120%_90%_at_50%_0%,#ffffff_0%,#e6edf3_55%,#d5dfe8_100%)] dark:bg-[radial-gradient(120%_90%_at_50%_0%,#1b2634_0%,#111822_55%,#0b0f14_100%)] dark:shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
+                    <Oficina3D estados={estados} onSelect={hablar} oscuro={oscuro} className="w-full h-full" />
                 </div>
 
                 <div className="flex flex-col gap-3">
