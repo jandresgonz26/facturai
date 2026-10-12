@@ -11,6 +11,7 @@ import { modeloPara } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
+import { supabase } from '@/lib/supabase'
 
 const todas = { ...agentTools, ...marketingTools } as Record<string, unknown>
 
@@ -56,13 +57,16 @@ export async function correrRutina(dep: Departamento): Promise<{ informe: string
     const tools = Object.fromEntries(cfg.herramientas.filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, never>
     const { model, providerOptions } = modeloPara('rutinas')
     const usadas: string[] = []
+    // Finanzas compara el mes con la meta de Ajustes; el resto no la necesita.
+    const meta = dep === 'finanzas' ? (await supabase.from('company_settings').select('monthly_goal').limit(1).maybeSingle()).data?.monthly_goal : null
+    const contexto = meta ? `\nMETA MENSUAL DE FACTURACIÓN: $${Number(meta).toFixed(2)} USD.` : ''
 
     await registrarEvento({ departamento: dep, tipo: 'rutina', titulo: `Revisión automática de ${info.nombre}`, estado: 'en_curso', fuente: 'cron' })
     try {
         const { text } = await generateText({
             model,
             providerOptions,
-            system: `Eres el departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.
+            system: `Eres el departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
 Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.`,
             prompt: cfg.encargo,
             tools,

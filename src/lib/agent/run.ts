@@ -12,6 +12,7 @@ export const oficinaTools = { ...agentTools, ...marketingTools }
 /** Configuración única del agente, compartida por el chat web y el bot de Telegram. */
 export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat') {
     const { model, providerOptions } = modeloPara('chat')
+    await registrarDecisiones(messages, fuente)
     const system = await buildSystemPrompt()
     const excluir = (process.env.AGENT_TOOLS_EXCLUDE || '').split(',').filter(Boolean)
     const tools = excluir.length
@@ -70,4 +71,26 @@ export async function runAgentTurn(messages: UIMessage[], continueFrom?: UIMessa
     }
     if (!last) throw new Error('El asistente no devolvió respuesta')
     return last
+}
+
+/**
+ * Cuando el usuario responde una tarjeta de confirmación, el turno siguiente llega con
+ * la decisión dentro del último mensaje del asistente. Se registra para que la oficina
+ * deje de mostrar al departamento "esperando" y quede constancia de qué se aprobó.
+ */
+async function registrarDecisiones(messages: UIMessage[], fuente: FuenteEvento): Promise<void> {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant') return
+    for (const part of last.parts as { type: string; state?: string; approval?: { approved?: boolean } }[]) {
+        if (!part.type.startsWith('tool-') || part.state !== 'approval-responded' || part.approval?.approved === undefined) continue
+        const name = part.type.slice('tool-'.length)
+        await registrarEvento({
+            departamento: departamentoDe(name),
+            tipo: 'herramienta',
+            titulo: `${part.approval.approved ? 'Confirmado' : 'Cancelado'}: ${TOOL_LABELS[name] ?? name}`,
+            estado: part.approval.approved ? 'en_curso' : 'cancelado',
+            fuente,
+            detalle: { tool: name },
+        })
+    }
 }
