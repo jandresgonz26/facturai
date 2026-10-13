@@ -58,6 +58,8 @@ Variables de entorno:
 | `ANTHROPIC_MODEL_RUTINAS` | Modelo de las rutinas automáticas y borradores (por defecto `claude-sonnet-5-5`) |
 | `ANTHROPIC_EFFORT` | Esfuerzo de razonamiento: `low`, `medium` (por defecto) o `high` |
 | `BREVO_API_KEY` | Listas y campañas de Brevo para el departamento de Marketing (la misma clave que usa la web) |
+| `SEO_API_TOKEN` | Llave de la API de solo lectura de la plataforma SEO para el departamento de SEO (el mismo valor que `EXTERNAL_API_TOKEN` allá) |
+| `SEO_API_URL` | Opcional. Dirección de la plataforma SEO; por defecto `https://seoagency.jamtech.cloud` |
 | `SUPABASE_DB_SCHEMA` | Esquema donde viven las tablas (por defecto `facturai`) |
 | `OPENAI_API_KEY` | Transcripción del micrófono; también sirve de respaldo del asistente si falta la clave de Anthropic |
 | `OPENAI_MODEL` | Modelo de respaldo con OpenAI (por defecto `gpt-5.4-mini`) |
@@ -128,8 +130,9 @@ FacturAI ya no tiene proyecto propio de Supabase: vive en el proyecto de la web 
 
 ## Oficina JAM (equipo de IA por departamentos)
 
-El asistente es la cara visible de cuatro departamentos: 📋 Operaciones, 🤝 Ventas, 💸 Finanzas y 📣 Marketing (`src/lib/agent/shared.ts`). Cada herramienta pertenece a uno; su uso queda registrado en `agent_events` (`schema_update_oficina.sql`) y se ve en **/oficina**, una oficina en 3D (three.js) donde cada personaje trabaja, descansa o levanta la mano cuando espera una confirmación. Tocar a un personaje abre el chat con ese departamento.
+El asistente es la cara visible de cinco departamentos: 📋 Operaciones, 🤝 Ventas, 💸 Finanzas, 📣 Marketing y 🔎 SEO (`src/lib/agent/shared.ts`). Cada herramienta pertenece a uno; su uso queda registrado en `agent_events` (`schema_update_oficina.sql`) y se ve en **/oficina**, una oficina en 3D (three.js) donde cada personaje trabaja, descansa o levanta la mano cuando espera una confirmación. Tocar a un personaje abre el chat con ese departamento.
 
 - **Chat** (web y Telegram): Claude con todas las herramientas; cada escritura sigue pasando por la tarjeta de confirmación.
 - **Marketing** (`src/lib/agent/tools-marketing.ts`): listas y campañas de Brevo, leads de la web y `redactar_boletin`, que investiga en la web y devuelve un borrador de "Aprende con Jami" con sus reglas editoriales.
-- **Rutinas automáticas** (`src/lib/agent/rutinas.ts`): `POST /api/cron/oficina` con `x-cron-secret` hace que cada departamento revise su área con herramientas de solo lectura y mande un informe corto por Telegram (`?dep=ventas` para uno solo, `?dry_run=1` para verlo sin enviarlo). El informe queda en la sesión de Telegram, así que se puede responder "hazlo" y el asistente sabe de qué se trata. Sugerencia de horarios en Dokploy: Finanzas y Ventas a las 8:00 de lunes a viernes, Operaciones a las 7:30 todos los días, Marketing los lunes a las 9:00.
+- **SEO** (`src/lib/agent/tools-seo.ts`): `seo_cartera` y `seo_cliente` leen la plataforma SEO (repo `plataforma-seo`, en seoagency.jamtech.cloud) por su API de solo lectura `/api/externo/*` con `SEO_API_TOKEN`. Los datos SEO siguen viviendo en la base SQLite de esa plataforma; aquí no se copian.
+- **Rutinas automáticas** (`src/lib/agent/rutinas.ts`): `POST /api/cron/oficina` con `x-cron-secret` hace que cada departamento revise su área con herramientas de solo lectura y mande un informe corto por Telegram (`?dep=ventas` para uno solo, `?dry_run=1` para verlo sin enviarlo). El informe queda en la sesión de Telegram, así que se puede responder "hazlo" y el asistente sabe de qué se trata. Sugerencia de horarios en Dokploy: Finanzas y Ventas a las 8:00 de lunes a viernes, Operaciones a las 7:30 todos los días, Marketing los lunes a las 9:00, SEO los lunes a las 9:30.

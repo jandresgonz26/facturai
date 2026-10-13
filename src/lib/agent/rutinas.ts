@@ -7,13 +7,14 @@
 import { generateText, stepCountIs } from 'ai'
 import { agentTools } from './tools'
 import { marketingTools } from './tools-marketing'
+import { seoTools } from './tools-seo'
 import { modeloPara } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
 import { supabase } from '@/lib/supabase'
 
-const todas = { ...agentTools, ...marketingTools } as Record<string, unknown>
+const todas = { ...agentTools, ...marketingTools, ...seoTools } as Record<string, unknown>
 
 /** Qué revisa cada departamento y con qué herramientas (todas de lectura). */
 const RUTINAS: Record<Departamento, { herramientas: string[]; encargo: string }> = {
@@ -48,6 +49,15 @@ Propón qué hacer hoy, qué partir y qué soltar. Máximo 5 puntos.`,
 - Cómo crecieron las listas de Brevo y qué trajo la web (leads del regalo de Jami, newsletter, lista de espera).
 - Resultado del último boletín (aperturas y clics) y si toca preparar la próxima edición (sale cada 15 días, los martes).
 Propón una acción concreta (por ejemplo, "redactar la edición #N" o "reenviar a quienes no abrieron"). Máximo 4 puntos.`,
+    },
+    seo: {
+        herramientas: ['seo_cartera', 'seo_cliente'],
+        encargo: `Revisa el SEO de los clientes de la agencia (seo_cartera; abre seo_cliente solo para los que lo ameriten):
+- Clientes con caída de clics de más de 15 % frente al mes anterior: qué consultas o páginas explican la caída.
+- Alertas activas, sobre todo las de posible hackeo o spam (son urgentes).
+- Reportes del mes todavía pendientes o en borrador.
+- Recomendaciones de prioridad alta que siguen abiertas.
+Para cada caso propone UNA acción concreta. Si un reporte ya está enviado y tiene enlace público, ofrece un mensaje corto de WhatsApp para mandárselo al cliente. Máximo 5 puntos.`,
     },
 }
 

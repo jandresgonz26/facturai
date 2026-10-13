@@ -44,6 +44,14 @@ const PREGUNTAS: Record<Departamento, string[]> = {
         '¿Qué leads llegaron por la web esta semana?',
         'Dame tres ideas de tema para el boletín sobre …',
     ],
+    seo: [
+        '¿Cómo va el SEO de mis clientes este mes?',
+        '¿Qué cliente bajó y por qué?',
+        '¿Qué reportes del mes faltan por enviar?',
+        '¿Hay alertas urgentes en algún sitio?',
+        'Dame el enlace del reporte de …',
+        'Resúmeme el SEO de … para mandárselo por WhatsApp',
+    ],
 }
 
 interface Props {

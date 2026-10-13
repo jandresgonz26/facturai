@@ -23,12 +23,16 @@ interface Props {
 }
 
 const DEPS = Object.keys(DEPARTAMENTOS) as Departamento[]
-/** Posición de cada escritorio en el piso (x, z) y tono de piel/pelo del personaje. */
+/**
+ * Posición de cada escritorio en el piso (x, z) y tono de piel/pelo del personaje.
+ * Dos filas: cuatro puestos al fondo y hasta tres delante, frente a la recepción.
+ */
 const PUESTOS: Record<Departamento, { pos: [number, number]; piel: number; pelo: number }> = {
-    ventas: { pos: [-3.1, -1.9], piel: 0xf1c9a5, pelo: 0x3b2a20 },
-    finanzas: { pos: [3.1, -1.9], piel: 0xc68642, pelo: 0x1a1412 },
-    operaciones: { pos: [-3.1, 1.6], piel: 0xe0ac69, pelo: 0x5a3a1e },
-    marketing: { pos: [3.1, 1.6], piel: 0xffdbac, pelo: 0x8b3a1f },
+    ventas: { pos: [-5.1, -2.7], piel: 0xf1c9a5, pelo: 0x3b2a20 },
+    marketing: { pos: [-1.7, -2.7], piel: 0xffdbac, pelo: 0x8b3a1f },
+    seo: { pos: [1.7, -2.7], piel: 0xd9a066, pelo: 0x2b2b2b },
+    finanzas: { pos: [5.1, -2.7], piel: 0xc68642, pelo: 0x1a1412 },
+    operaciones: { pos: [-3.4, 0.7], piel: 0xe0ac69, pelo: 0x5a3a1e },
 }
 
 interface Personaje {
@@ -151,9 +155,9 @@ export default function Oficina3D({ estados, onSelect, oscuro, className }: Prop
         const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 100)
         const mira = new THREE.Vector3(-0.3, 0.1, -0.2)
         let distancia = 1
-        // Con menos ancho la cámara se aleja para que quepan los cuatro escritorios y la recepción
+        // Con menos ancho la cámara se aleja para que quepan todos los escritorios y la recepción
         const encuadrar = () => {
-            distancia = Math.max(1, 1.9 / Math.max(camera.aspect, 0.5))
+            distancia = Math.max(1.1, 2.1 / Math.max(camera.aspect, 0.5))
         }
 
         // ── Luces ──

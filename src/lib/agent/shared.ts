@@ -47,6 +47,8 @@ export function isWriteTool(name: string): name is WriteToolName {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
+    seo_cartera: 'Revisando el SEO de la cartera',
+    seo_cliente: 'Revisando el SEO del cliente',
     brevo_resumen: 'Consultando las listas de Brevo',
     brevo_campanas: 'Consultando las campañas de Brevo',
     redactar_boletin: 'Redactando el boletín Aprende con Jami',
@@ -159,6 +161,7 @@ export const DEPARTAMENTOS = {
     ventas: { nombre: 'Ventas', emoji: '🤝', color: '#4BBFD0', descripcion: 'Leads, clientes, cotizaciones y seguimiento' },
     finanzas: { nombre: 'Finanzas', emoji: '💸', color: '#1B6CA8', descripcion: 'Actividades, facturas, cobros e ingresos' },
     marketing: { nombre: 'Marketing', emoji: '📣', color: '#F2A93B', descripcion: 'Boletín Aprende con Jami, Brevo y contenido' },
+    seo: { nombre: 'SEO', emoji: '🔎', color: '#7B61FF', descripcion: 'Posicionamiento y reportes de los clientes de la agencia' },
 } as const
 export type Departamento = keyof typeof DEPARTAMENTOS
 
@@ -176,6 +179,7 @@ const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
         'register_task_as_log', 'add_recurring_service', 'preview_email',
     ],
     marketing: ['brevo_resumen', 'brevo_campanas', 'redactar_boletin'],
+    seo: ['seo_cartera', 'seo_cliente'],
     operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
 }
 

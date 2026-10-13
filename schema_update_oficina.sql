@@ -29,3 +29,8 @@ end $$;
 drop trigger if exists agent_events_prune_trg on agent_events;
 create trigger agent_events_prune_trg after insert on agent_events
     for each statement execute function agent_events_prune();
+
+-- Departamentos nuevos: SEO (plataforma SEO), Dirección (asesor de la empresa) y Lanzamientos (planes de salida al mercado).
+alter table agent_events drop constraint if exists agent_events_departamento_check;
+alter table agent_events add constraint agent_events_departamento_check
+    check (departamento in ('operaciones', 'ventas', 'finanzas', 'marketing', 'seo', 'direccion', 'lanzamientos'));
