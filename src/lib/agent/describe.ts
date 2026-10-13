@@ -244,6 +244,10 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'cancel_reminder':
             return { title: 'Cancelar recordatorio', rows: [{ label: 'Qué', value: str(input.text) ?? '-' }] }
+        case 'recordar':
+            return { title: 'Guardar en la memoria', rows: [{ label: 'Recordar', value: str(input.hecho) ?? '-' }, ...(input.departamento ? [{ label: 'Departamento', value: str(input.departamento)! }] : [])], note: 'Todos los agentes lo tendrán en cuenta en cada conversación y en los informes.' }
+        case 'olvidar':
+            return { title: 'Quitar de la memoria', rows: [{ label: 'Olvidar', value: str(input.hecho) ?? '-' }] }
         case 'actualizar_consejo': {
             const estados: Record<string, string> = { aceptada: 'Aceptado', descartada: 'Descartado', hecha: 'Hecho' }
             const rows: Row[] = [{ label: 'Consejo', value: str(input.titulo) ?? '-' }, { label: 'Nuevo estado', value: estados[str(input.estado) ?? ''] ?? '-' }]
@@ -503,6 +507,10 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Recordatorio programado', lines: [`${str(d.text) ?? ''} · ${str(d.when) ?? ''}`] }
         case 'cancel_reminder':
             return { title: 'Recordatorio cancelado', lines: [str(d.text) ?? ''] }
+        case 'recordar':
+            return { title: 'Guardado en la memoria', lines: [str(d.hecho) ?? ''] }
+        case 'olvidar':
+            return { title: 'Quitado de la memoria', lines: [str(d.hecho) ?? ''] }
         case 'actualizar_consejo':
             return { title: 'Consejo actualizado', lines: [`${str(d.titulo) ?? ''} · ${str(d.estado) ?? ''}`, ...(d.resultado ? [str(d.resultado)!] : [])] }
         case 'snooze_alert':

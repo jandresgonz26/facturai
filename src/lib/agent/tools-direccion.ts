@@ -36,9 +36,14 @@ async function q<T>(p: PromiseLike<{ data: unknown; error: { message: string } |
 }
 
 /** Panorama de la empresa: lo calcula aquí, en código, para que el modelo no sume a mano. */
-export async function panoramaEmpresa() {
+/**
+ * `desdeMes` (YYYY-MM): analiza desde ese mes hasta hoy en vez de los últimos 6 meses (por ejemplo, si la
+ * memoria dice que los meses anteriores tienen datos de prueba). Como máximo 12 meses.
+ */
+export async function panoramaEmpresa(desdeMes?: string) {
     const hoy = todayISO()
-    const meses = mesesAtras(hoy, 6)
+    const todos = mesesAtras(hoy, 12)
+    const meses = desdeMes && desdeMes <= hoy.slice(0, 7) ? todos.filter((m) => m >= desdeMes) : todos.slice(-6)
     const desde = `${meses[0]}-01`
     type Inv = { client_id: string; issue_date: string; total_amount: number; status: string; paid_at: string | null; due_date: string | null; clients: { name: string } | null }
     type Cli = { id: string; name: string; stage: string | null; source: string | null; created_at: string; next_action_at: string | null }
@@ -66,7 +71,7 @@ export async function panoramaEmpresa() {
         facturado: r2(invoices.filter((i) => mesDe(i.issue_date) === m).reduce((s, i) => s + Number(i.total_amount), 0)),
         cobrado: r2(invoices.filter((i) => i.paid_at && mesDe(i.paid_at) === m).reduce((s, i) => s + Number(i.total_amount), 0)),
     }))
-    const total6 = porMes.reduce((s, m) => s + m.facturado, 0)
+    const total6 = porMes.reduce((s, m) => s + m.facturado, 0) // total del período analizado
     const porCliente = new Map<string, { cliente: string; facturado: number }>()
     for (const i of invoices) {
         const c = porCliente.get(i.client_id) ?? { cliente: i.clients?.name ?? 'Desconocido', facturado: 0 }
@@ -86,7 +91,7 @@ export async function panoramaEmpresa() {
     return {
         fecha: hoy,
         ingresos: {
-            ultimos6Meses: porMes,
+            meses: porMes,
             promedioMensualFacturado: r2(total6 / meses.length),
             mesEnCurso: { mes: mesActual.mes, facturado: mesActual.facturado, cobrado: mesActual.cobrado, meta, avanceMetaPct: meta ? pct(mesActual.facturado, meta) : null },
         },
@@ -96,7 +101,7 @@ export async function panoramaEmpresa() {
             pesoSobrePromedioFacturadoPct: pct(mensualRecurrente, total6 / meses.length),
         },
         dependenciaDeClientes: {
-            top5Ultimos6Meses: ranking.slice(0, 5).map((c) => ({ cliente: c.cliente, facturado: r2(c.facturado), participacionPct: pct(c.facturado, total6) })),
+            top5DelPeriodo: ranking.slice(0, 5).map((c) => ({ cliente: c.cliente, facturado: r2(c.facturado), participacionPct: pct(c.facturado, total6) })),
             clientesQueFacturaron: ranking.length,
             participacionDelPrincipalPct: ranking[0] ? pct(ranking[0].facturado, total6) : null,
         },
@@ -143,9 +148,9 @@ export async function guardarConsejos(items: Omit<Consejo, 'id' | 'semana' | 'es
 export const direccionTools = {
     panorama_empresa: tool({
         description:
-            'Panorama de toda la empresa para decidir: ingresos facturados y cobrados de los últimos 6 meses y avance contra la meta, ingreso mensual recurrente, dependencia de los principales clientes, por cobrar y vencido, trabajo sin facturar, clientes por etapa y nuevos con su origen, cotizaciones pendientes y tasa de aprobación, carga de tareas y actividad de la oficina. Úsala para "¿cómo va la empresa?", "¿qué oportunidades ves?", "¿qué riesgos tengo?", "¿dependo de algún cliente?". Las cifras ya vienen calculadas: no las recalcules.',
-        inputSchema: z.object({}),
-        execute: async () => run(() => panoramaEmpresa()),
+            'Panorama de toda la empresa para decidir: ingresos facturados y cobrados por mes (últimos 6, o desde el mes que indiques) y avance contra la meta, ingreso mensual recurrente, dependencia de los principales clientes, por cobrar y vencido, trabajo sin facturar, clientes por etapa y nuevos con su origen, cotizaciones pendientes y tasa de aprobación, carga de tareas y actividad de la oficina. Úsala para "¿cómo va la empresa?", "¿qué oportunidades ves?", "¿qué riesgos tengo?", "¿dependo de algún cliente?". Las cifras ya vienen calculadas: no las recalcules.',
+        inputSchema: z.object({ desde_mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().describe('YYYY-MM: analizar desde ese mes (por ejemplo si la MEMORIA dice que meses anteriores no cuentan). Vacío = últimos 6 meses') }),
+        execute: async ({ desde_mes }) => run(() => panoramaEmpresa(desde_mes)),
     }),
 
     consejos_direccion: tool({

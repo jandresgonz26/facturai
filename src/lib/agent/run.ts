@@ -3,13 +3,14 @@ import { agentTools, toolApproval } from './tools'
 import { marketingTools } from './tools-marketing'
 import { seoTools } from './tools-seo'
 import { direccionTools } from './tools-direccion'
+import { memoriaTools } from './tools-memoria'
 import { buildSystemPrompt } from './system-prompt'
 import { modeloPara } from './modelo'
 import { registrarEvento, type FuenteEvento } from './eventos'
 import { TOOL_LABELS, departamentoDe, isWriteTool } from './shared'
 
 /** Todas las herramientas de la oficina: las de siempre más las de Marketing. */
-export const oficinaTools = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools }
+export const oficinaTools = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...memoriaTools }
 
 /** Configuración única del agente, compartida por el chat web y el bot de Telegram. */
 export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat') {

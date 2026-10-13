@@ -40,6 +40,8 @@ export const WRITE_TOOLS = [
     'set_invoice_bolivares',
     'set_client_invoice_currency',
     'actualizar_consejo',
+    'recordar',
+    'olvidar',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -48,6 +50,9 @@ export function isWriteTool(name: string): name is WriteToolName {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
+    memoria_listar: 'Revisando lo que recuerdo',
+    recordar: 'Guardar en la memoria',
+    olvidar: 'Quitar de la memoria',
     panorama_empresa: 'Revisando el panorama de la empresa',
     consejos_direccion: 'Revisando los consejos de Dirección',
     actualizar_consejo: 'Actualizar consejo de Dirección',

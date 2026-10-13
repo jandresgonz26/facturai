@@ -10,6 +10,7 @@ import { agentTools } from './tools'
 import { marketingTools } from './tools-marketing'
 import { seoTools } from './tools-seo'
 import { direccionTools, guardarConsejos } from './tools-direccion'
+import { memoriaParaPrompt } from './tools-memoria'
 import { anthropicProvider, modeloPara, proveedorActivo } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
@@ -123,13 +124,14 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
     const meta = dep === 'finanzas' ? (await supabase.from('company_settings').select('monthly_goal').limit(1).maybeSingle()).data?.monthly_goal : null
     const contexto = meta ? `\nMETA MENSUAL DE FACTURACIÓN: $${Number(meta).toFixed(2)} USD.` : ''
 
+    const memoria = await memoriaParaPrompt(dep)
     await registrarEvento({ departamento: dep, tipo: 'rutina', titulo: `Revisión automática de ${info.nombre}`, estado: 'en_curso', fuente: 'cron' })
     try {
         const { text } = await generateText({
             model,
             providerOptions,
             system: `Eres el departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
-Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.`,
+Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.${memoria}`,
             prompt: cfg.encargo,
             tools,
             stopWhen: stepCountIs(cfg.pasos ?? 6),
