@@ -4,6 +4,7 @@ import { DEPARTAMENTOS_CON_RUTINA, correrRutina } from '@/lib/agent/rutinas'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
 import { appendAssistantMessage } from '@/lib/telegram/session'
+import { carteraSeo, videoResumenSeo } from '@/lib/agent/tools-seo'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -52,5 +53,33 @@ export async function POST(req: NextRequest) {
             resultados[dep] = { enviado: false, error: e instanceof Error ? e.message : String(e) }
         }
     }
+    // Los lunes, con el informe de SEO, también van los resúmenes en video (aunque el informe no traiga novedades).
+    if (deps.includes('seo') && !dryRun && chatIds.length > 0) {
+        try { resultados.seo_videos = { enviado: await enviarVideosSeo(chatIds) } } catch (e) { resultados.seo_videos = { enviado: false, error: e instanceof Error ? e.message : String(e) } }
+    }
     return NextResponse.json({ ok: true, dry_run: dryRun, resultados })
 }
+
+/**
+ * Después del informe de SEO: el resumen en video de cada cliente (la plataforma reutiliza el de la semana si ya
+ * existe) y un mensaje con los enlaces. Un cliente que falla no impide los demás; el fallo va en el mensaje.
+ */
+async function enviarVideosSeo(chatIds: string[]): Promise<boolean> {
+    let clientes: { slug: string; nombre: string }[]
+    try { clientes = (await carteraSeo()).clientes } catch { return false }
+    if (clientes.length === 0) return false
+    const lineas: string[] = []
+    for (const c of clientes) {
+        try {
+            const v = await videoResumenSeo(c.slug)
+            lineas.push(v.enlace ? `• <b>${esc(c.nombre)}</b>: ${esc(v.titular ?? 'resumen')}\n<a href="${esc(v.enlace)}">Ver el video (${esc(v.periodo)})</a>` : `• <b>${esc(c.nombre)}</b>: video listo, sin enlace (falta APP_URL en la plataforma)`)
+        } catch (e) {
+            lineas.push(`• <b>${esc(c.nombre)}</b>: no se pudo generar el video (${esc(e instanceof Error ? e.message : String(e)).slice(0, 140)})`)
+        }
+    }
+    const html = `🎬 <b>Resúmenes SEO en video de esta semana</b>\n\n${lineas.join('\n\n')}`
+    for (const chatId of chatIds) await sendMessage(chatId, html)
+    return true
+}
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

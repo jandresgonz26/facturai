@@ -19,11 +19,37 @@ async function run<T>(fn: () => Promise<T>): Promise<ToolResult<T>> {
 
 const MES = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().describe('Mes YYYY-MM. Vacío = último mes completo')
 
-async function seo<T>(path: string, mes?: string): Promise<T> {
+function base(): { url: string; token: string } {
     const token = process.env.SEO_API_TOKEN
     if (!token) throw new Error('Falta SEO_API_TOKEN en el servidor (el mismo valor que EXTERNAL_API_TOKEN en la plataforma SEO).')
-    const base = (process.env.SEO_API_URL || 'https://seoagency.jamtech.cloud').replace(/\/+$/, '')
-    const url = `${base}/api/externo${path}${mes ? `?mes=${mes}` : ''}`
+    return { url: (process.env.SEO_API_URL || 'https://seoagency.jamtech.cloud').replace(/\/+$/, ''), token }
+}
+
+export type CarteraSeo = { mes: string; clientes: { slug: string; nombre: string }[] }
+export type VideoSeo = { id: string; titular: string | null; periodo: string; creado: string; enlace: string | null; nuevo: boolean }
+
+/**
+ * Pide el resumen en video de un cliente a la plataforma SEO: reutiliza el de la semana o genera uno nuevo
+ * (Claude + voz, 1 a 2 minutos). Lo usa la rutina de SEO de los lunes, no el chat.
+ */
+export async function videoResumenSeo(slug: string): Promise<VideoSeo> {
+    const { url, token } = base()
+    const r = await fetch(`${url}/api/externo/clientes/${encodeURIComponent(slug)}/video`, {
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}',
+        cache: 'no-store', signal: AbortSignal.timeout(300_000),
+    })
+    const j = (await r.json().catch(() => null)) as (VideoSeo & { error?: string }) | null
+    if (!r.ok || !j) throw new Error(j?.error ?? `La plataforma SEO respondió ${r.status}`)
+    return j
+}
+
+export async function carteraSeo(): Promise<CarteraSeo> {
+    return seo<CarteraSeo>('/cartera')
+}
+
+async function seo<T>(path: string, mes?: string): Promise<T> {
+    const { url: raiz, token } = base()
+    const url = `${raiz}/api/externo${path}${mes ? `?mes=${mes}` : ''}`
     const r = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(60_000) })
     if (r.status === 404) throw new Error('Ese cliente no existe en la plataforma SEO. Usa seo_cartera para ver los slugs.')
     if (!r.ok) throw new Error(`La plataforma SEO respondió ${r.status}: ${(await r.text()).slice(0, 200)}`)
