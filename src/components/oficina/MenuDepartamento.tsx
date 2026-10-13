@@ -52,6 +52,15 @@ const PREGUNTAS: Record<Departamento, string[]> = {
         'Dame el enlace del reporte de …',
         'Resúmeme el SEO de … para mandárselo por WhatsApp',
     ],
+    direccion: [
+        '¿Cómo va la empresa este mes?',
+        '¿Qué oportunidades ves para ganar más dinero?',
+        '¿Qué riesgos o fallos tiene hoy la empresa?',
+        '¿Dependo demasiado de algún cliente?',
+        '¿Qué debería dejar de hacer?',
+        '¿Qué pasó con tus consejos anteriores?',
+        'Analiza esta idea de negocio: …',
+    ],
 }
 
 interface Props {

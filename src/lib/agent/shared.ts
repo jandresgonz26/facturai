@@ -39,6 +39,7 @@ export const WRITE_TOOLS = [
     'cancel_reminder',
     'set_invoice_bolivares',
     'set_client_invoice_currency',
+    'actualizar_consejo',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -47,6 +48,9 @@ export function isWriteTool(name: string): name is WriteToolName {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
+    panorama_empresa: 'Revisando el panorama de la empresa',
+    consejos_direccion: 'Revisando los consejos de Dirección',
+    actualizar_consejo: 'Actualizar consejo de Dirección',
     seo_cartera: 'Revisando el SEO de la cartera',
     seo_cliente: 'Revisando el SEO del cliente',
     brevo_resumen: 'Consultando las listas de Brevo',
@@ -162,6 +166,7 @@ export const DEPARTAMENTOS = {
     finanzas: { nombre: 'Finanzas', emoji: '💸', color: '#1B6CA8', descripcion: 'Actividades, facturas, cobros e ingresos' },
     marketing: { nombre: 'Marketing', emoji: '📣', color: '#F2A93B', descripcion: 'Boletín Aprende con Jami, Brevo y contenido' },
     seo: { nombre: 'SEO', emoji: '🔎', color: '#7B61FF', descripcion: 'Posicionamiento y reportes de los clientes de la agencia' },
+    direccion: { nombre: 'Dirección', emoji: '🧭', color: '#D4A72C', descripcion: 'Consejero de la empresa: oportunidades, riesgos y decisiones' },
 } as const
 export type Departamento = keyof typeof DEPARTAMENTOS
 
@@ -180,6 +185,7 @@ const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
     ],
     marketing: ['brevo_resumen', 'brevo_campanas', 'redactar_boletin'],
     seo: ['seo_cartera', 'seo_cliente'],
+    direccion: ['panorama_empresa', 'consejos_direccion', 'actualizar_consejo'],
     operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
 }
 

@@ -244,6 +244,12 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'cancel_reminder':
             return { title: 'Cancelar recordatorio', rows: [{ label: 'Qué', value: str(input.text) ?? '-' }] }
+        case 'actualizar_consejo': {
+            const estados: Record<string, string> = { aceptada: 'Aceptado', descartada: 'Descartado', hecha: 'Hecho' }
+            const rows: Row[] = [{ label: 'Consejo', value: str(input.titulo) ?? '-' }, { label: 'Nuevo estado', value: estados[str(input.estado) ?? ''] ?? '-' }]
+            if (input.resultado) rows.push({ label: 'Resultado', value: str(input.resultado)! })
+            return { title: 'Actualizar consejo de Dirección', rows }
+        }
         case 'snooze_alert':
             return {
                 title: 'Posponer aviso',
@@ -497,6 +503,8 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Recordatorio programado', lines: [`${str(d.text) ?? ''} · ${str(d.when) ?? ''}`] }
         case 'cancel_reminder':
             return { title: 'Recordatorio cancelado', lines: [str(d.text) ?? ''] }
+        case 'actualizar_consejo':
+            return { title: 'Consejo actualizado', lines: [`${str(d.titulo) ?? ''} · ${str(d.estado) ?? ''}`, ...(d.resultado ? [str(d.resultado)!] : [])] }
         case 'snooze_alert':
             return { title: 'Aviso pospuesto', lines: [`${str(d.label) ?? ''} · hasta ${d.until ? dateLabel(str(d.until)) : ''}`] }
         case 'dismiss_alert':

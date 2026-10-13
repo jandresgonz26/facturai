@@ -4,20 +4,37 @@
  * informe corto con propuestas. Las acciones las decide el dueño respondiendo al
  * informe en Telegram o en el chat, donde cada escritura pasa por confirmación.
  */
-import { generateText, stepCountIs } from 'ai'
+import { generateObject, generateText, stepCountIs } from 'ai'
+import { z } from 'zod'
 import { agentTools } from './tools'
 import { marketingTools } from './tools-marketing'
 import { seoTools } from './tools-seo'
-import { modeloPara } from './modelo'
+import { direccionTools, guardarConsejos } from './tools-direccion'
+import { anthropicProvider, modeloPara, proveedorActivo } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
 import { supabase } from '@/lib/supabase'
 
-const todas = { ...agentTools, ...marketingTools, ...seoTools } as Record<string, unknown>
+const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools } as Record<string, unknown>
+
+/** Contexto de la empresa para Dirección (lo que no está en los datos). */
+export const EMPRESA = `JAM Tech Corp (marca "JAM Tech") es una agencia de software y marketing de Puerto Ordaz, Venezuela, dirigida por José González (pronto con una socia). Líneas de negocio: desarrollo web y de apps; SEO para clientes con una plataforma propia; automatización e IA para pequeños negocios (asistente Jami, regalo de mensajes de WhatsApp y boletín "Aprende con Jami"); Wapalink, su producto de asistente de IA para WhatsApp (en lista de espera); y comisiones como Hostinger Partner (20 % en ventas nuevas). Clientes: sobre todo pequeños negocios de Venezuela y Latinoamérica; cobra en USD y EUR.`
+
+type Rutina = {
+    herramientas: string[]
+    encargo: string
+    /** Dirección razona con el modelo del chat (el más capaz) y puede buscar en la web. */
+    modelo?: 'chat' | 'rutinas'
+    web?: boolean
+    maxTokens?: number
+    pasos?: number
+    /** Qué hacer con el informe ya escrito (Dirección guarda sus consejos). */
+    despues?: (informe: string) => Promise<unknown>
+}
 
 /** Qué revisa cada departamento y con qué herramientas (todas de lectura). */
-const RUTINAS: Record<Departamento, { herramientas: string[]; encargo: string }> = {
+const RUTINAS: Record<Departamento, Rutina> = {
     ventas: {
         herramientas: ['list_pipeline', 'get_client_timeline', 'list_quotes', 'list_client_notes', 'leads_web', 'list_tasks'],
         encargo: `Revisa el pipeline comercial:
@@ -59,13 +76,48 @@ Propón una acción concreta (por ejemplo, "redactar la edición #N" o "reenviar
 - Recomendaciones de prioridad alta que siguen abiertas.
 Para cada caso propone UNA acción concreta. Si un reporte ya está enviado y tiene enlace público, ofrece un mensaje corto de WhatsApp para mandárselo al cliente. Máximo 5 puntos.`,
     },
+    direccion: {
+        herramientas: ['panorama_empresa', 'consejos_direccion', 'seo_cartera', 'brevo_resumen', 'leads_web', 'list_pipeline'],
+        modelo: 'chat', web: true, maxTokens: 4000, pasos: 12,
+        encargo: `Haz la revisión semanal de TODA la empresa como su director y consejero. ${EMPRESA}
+
+Empieza siempre con panorama_empresa y consejos_direccion; usa las demás herramientas solo si aportan. Busca en la web solo para validar una oportunidad de mercado concreta (tendencias, precios o demanda en Venezuela y Latinoamérica) y cita la fuente con su enlace.
+
+Entrega exactamente, en este orden:
+- Una línea de cómo va el mes frente a la meta (cifras de panorama_empresa).
+- **Oportunidades**: 3 formas concretas de ganar más dinero o escalar, cada una con el impacto esperado y el primer paso de esta semana.
+- **Riesgos**: 3 riesgos o fallos de la empresa con su evidencia en cifras (dependencia de un cliente, cobros, recurrencia baja, pipeline vacío, sobrecarga…).
+- **Decisión de la semana**: 1 decisión que José debe tomar, con tu recomendación y por qué.
+
+Reglas: sé franco, sin suavizar. Separa los hechos (cifras de las herramientas) de tus hipótesis. Si un consejo anterior sigue "propuesta" desde hace más de dos semanas, recuérdalo en vez de inventar uno nuevo parecido; no repitas los "descartada". Nunca recomiendes ni menciones competidores de Wapalink ni de JAM Tech. Máximo 350 palabras.`,
+        despues: async (informe) => {
+            // Un segundo paso, barato, extrae los consejos del informe para guardarlos y seguirlos.
+            const { model, providerOptions } = modeloPara('rutinas')
+            const { object } = await generateObject({
+                model, providerOptions,
+                schema: z.object({
+                    consejos: z.array(z.object({
+                        tipo: z.enum(['oportunidad', 'riesgo', 'decision']),
+                        titulo: z.string().describe('Máximo 12 palabras'),
+                        detalle: z.string().describe('El consejo completo tal como aparece en el informe, con su primer paso o evidencia'),
+                        impacto: z.enum(['alto', 'medio', 'bajo']),
+                    })),
+                }),
+                prompt: `Extrae del informe de Dirección cada oportunidad, cada riesgo y la decisión de la semana, sin inventar nada que no esté en el texto.\n\nINFORME:\n${informe}`,
+            })
+            return guardarConsejos(object.consejos.slice(0, 7))
+        },
+    },
 }
 
-export async function correrRutina(dep: Departamento): Promise<{ informe: string; herramientas_usadas: string[] }> {
+/** `guardar: false` (prueba con dry_run): el informe se escribe pero no se guarda nada derivado (consejos de Dirección). */
+export async function correrRutina(dep: Departamento, opts: { guardar?: boolean } = {}): Promise<{ informe: string; herramientas_usadas: string[] }> {
     const cfg = RUTINAS[dep]
     const info = DEPARTAMENTOS[dep]
     const tools = Object.fromEntries(cfg.herramientas.filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, never>
-    const { model, providerOptions } = modeloPara('rutinas')
+    const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
+    // Búsqueda web nativa de Claude solo para las rutinas que la piden (Dirección) y con proveedor Anthropic.
+    if (cfg.web && proveedorActivo() === 'anthropic') (tools as Record<string, unknown>).web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 4 })
     const usadas: string[] = []
     // Finanzas compara el mes con la meta de Ajustes; el resto no la necesita.
     const meta = dep === 'finanzas' ? (await supabase.from('company_settings').select('monthly_goal').limit(1).maybeSingle()).data?.monthly_goal : null
@@ -80,14 +132,18 @@ export async function correrRutina(dep: Departamento): Promise<{ informe: string
 Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.`,
             prompt: cfg.encargo,
             tools,
-            stopWhen: stepCountIs(6),
-            maxOutputTokens: 1500,
+            stopWhen: stepCountIs(cfg.pasos ?? 6),
+            maxOutputTokens: cfg.maxTokens ?? 1500,
             onStepFinish: ({ toolCalls }) => { for (const c of toolCalls) usadas.push(c.toolName) },
         })
         const informe = text.trim()
+        let guardados: unknown = null
+        if (cfg.despues && informe !== 'SIN_NOVEDADES' && opts.guardar !== false) {
+            try { guardados = await cfg.despues(informe) } catch (e) { console.error(`[rutina ${dep}] después del informe`, e) }
+        }
         await registrarEvento({
             departamento: dep, tipo: 'rutina', titulo: `Informe de ${info.nombre}`, estado: 'hecho', fuente: 'cron',
-            detalle: { informe: informe.slice(0, 4000), herramientas: usadas },
+            detalle: { informe: informe.slice(0, 4000), herramientas: usadas, ...(guardados !== null ? { guardados } : {}) },
         })
         return { informe, herramientas_usadas: usadas }
     } catch (e) {

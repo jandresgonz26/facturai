@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     for (const dep of deps) {
         try {
-            const { informe } = await correrRutina(dep)
+            const { informe } = await correrRutina(dep, { guardar: !dryRun })
             if (informe === 'SIN_NOVEDADES' || dryRun || chatIds.length === 0) {
                 resultados[dep] = { enviado: false, informe }
                 continue

@@ -33,6 +33,7 @@ const PUESTOS: Record<Departamento, { pos: [number, number]; piel: number; pelo:
     seo: { pos: [1.7, -2.7], piel: 0xd9a066, pelo: 0x2b2b2b },
     finanzas: { pos: [5.1, -2.7], piel: 0xc68642, pelo: 0x1a1412 },
     operaciones: { pos: [-3.4, 0.7], piel: 0xe0ac69, pelo: 0x5a3a1e },
+    direccion: { pos: [0, 0.7], piel: 0xc58c5c, pelo: 0x9a9a9a },
 }
 
 interface Personaje {

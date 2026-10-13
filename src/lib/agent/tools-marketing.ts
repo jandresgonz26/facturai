@@ -46,8 +46,9 @@ export const marketingTools = {
         inputSchema: z.object({}),
         execute: async () =>
             run(async () => {
-                const r = await brevo<{ lists: { id: number; name: string; totalSubscribers: number; totalBlacklisted: number }[] }>('/contacts/lists?limit=50')
-                return r.lists.map((l) => ({ id: l.id, nombre: l.name, suscriptores: l.totalSubscribers, dados_de_baja: l.totalBlacklisted }))
+                const r = await brevo<{ lists: { id: number; name: string; totalSubscribers: number; uniqueSubscribers?: number; totalBlacklisted: number }[] }>('/contacts/lists?limit=50')
+                // Brevo deja `totalSubscribers` en 0 en esta API: el número real de contactos es `uniqueSubscribers`.
+                return r.lists.map((l) => ({ id: l.id, nombre: l.name, suscriptores: l.uniqueSubscribers ?? l.totalSubscribers, dados_de_baja: l.totalBlacklisted }))
             }),
     }),
 
