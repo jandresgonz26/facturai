@@ -3,7 +3,6 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
-import { toast } from 'sonner'
 import { Bot, CircleCheck, CircleDashed, Hand, LoaderCircle, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAgent } from '@/components/agent/AgentProvider'

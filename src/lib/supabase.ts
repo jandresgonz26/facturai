@@ -21,6 +21,7 @@ export const DB_SCHEMA = process.env.SUPABASE_DB_SCHEMA || 'facturai'
  *   políticas estén abiertas, y fallará de forma visible cuando no lo estén.
  */
 // El esquema es dinámico, por eso el tipo genérico lleva `string` y no el `"public"` por defecto.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- sin tipos generados de la base: el cliente trabaja sobre el esquema facturai
 function makeClient(): SupabaseClient<any, string, string> {
     if (typeof window === 'undefined') {
         const serverKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
