@@ -94,7 +94,7 @@ export function MenuDepartamento({ dep, onClose, onPreguntar }: Props) {
                 {info && (
                     <>
                         <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2"><span className="text-xl">{info.emoji}</span> {info.nombre}</DialogTitle>
+                            <DialogTitle className="flex items-center gap-2"><span className="text-xl">{info.emoji}</span> {info.persona} <span className="font-normal text-muted-foreground">· {info.nombre}</span></DialogTitle>
                             <DialogDescription>{info.descripcion}. Elige una pregunta o escribe la tuya.</DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-1.5">
@@ -116,7 +116,7 @@ export function MenuDepartamento({ dep, onClose, onPreguntar }: Props) {
                                 value={otra}
                                 onChange={(e) => setOtra(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarOtra() } }}
-                                placeholder={`Pregúntale otra cosa a ${info.nombre}…`}
+                                placeholder={`Pregúntale otra cosa a ${info.persona}…`}
                                 rows={2}
                             />
                             <Button onClick={enviarOtra} disabled={!otra.trim()} className="justify-self-end">Preguntar <ArrowRight /></Button>

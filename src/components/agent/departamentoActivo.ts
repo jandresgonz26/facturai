@@ -1,7 +1,8 @@
 import { getToolName, isToolUIPart, type UIMessage } from 'ai'
 import { DEPARTAMENTOS, departamentoDe, type Departamento } from '@/lib/agent/shared'
 
-const PREFIJOS = (Object.keys(DEPARTAMENTOS) as Departamento[]).map((d) => ({ d, re: new RegExp(`^\\s*${DEPARTAMENTOS[d].nombre}\\s*[:,]`, 'i') }))
+// «Dirección: …» (menú de la oficina) o «Ramón, …» (por el nombre del agente).
+const PREFIJOS = (Object.keys(DEPARTAMENTOS) as Departamento[]).map((d) => ({ d, re: new RegExp(`^\\s*(${DEPARTAMENTOS[d].nombre}|${DEPARTAMENTOS[d].persona})\\s*[:,]`, 'i') }))
 
 function textoDe(m: UIMessage): string {
     return m.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ')

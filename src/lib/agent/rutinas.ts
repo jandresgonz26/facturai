@@ -130,8 +130,8 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
         const { text } = await generateText({
             model,
             providerOptions,
-            system: `Eres el departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
-Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.${memoria}`,
+            system: `Eres ${info.persona}, del departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
+Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.persona} · ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.${memoria}`,
             prompt: cfg.encargo,
             tools,
             stopWhen: stepCountIs(cfg.pasos ?? 6),

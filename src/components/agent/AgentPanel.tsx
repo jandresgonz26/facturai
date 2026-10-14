@@ -214,7 +214,7 @@ export function AgentPanel() {
                             {info ? info.emoji : <Sparkles className="w-4 h-4" />}
                         </div>
                         <div>
-                            <SheetTitle className="text-base leading-tight" data-testid="agente-activo">{info ? info.nombre : 'Asistente'}</SheetTitle>
+                            <SheetTitle className="text-base leading-tight" data-testid="agente-activo">{info ? `${info.persona} · ${info.nombre}` : 'Asistente'}</SheetTitle>
                             <SheetDescription className="text-xs leading-tight">{info ? `${info.descripcion} · Oficina JAM` : 'Tu equipo de IA por departamentos, por chat o por voz'}</SheetDescription>
                         </div>
                     </div>

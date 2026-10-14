@@ -441,10 +441,10 @@ export default function Oficina3D({ estados, onSelect, oscuro, className }: Prop
             const anillo = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.9, 48), new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }))
             anillo.rotation.x = -Math.PI / 2
             anillo.position.set(0, 0.012, 0.78)
-            const nombre = etiqueta(`${info.emoji} ${info.nombre}`, { color: oscuro ? '#ffffff' : '#0B0F14', fondo: oscuro ? '#243040' : '#ffffff', punto: info.color, ancho: 440, alto: 110 })
-            nombre.scale.set(2.3, 0.58, 1)
+            const nombre = etiqueta(`${info.emoji} ${info.persona} · ${info.nombre}`, { color: oscuro ? '#ffffff' : '#0B0F14', fondo: oscuro ? '#243040' : '#ffffff', punto: info.color, ancho: 560, alto: 110 })
+            nombre.scale.set(2.93, 0.58, 1)
             // A la izquierda del monitor, para que los avisos (centrados sobre el personaje) no lo tapen
-            nombre.position.set(-1.15, 1.95, -0.3)
+            nombre.position.set(-1.46, 1.95, -0.3)
             grupo.add(aviso, tecleando, anillo, nombre)
 
             scene.add(grupo)

@@ -166,12 +166,12 @@ export function fmtMoney(n: number | null | undefined, currency?: string | null)
 // asistente (tarjetas del chat, registro de eventos y la oficina en 3D), no para
 // restringir qué puede hacer: en el chat todas las herramientas siguen disponibles.
 export const DEPARTAMENTOS = {
-    operaciones: { nombre: 'Operaciones', emoji: '📋', color: '#6FC043', descripcion: 'Tareas, plan del día, correo y recordatorios' },
-    ventas: { nombre: 'Ventas', emoji: '🤝', color: '#4BBFD0', descripcion: 'Leads, clientes, cotizaciones y seguimiento' },
-    finanzas: { nombre: 'Finanzas', emoji: '💸', color: '#1B6CA8', descripcion: 'Actividades, facturas, cobros e ingresos' },
-    marketing: { nombre: 'Marketing', emoji: '📣', color: '#F2A93B', descripcion: 'Boletín Aprende con Jami, Brevo y contenido' },
-    seo: { nombre: 'SEO', emoji: '🔎', color: '#7B61FF', descripcion: 'Posicionamiento y reportes de los clientes de la agencia' },
-    direccion: { nombre: 'Dirección', emoji: '🧭', color: '#D4A72C', descripcion: 'Consejero de la empresa: oportunidades, riesgos y decisiones' },
+    operaciones: { persona: 'Sofía', nombre: 'Operaciones', emoji: '📋', color: '#6FC043', descripcion: 'Tareas, plan del día, correo y recordatorios' },
+    ventas: { persona: 'Mateo', nombre: 'Ventas', emoji: '🤝', color: '#4BBFD0', descripcion: 'Leads, clientes, cotizaciones y seguimiento' },
+    finanzas: { persona: 'Valeria', nombre: 'Finanzas', emoji: '💸', color: '#1B6CA8', descripcion: 'Actividades, facturas, cobros e ingresos' },
+    marketing: { persona: 'Camila', nombre: 'Marketing', emoji: '📣', color: '#F2A93B', descripcion: 'Boletín Aprende con Jami, Brevo y contenido' },
+    seo: { persona: 'Nicolás', nombre: 'SEO', emoji: '🔎', color: '#7B61FF', descripcion: 'Posicionamiento y reportes de los clientes de la agencia' },
+    direccion: { persona: 'Ramón', nombre: 'Dirección', emoji: '🧭', color: '#D4A72C', descripcion: 'Consejero de la empresa: oportunidades, riesgos y decisiones' },
 } as const
 export type Departamento = keyof typeof DEPARTAMENTOS
 

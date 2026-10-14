@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
                 resultados[dep] = { enviado: false, informe }
                 continue
             }
-            const texto = `[Informe automático de ${DEPARTAMENTOS[dep].nombre}]\n\n${informe}`
+            const texto = `[Informe automático de ${DEPARTAMENTOS[dep].persona}, de ${DEPARTAMENTOS[dep].nombre}]\n\n${informe}`
             for (const chatId of chatIds) {
                 await sendMessage(chatId, mdToTelegramHtml(informe))
                 await appendAssistantMessage(chatId, texto)

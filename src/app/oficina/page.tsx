@@ -15,6 +15,8 @@ import { MenuDepartamento } from '@/components/oficina/MenuDepartamento'
 const Oficina3D = dynamic(() => import('@/components/oficina/Oficina3D'), { ssr: false, loading: () => <div className="h-full grid place-items-center text-sm text-muted-foreground">Abriendo la oficina…</div> })
 
 const DEPS = Object.keys(DEPARTAMENTOS) as Departamento[]
+const NOMBRES = DEPS.map((d) => DEPARTAMENTOS[d].persona)
+const EQUIPO = `${NOMBRES.slice(0, -1).join(', ')} y ${NOMBRES[NOMBRES.length - 1]}`
 
 const ESTADO_UI: Record<EstadoDepartamento, { texto: string; clase: string; Icono: typeof CircleCheck }> = {
     libre: { texto: 'Libre', clase: 'text-muted-foreground', Icono: CircleDashed },
@@ -70,19 +72,20 @@ export default function OficinaPage() {
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
                 <div>
                     <h1 className="text-2xl font-bold">Oficina</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Tu equipo de IA por departamentos. Toca a alguien para hacerle una pregunta; levanta la mano cuando espera tu confirmación.</p>
+                    <p className="text-sm text-muted-foreground mt-1">Tu equipo de IA: {EQUIPO}. Toca a alguien para hacerle una pregunta; levanta la mano cuando espera tu confirmación.</p>
                 </div>
                 <Button variant="outline" onClick={() => openWith('¿Qué está pasando hoy en la oficina? Dame un resumen por departamento.')}><Bot /> Resumen del equipo</Button>
             </div>
 
             {error && <p className="text-sm text-destructive flex items-center gap-1 mb-3"><TriangleAlert className="w-4 h-4" /> {error}</p>}
 
-            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
-                <div className="rounded-2xl border overflow-hidden aspect-[16/10] min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-30px_rgba(11,15,20,0.45)] bg-[radial-gradient(120%_90%_at_50%_0%,#ffffff_0%,#e6edf3_55%,#d5dfe8_100%)] dark:bg-[radial-gradient(120%_90%_at_50%_0%,#1b2634_0%,#111822_55%,#0b0f14_100%)] dark:shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
+            {/* La oficina ocupa todo el ancho; las tarjetas de cada agente van debajo. */}
+            <div className="flex flex-col gap-4">
+                <div className="w-full rounded-2xl border overflow-hidden aspect-[4/3] sm:aspect-[16/9] max-h-[78vh] min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-30px_rgba(11,15,20,0.45)] bg-[radial-gradient(120%_90%_at_50%_0%,#ffffff_0%,#e6edf3_55%,#d5dfe8_100%)] dark:bg-[radial-gradient(120%_90%_at_50%_0%,#1b2634_0%,#111822_55%,#0b0f14_100%)] dark:shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
                     <Oficina3D estados={estados} onSelect={hablar} oscuro={oscuro} className="w-full h-full" />
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {DEPS.map((dep) => {
                         const info = DEPARTAMENTOS[dep]
                         const d = estado?.departamentos[dep]
@@ -95,7 +98,7 @@ export default function OficinaPage() {
                                 className="text-left rounded-xl border bg-card px-4 py-3 hover:bg-accent/50 transition-colors"
                             >
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold">{info.emoji} {info.nombre}</span>
+                                    <span className="font-semibold">{info.emoji} {info.persona} <span className="font-normal text-muted-foreground">· {info.nombre}</span></span>
                                     <span className={`text-xs flex items-center gap-1 ${ui.clase}`}>
                                         <ui.Icono className={`w-3.5 h-3.5 ${d?.estado === 'trabajando' ? 'animate-spin' : ''}`} /> {ui.texto}
                                     </span>
@@ -124,7 +127,8 @@ export default function OficinaPage() {
                                 <li key={e.id} className="px-4 py-2.5 text-sm">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs text-muted-foreground tabular-nums w-24 shrink-0">{fecha(e.created_at)} {hora(e.created_at)}</span>
-                                        <span className="shrink-0">{info.emoji}</span>
+                                        <span className="shrink-0" title={`${info.persona} · ${info.nombre}`}>{info.emoji}</span>
+                                        <span className="shrink-0 text-xs font-medium text-muted-foreground">{info.persona}</span>
                                         <span className="truncate">{ESTADO_EVENTO[e.estado]} {e.titulo}</span>
                                         <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{e.fuente}</span>
                                     </div>
