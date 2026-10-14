@@ -59,5 +59,8 @@ export async function actualizarProyecto(id: string, p: Partial<Pick<Proyecto, '
 /** Línea de contexto para las instrucciones del agente cuando trabaja dentro de un proyecto. */
 export function contextoProyecto(p: Proyecto | null): string {
     if (!p) return ''
-    return `\n\nPROYECTO ACTIVO: «${p.nombre}» (${TIPOS_PROYECTO[p.tipo].toLowerCase()})${p.descripcion ? `: ${p.descripcion}` : ''}. Trabajas dentro de este proyecto: los objetivos, planes, encargos y entregables que crees quedan en él, y lo que listes es de él. El cerebro del proyecto manda sobre el de la empresa cuando hablen de lo mismo.`
+    return `\n\nPROYECTO ACTIVO: «${p.nombre}» (${TIPOS_PROYECTO[p.tipo].toLowerCase()})${p.descripcion ? `: ${p.descripcion}` : ''}. José eligió trabajar en este proyecto: TODO lo que respondas va centrado en él.
+- Son del proyecto: su cerebro, sus objetivos, sus planes, sus encargos y sus entregables (lo que crees queda en él). El cerebro del proyecto manda sobre el de la empresa cuando hablen de lo mismo.
+- Son de toda la empresa (no se separan por proyecto): tareas, plan del día, clientes, cotizaciones, facturas, cobros y correo. No los traigas a la conversación salvo que José los pida, que tengan que ver con ${p.nombre}, o que haya algo urgente; en ese caso, una sola línea al final marcada «De toda la empresa: …».
+- Preguntas generales («¿qué hago hoy?», «¿cómo vamos?») se responden para ${p.nombre}: sus objetivos, el paso que toca de sus planes y sus encargos. Si el proyecto aún no tiene cerebro, objetivos ni plan, dilo claro y propone el siguiente paso concreto para ${p.nombre} (completar su cerebro, fijar un objetivo, armar el plan) en vez de rellenar con lo de la empresa.`
 }

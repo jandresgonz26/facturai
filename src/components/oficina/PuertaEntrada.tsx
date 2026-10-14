@@ -12,7 +12,7 @@ import { toast } from 'sonner'
 import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChatCuerpo } from '@/components/agent/ChatCuerpo'
-import { departamentoActivo } from '@/components/agent/departamentoActivo'
+import { departamentoActivo, departamentosQueHablan } from '@/components/agent/departamentoActivo'
 import { DEPARTAMENTOS, isWriteTool } from '@/lib/agent/shared'
 import { emitDataChanged } from '@/lib/events'
 import { nuevaConversacionEquipoAccion } from '@/app/oficina/clic-acciones'
@@ -41,8 +41,10 @@ export function PuertaEntrada({ inicial, proyecto }: { inicial: UIMessage[]; pro
             if (cambio) { emitDataChanged(); router.refresh() }
         },
     })
-    const habla = departamentoActivo(chat.messages)
-    const info = habla ? DEPARTAMENTOS[habla] : null
+    // Si en la última respuesta hablaron varios, se nombran todos; si no, quien habla (por firma o herramienta).
+    const varios = departamentosQueHablan(chat.messages)
+    const habla = varios.length ? varios : [departamentoActivo(chat.messages)].filter((d) => d !== null)
+    const quienes = habla.map((d) => DEPARTAMENTOS[d])
 
     const nueva = async () => {
         void chat.stop()
@@ -55,7 +57,9 @@ export function PuertaEntrada({ inicial, proyecto }: { inicial: UIMessage[]; pro
             <header className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
                 <div className="min-w-0 text-sm">
                     <span className="font-semibold">Tu equipo</span>
-                    <span className="text-muted-foreground"> · {info ? <>responde {info.emoji} <span className="font-medium text-foreground">{info.persona}</span>, {info.nombre}</> : 'escribe y responde quien corresponda'}</span>
+                    <span className="text-muted-foreground"> · {quienes.length === 0 ? 'escribe y responde quien corresponda'
+                        : quienes.length === 1 ? <>responde {quienes[0].emoji} <span className="font-medium text-foreground">{quienes[0].persona}</span>, {quienes[0].nombre}</>
+                            : <>responden {quienes.map((q, i) => <span key={q.persona}>{i > 0 && (i === quienes.length - 1 ? ' y ' : ', ')}{q.emoji} <span className="font-medium text-foreground">{q.persona}</span></span>)}</>}</span>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => void nueva()} disabled={chat.messages.length === 0} title="Empezar de cero (la anterior se borra)">
                     <RotateCcw /> Nueva

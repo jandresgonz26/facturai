@@ -61,7 +61,9 @@ export default async function OficinaPage() {
         <div className="mb-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
                 <SelectorProyecto proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))} actual={pid} />
-                <p className="text-xs text-muted-foreground">{proyecto ? `Todo lo que pidas aquí queda en ${nombre}.` : 'Trabajando en la empresa. Crea un proyecto para Wapalink o un cliente.'}</p>
+                <p className="max-w-xl text-xs text-muted-foreground">{proyecto
+                    ? `Los agentes se centran en ${nombre}: su cerebro, objetivos, planes y encargos son propios. Tareas, clientes y facturas son de toda la empresa.`
+                    : 'Trabajando en toda la empresa. Crea un proyecto (Wapalink, un cliente) para que los agentes se centren en él.'}</p>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">

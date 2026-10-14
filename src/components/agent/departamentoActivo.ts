@@ -10,6 +10,14 @@ function textoDe(m: UIMessage): string {
     return m.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join(' ')
 }
 
+/** Todos los que firman en la última respuesta, en orden de aparición (la puerta de entrada puede dar varios). */
+export function departamentosQueHablan(messages: UIMessage[]): Departamento[] {
+    const ultima = [...messages].reverse().find((m) => m.role === 'assistant')
+    if (!ultima) return []
+    const t = textoDe(ultima)
+    return FIRMAS.map((f) => ({ d: f.d, i: [...t.matchAll(f.re)][0]?.index ?? -1 })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i).map((x) => x.d)
+}
+
 /**
  * Qué departamento está hablando, para el encabezado del chat. Manda el último mensaje de José si empieza
  * con un departamento («Dirección: …», como lo escribe el menú de la oficina); si no, el de la última
