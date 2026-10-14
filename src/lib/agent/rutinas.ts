@@ -145,7 +145,16 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
             model,
             providerOptions,
             system: `Eres ${info.persona}, del departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
-Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.persona} · ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.
+Redacta un informe breve en markdown ligero. José lo lee en Telegram, en el teléfono: tiene que entenderse de un vistazo.
+FORMATO:
+- Primera línea: "${info.emoji} ${info.persona} · ${info.nombre}".
+- Si hay más de 3 puntos, agrúpalos con un subtítulo corto en negrita en su propia línea (**Cobros**, **Ventas**…).
+- Cada punto es una viñeta "- **Etiqueta corta:** …" con 1 o 2 frases cortas (máximo unas 30 palabras). Los detalles van en sub-viñetas con dos espacios delante ("  - …"), no en frases encadenadas.
+- Lo que propones hacer va en una frase aparte que empieza por "Primer paso:"; usa también "Impacto:" o "Hecho:" cuando aporten.
+- Un mensaje listo para enviar a un cliente va en una línea propia que empieza por "> ".
+- Negrita solo en la etiqueta de cada punto y, como mucho, en una cifra clave; no pongas en negrita todas las cifras ni los nombres.
+- Montos con punto de miles y coma decimal ($1.851,88; €95,00), porcentajes con un decimal (33,7 %) y fechas como "5 oct" (nunca 2026-10-05). Sin tablas ni líneas "---".
+Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.
 Si tienes objetivos activos (objetivos_listar con departamento ${dep}), cierra con una línea **Objetivos:** que diga cómo va cada uno frente a su fecha y el siguiente paso.
 Si tienes pasos de planes pendientes (planes_listar con departamento ${dep}), añade una línea **Planes:** con el paso que te toca ahora y su fecha; si ya venció, dilo.${cerebro}${memoria}`,
             prompt: cfg.encargo,

@@ -1,4 +1,5 @@
 /** Cliente mínimo de la Bot API de Telegram (sin dependencias). */
+import { htmlATexto } from './format'
 
 const API_BASE = () => (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/$/, '')
 const token = () => {
@@ -26,18 +27,19 @@ async function call<T = unknown>(method: string, body: Record<string, unknown>):
 
 const MAX_LEN = 4000
 
-/** Divide un texto largo respetando saltos de línea (límite de Telegram: 4096). */
+/**
+ * Divide un texto largo (límite de Telegram: 4096) por bloques separados con línea en blanco, para no cortar una
+ * cita ni una viñeta a la mitad; un bloque que por sí solo no cabe se parte por líneas.
+ */
 function chunk(text: string): string[] {
     if (text.length <= MAX_LEN) return [text]
+    // Cada pieza con el separador que la une a la anterior: línea en blanco entre bloques, salto simple dentro de uno.
+    const piezas = text.split('\n\n').flatMap((b) => (b.length > MAX_LEN ? b.split('\n').map((l, i) => ({ t: l.slice(0, MAX_LEN), sep: i === 0 ? '\n\n' : '\n' })) : [{ t: b, sep: '\n\n' }]))
     const parts: string[] = []
     let current = ''
-    for (const line of text.split('\n')) {
-        if ((current + '\n' + line).length > MAX_LEN) {
-            if (current) parts.push(current)
-            current = line.slice(0, MAX_LEN)
-        } else {
-            current = current ? `${current}\n${line}` : line
-        }
+    for (const { t, sep } of piezas) {
+        if (current && (current + sep + t).length > MAX_LEN) { parts.push(current); current = t }
+        else current = current ? current + sep + t : t
     }
     if (current) parts.push(current)
     return parts
@@ -47,13 +49,14 @@ export async function sendMessage(chatId: string | number, html: string, replyMa
     const pieces = chunk(html)
     let last: { message_id: number } | null = null
     for (let i = 0; i < pieces.length; i++) {
-        last = await call<{ message_id: number }>('sendMessage', {
-            chat_id: chatId,
-            text: pieces[i],
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-            ...(i === pieces.length - 1 && replyMarkup ? { reply_markup: replyMarkup } : {}),
-        })
+        const extra = i === pieces.length - 1 && replyMarkup ? { reply_markup: replyMarkup } : {}
+        try {
+            last = await call<{ message_id: number }>('sendMessage', { chat_id: chatId, text: pieces[i], parse_mode: 'HTML', disable_web_page_preview: true, ...extra })
+        } catch (e) {
+            // Si Telegram rechaza el HTML (una etiqueta mal formada), el mensaje sale igual en texto plano.
+            if (!/parse entities|can't find end tag|unsupported start tag/i.test(e instanceof Error ? e.message : '')) throw e
+            last = await call<{ message_id: number }>('sendMessage', { chat_id: chatId, text: htmlATexto(pieces[i]), disable_web_page_preview: true, ...extra })
+        }
     }
     return last
 }
