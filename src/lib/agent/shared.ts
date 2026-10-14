@@ -42,6 +42,9 @@ export const WRITE_TOOLS = [
     'actualizar_consejo',
     'recordar',
     'olvidar',
+    'objetivo_crear',
+    'objetivo_actualizar',
+    'hito_crear',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -50,6 +53,10 @@ export function isWriteTool(name: string): name is WriteToolName {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
+    objetivos_listar: 'Revisando los objetivos',
+    objetivo_crear: 'Crear objetivo',
+    objetivo_actualizar: 'Actualizar objetivo',
+    hito_crear: 'Añadir hito al objetivo',
     memoria_listar: 'Revisando lo que recuerdo',
     recordar: 'Guardar en la memoria',
     olvidar: 'Quitar de la memoria',
@@ -190,7 +197,7 @@ const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
     ],
     marketing: ['brevo_resumen', 'brevo_campanas', 'redactar_boletin'],
     seo: ['seo_cartera', 'seo_cliente'],
-    direccion: ['panorama_empresa', 'consejos_direccion', 'actualizar_consejo'],
+    direccion: ['panorama_empresa', 'consejos_direccion', 'actualizar_consejo', 'objetivos_listar', 'objetivo_crear', 'objetivo_actualizar', 'hito_crear'],
     operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
 }
 

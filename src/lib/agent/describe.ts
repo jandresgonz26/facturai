@@ -244,6 +244,23 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             }
         case 'cancel_reminder':
             return { title: 'Cancelar recordatorio', rows: [{ label: 'Qué', value: str(input.text) ?? '-' }] }
+        case 'objetivo_crear': {
+            const rows: Row[] = [{ label: 'Objetivo', value: str(input.titulo) ?? '-' }, { label: 'Departamento', value: str(input.departamento) ?? '-' }]
+            if (input.valor_meta !== undefined) rows.push({ label: 'Meta', value: String(input.valor_meta) })
+            if (input.fecha_limite) rows.push({ label: 'Fecha límite', value: dateLabel(str(input.fecha_limite)) })
+            rows.push({ label: 'Avance', value: input.metrica && input.metrica !== 'manual' ? `Automático (${str(input.metrica)})` : 'Manual' })
+            return { title: 'Crear objetivo', rows }
+        }
+        case 'objetivo_actualizar': {
+            const rows: Row[] = [{ label: 'Objetivo', value: str(input.titulo_actual) ?? '-' }]
+            if (input.estado) rows.push({ label: 'Nuevo estado', value: str(input.estado)! })
+            if (input.valor_meta !== undefined) rows.push({ label: 'Nueva meta', value: String(input.valor_meta) })
+            if (input.valor_actual !== undefined) rows.push({ label: 'Valor de hoy', value: String(input.valor_actual) })
+            if (input.fecha_limite) rows.push({ label: 'Fecha límite', value: dateLabel(str(input.fecha_limite)) })
+            return { title: 'Actualizar objetivo', rows }
+        }
+        case 'hito_crear':
+            return { title: 'Añadir hito', rows: [{ label: 'Objetivo', value: str(input.objetivo_titulo) ?? '-' }, { label: 'Hito', value: str(input.titulo) ?? '-' }, ...(input.fecha ? [{ label: 'Fecha', value: dateLabel(str(input.fecha)) }] : [])], note: 'Se crea como tarea: aparece en Tareas y en el plan del día.' }
         case 'recordar':
             return { title: 'Guardar en la memoria', rows: [{ label: 'Recordar', value: str(input.hecho) ?? '-' }, ...(input.departamento ? [{ label: 'Departamento', value: str(input.departamento)! }] : [])], note: 'Todos los agentes lo tendrán en cuenta en cada conversación y en los informes.' }
         case 'olvidar':
@@ -507,6 +524,12 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Recordatorio programado', lines: [`${str(d.text) ?? ''} · ${str(d.when) ?? ''}`] }
         case 'cancel_reminder':
             return { title: 'Recordatorio cancelado', lines: [str(d.text) ?? ''] }
+        case 'objetivo_crear':
+            return { title: 'Objetivo creado', lines: [str(d.titulo) ?? ''] }
+        case 'objetivo_actualizar':
+            return { title: 'Objetivo actualizado', lines: [`${str(d.titulo) ?? ''} · ${str(d.estado) ?? ''}`] }
+        case 'hito_crear':
+            return { title: 'Hito añadido', lines: [str(d.title) ?? ''] }
         case 'recordar':
             return { title: 'Guardado en la memoria', lines: [str(d.hecho) ?? ''] }
         case 'olvidar':

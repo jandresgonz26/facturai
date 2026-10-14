@@ -9,7 +9,8 @@ import { useAgent } from '@/components/agent/AgentProvider'
 import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
 import type { AgentEvent, EstadoDepartamento } from '@/lib/agent/eventos'
 import type { EstadoDeps } from '@/components/oficina/Oficina3D'
-import { MenuDepartamento } from '@/components/oficina/MenuDepartamento'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // Three.js solo existe en el navegador: sin render en el servidor.
 const Oficina3D = dynamic(() => import('@/components/oficina/Oficina3D'), { ssr: false, loading: () => <div className="h-full grid place-items-center text-sm text-muted-foreground">Abriendo la oficina…</div> })
@@ -34,8 +35,8 @@ const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-VE', { hour: 
 const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
 
 export default function OficinaPage() {
-    const { openWith, openDraft } = useAgent()
-    const [seleccion, setSeleccion] = useState<Departamento | null>(null)
+    const { openWith } = useAgent()
+    const router = useRouter()
     const { resolvedTheme } = useTheme()
     const [montado, setMontado] = useState(false)
     useEffect(() => setMontado(true), [])
@@ -63,16 +64,15 @@ export default function OficinaPage() {
     }, [cargar])
 
     const estados = Object.fromEntries(DEPS.map((d) => [d, estado?.departamentos[d]?.estado ?? 'libre'])) as EstadoDeps
-    const hablar = (dep: Departamento) => setSeleccion(dep)
-    const preguntar = (texto: string, enviar: boolean) => (enviar ? openWith(texto) : openDraft(texto))
+    // Tocar a un agente (en 3D o en su tarjeta) abre su página: su chat, sus objetivos y sus informes.
+    const hablar = (dep: Departamento) => router.push(`/oficina/${dep}`)
 
     return (
         <div className="max-w-6xl mx-auto">
-            <MenuDepartamento dep={seleccion} onClose={() => setSeleccion(null)} onPreguntar={preguntar} />
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
                 <div>
                     <h1 className="text-2xl font-bold">Oficina</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Tu equipo de IA: {EQUIPO}. Toca a alguien para hacerle una pregunta; levanta la mano cuando espera tu confirmación.</p>
+                    <p className="text-sm text-muted-foreground mt-1">Tu equipo de IA: {EQUIPO}. Toca a alguien para abrir su página: su chat, sus objetivos y sus informes. Levanta la mano cuando espera tu confirmación.</p>
                 </div>
                 <Button variant="outline" onClick={() => openWith('¿Qué está pasando hoy en la oficina? Dame un resumen por departamento.')}><Bot /> Resumen del equipo</Button>
             </div>
@@ -91,10 +91,9 @@ export default function OficinaPage() {
                         const d = estado?.departamentos[dep]
                         const ui = ESTADO_UI[d?.estado ?? 'libre']
                         return (
-                            <button
+                            <Link
                                 key={dep}
-                                type="button"
-                                onClick={() => hablar(dep)}
+                                href={`/oficina/${dep}`}
                                 className="text-left rounded-xl border bg-card px-4 py-3 hover:bg-accent/50 transition-colors"
                             >
                                 <div className="flex items-center justify-between gap-2">
@@ -106,7 +105,7 @@ export default function OficinaPage() {
                                 <p className="text-xs text-muted-foreground mt-1 truncate">
                                     {d?.ultimo ? `${ESTADO_EVENTO[d.ultimo.estado]} ${d.ultimo.titulo} · ${fecha(d.ultimo.created_at)} ${hora(d.ultimo.created_at)}` : info.descripcion}
                                 </p>
-                            </button>
+                            </Link>
                         )
                     })}
                 </div>

@@ -19,7 +19,7 @@ async function run<T>(fn: () => Promise<T>): Promise<ToolResult<T>> {
     }
 }
 
-async function brevo<T>(path: string): Promise<T> {
+export async function brevo<T>(path: string): Promise<T> {
     const key = process.env.BREVO_API_KEY
     if (!key) throw new Error('Falta BREVO_API_KEY en el servidor (la misma clave que usa la web).')
     const r = await fetch(`https://api.brevo.com/v3${path}`, {
@@ -28,6 +28,12 @@ async function brevo<T>(path: string): Promise<T> {
     })
     if (!r.ok) throw new Error(`Brevo respondió ${r.status}: ${(await r.text()).slice(0, 200)}`)
     return (await r.json()) as T
+}
+
+/** Contactos reales de una lista de Brevo (uniqueSubscribers: totalSubscribers viene en 0 en esta API). */
+export async function contactosDeLista(id: number): Promise<number> {
+    const l = await brevo<{ uniqueSubscribers?: number; totalSubscribers?: number }>(`/contacts/lists/${id}`)
+    return l.uniqueSubscribers ?? l.totalSubscribers ?? 0
 }
 
 /** Reglas editoriales del boletín, tal como las fijó el dueño. */

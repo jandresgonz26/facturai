@@ -11,13 +11,14 @@ import { marketingTools } from './tools-marketing'
 import { seoTools } from './tools-seo'
 import { direccionTools, guardarConsejos } from './tools-direccion'
 import { memoriaParaPrompt } from './tools-memoria'
+import { objetivosTools } from './tools-objetivos'
 import { anthropicProvider, modeloPara, proveedorActivo } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
 import { supabase } from '@/lib/supabase'
 
-const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools } as Record<string, unknown>
+const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...objetivosTools } as Record<string, unknown>
 
 /** Contexto de la empresa para Dirección (lo que no está en los datos). */
 export const EMPRESA = `JAM Tech Corp (marca "JAM Tech") es una agencia de software y marketing de Puerto Ordaz, Venezuela, dirigida por José González (pronto con una socia). Líneas de negocio: desarrollo web y de apps; SEO para clientes con una plataforma propia; automatización e IA para pequeños negocios (asistente Jami, regalo de mensajes de WhatsApp y boletín "Aprende con Jami"); Wapalink, su producto de asistente de IA para WhatsApp (en lista de espera); y comisiones como Hostinger Partner (20 % en ventas nuevas). Clientes: sobre todo pequeños negocios de Venezuela y Latinoamérica; cobra en USD y EUR.`
@@ -115,7 +116,8 @@ Reglas: sé franco, sin suavizar. Separa los hechos (cifras de las herramientas)
 export async function correrRutina(dep: Departamento, opts: { guardar?: boolean } = {}): Promise<{ informe: string; herramientas_usadas: string[] }> {
     const cfg = RUTINAS[dep]
     const info = DEPARTAMENTOS[dep]
-    const tools = Object.fromEntries(cfg.herramientas.filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, never>
+    // Todas las rutinas revisan además sus objetivos (roadmap) y dicen cómo van.
+    const tools = Object.fromEntries([...cfg.herramientas, 'objetivos_listar'].filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, never>
     const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
     // Búsqueda web nativa de Claude solo para las rutinas que la piden (Dirección) y con proveedor Anthropic.
     if (cfg.web && proveedorActivo() === 'anthropic') (tools as Record<string, unknown>).web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 4 })
@@ -131,7 +133,8 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
             model,
             providerOptions,
             system: `Eres ${info.persona}, del departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
-Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.persona} · ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.${memoria}`,
+Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.persona} · ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.
+Si tienes objetivos activos (objetivos_listar con departamento ${dep}), cierra con una línea **Objetivos:** que diga cómo va cada uno frente a su fecha y el siguiente paso.${memoria}`,
             prompt: cfg.encargo,
             tools,
             stopWhen: stepCountIs(cfg.pasos ?? 6),
