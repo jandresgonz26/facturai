@@ -7,6 +7,7 @@
  */
 import { revalidatePath } from 'next/cache'
 import { guardarSeccion } from '@/lib/agent/cerebro'
+import { borrarFuente, generarCerebro, type PropuestaCerebro } from '@/lib/agent/cerebro-fuentes'
 import type { SeccionCerebro } from '@/lib/agent/cerebro-secciones'
 import { cambiarEstadoEntregable, type Entregable } from '@/lib/agent/entregables'
 import { proyectoActivo } from '@/lib/agent/proyecto-activo'
@@ -20,6 +21,30 @@ export async function guardarCerebroAccion(seccion: SeccionCerebro, contenido: s
     try { await guardarSeccion(seccion, contenido, (await proyectoActivo()).id) } catch (e) { return fallo(e, 'No se pudo guardar.') }
     refrescar()
     return { ok: true, mensaje: 'Guardado. Todos los agentes ya lo usan.' }
+}
+
+export async function generarCerebroAccion(seccion?: SeccionCerebro): Promise<Resultado<PropuestaCerebro>> {
+    try {
+        const p = await generarCerebro((await proyectoActivo()).id, seccion)
+        const n = Object.keys(p).filter((k) => k !== 'faltante').length
+        return { ok: true, mensaje: n ? `Propuesta lista para ${n} ${n === 1 ? 'sección' : 'secciones'}: revisa y guarda.` : 'Las fuentes no aportan nada nuevo a lo que ya está escrito.', data: p }
+    } catch (e) {
+        return fallo(e, 'No se pudo generar con IA.')
+    }
+}
+
+export async function guardarCerebroVariasAccion(secciones: Partial<Record<SeccionCerebro, string>>): Promise<Resultado> {
+    try {
+        const pid = (await proyectoActivo()).id
+        for (const [k, v] of Object.entries(secciones)) await guardarSeccion(k as SeccionCerebro, v ?? '', pid)
+    } catch (e) { return fallo(e, 'No se pudo guardar.') }
+    refrescar()
+    return { ok: true, mensaje: 'Guardado. Todos los agentes ya lo usan.' }
+}
+
+export async function borrarFuenteAccion(id: string): Promise<void> {
+    await borrarFuente(id)
+    revalidatePath('/oficina/cerebro')
 }
 
 export async function estadoEntregableAccion(id: string, estado: Entregable['estado']): Promise<void> {

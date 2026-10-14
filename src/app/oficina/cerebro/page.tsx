@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { leerCerebro } from '@/lib/agent/cerebro'
+import { listarFuentes } from '@/lib/agent/cerebro-fuentes'
 import { proyectoActivo } from '@/lib/agent/proyecto-activo'
 import { EditorCerebro } from './EditorCerebro'
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 /** Cerebro de la empresa (o del proyecto activo): lo que todos los agentes saben, por secciones guiadas. */
 export default async function PaginaCerebro() {
     const { id, proyecto } = await proyectoActivo()
-    const cerebro = await leerCerebro(id).catch(() => ({}))
+    const [cerebro, fuentes] = await Promise.all([leerCerebro(id).catch(() => ({})), listarFuentes(id).catch(() => [])])
     return (
         <div className="mx-auto max-w-3xl space-y-4">
             <Link href="/oficina" className="text-sm text-muted-foreground hover:text-foreground">← Oficina</Link>
@@ -20,7 +21,7 @@ export default async function PaginaCerebro() {
                         : 'Lo que tus agentes saben de JAM Tech. Lo usan en cada conversación, informe, tarea guiada y plan: cuanto más completo, menos genérico es lo que te entregan.'}
                 </p>
             </header>
-            <EditorCerebro key={id ?? 'jamtech'} inicial={cerebro} proyecto={proyecto?.nombre ?? null} />
+            <EditorCerebro key={id ?? 'jamtech'} inicial={cerebro} proyecto={proyecto?.nombre ?? null} fuentes={fuentes} />
         </div>
     )
 }
