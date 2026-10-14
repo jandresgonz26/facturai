@@ -20,6 +20,7 @@ import {
 import { escapeHtml, isWritePart, mdToTelegramHtml, renderConfirmation, renderResult, toolNameOf, toolParts, type ToolPartLike } from '@/lib/telegram/format'
 import { guardarProyectoSesion, leerProyectoSesion, loadSession, resetSession, saveSession } from '@/lib/telegram/session'
 import { esProyectoId, leerProyecto, listarProyectos } from '@/lib/agent/proyectos'
+import { retomarAtascados } from '@/lib/agent/encargos'
 import { supabase } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -209,6 +210,7 @@ async function continueIfComplete(chatId: string, history: UIMessage[], idx: num
 
 async function runTurn(chatId: string, text: string, attachment?: TgAttachment): Promise<void> {
     await sendChatAction(chatId, 'typing')
+    void retomarAtascados().catch(() => undefined) // y también cuando José escribe por Telegram
     try {
         let history = await loadSession(chatId)
         const pending = pendingApprovals(history)

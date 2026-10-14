@@ -9,7 +9,7 @@ import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
 import { PuertaEntrada } from '@/components/oficina/PuertaEntrada'
 import { SelectorProyecto } from '@/components/oficina/SelectorProyecto'
 import { ListaEncargos } from '@/components/oficina/ListaEncargos'
-import { listarEncargos, type Encargo } from '@/lib/agent/encargos'
+import { listarEncargos, retomarAtascados, type Encargo } from '@/lib/agent/encargos'
 import { leerHilo } from '@/lib/agent/hilos'
 import { listarProyectos, porAlcance, type Proyecto, type ProyectoId } from '@/lib/agent/proyectos'
 import { proyectoActivo } from '@/lib/agent/proyecto-activo'
@@ -31,6 +31,8 @@ const FIJAR_OBJETIVOS = 'AyÃºdame a fijar mis 3 objetivos principales de los prÃ
  */
 export default async function OficinaPage() {
     const { id: pid, proyecto } = await proyectoActivo()
+    // Un despliegue a mitad de un encargo lo deja colgado: al abrir la Oficina se retoma (sin esperar).
+    void retomarAtascados().catch((e) => console.error('[oficina] retomar encargos', e))
     const [cerebro, planes, objetivos, entregables, completados, proyectos, hilo, abiertos, recientes] = await Promise.all([
         leerCerebro(pid).catch(() => ({})),
         listarPlanes({ alcance: pid }).catch(() => [] as PlanConPasos[]),
