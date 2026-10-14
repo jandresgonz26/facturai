@@ -1,18 +1,19 @@
 /**
  * Roadmap de cada agente: objetivos con una cifra y una fecha, su avance (automático desde METRICAS o manual)
  * y sus hitos, que son tareas normales enlazadas (tasks.objetivo_id) para que aparezcan en el plan del día.
- * proyecto_id null = JAM Tech (los proyectos llegan en la fase 2).
+ * proyecto_id null = JAM Tech; cada proyecto tiene sus propios objetivos.
  */
 import { supabase } from '@/lib/supabase'
 import { createTask } from '@/lib/actions/tasks'
 import type { Departamento } from './shared'
 import { METRICA, avance, valorDe, type Unidad } from './metricas'
+import { porAlcance, type Alcance, type ProyectoId } from './proyectos'
 
 export type EstadoObjetivo = 'activo' | 'logrado' | 'pausado' | 'descartado'
 export type Objetivo = {
     id: string; departamento: Departamento; titulo: string; descripcion: string | null; metrica: string; unidad: Unidad
     valor_inicial: number | null; valor_meta: number | null; valor_actual: number | null; fecha_limite: string | null
-    estado: EstadoObjetivo; orden: number; created_at: string
+    estado: EstadoObjetivo; orden: number; created_at: string; proyecto_id: string | null; proyecto: string | null
 }
 export type Hito = { id: string; title: string; status: 'todo' | 'doing' | 'done'; due_date: string | null; objetivo_id: string }
 export type ObjetivoConAvance = Objetivo & { valor: number | null; avance: number | null; automatica: boolean; etiquetaMetrica: string | null; hitos: Hito[] }
@@ -20,11 +21,12 @@ export type ObjetivoConAvance = Objetivo & { valor: number | null; avance: numbe
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
 const normal = (r: Record<string, unknown>): Objetivo => ({
     ...(r as unknown as Objetivo), valor_inicial: num(r.valor_inicial), valor_meta: num(r.valor_meta), valor_actual: num(r.valor_actual),
+    proyecto: (r.proyectos as { nombre?: string } | null)?.nombre ?? null,
 })
 
 /** Objetivos (de un departamento o de todos) con su valor de hoy, su avance y sus hitos. */
-export async function listarObjetivos(o: { departamento?: Departamento; incluirCerrados?: boolean } = {}): Promise<ObjetivoConAvance[]> {
-    let q = supabase.from('objetivos').select('*').is('proyecto_id', null)
+export async function listarObjetivos(o: { departamento?: Departamento; incluirCerrados?: boolean; alcance?: Alcance } = {}): Promise<ObjetivoConAvance[]> {
+    let q = porAlcance(supabase.from('objetivos').select('*, proyectos(nombre)'), o.alcance ?? null)
     if (o.departamento) q = q.eq('departamento', o.departamento)
     if (!o.incluirCerrados) q = q.in('estado', ['activo', 'pausado'])
     const { data, error } = await q.order('orden').order('created_at')
@@ -47,6 +49,7 @@ export async function listarObjetivos(o: { departamento?: Departamento; incluirC
 export type NuevoObjetivo = {
     departamento: Departamento; titulo: string; descripcion?: string | null; metrica?: string; unidad?: Unidad
     valor_meta?: number | null; valor_inicial?: number | null; valor_actual?: number | null; fecha_limite?: string | null
+    proyecto_id?: ProyectoId
 }
 
 export async function crearObjetivo(n: NuevoObjetivo): Promise<Objetivo> {
@@ -57,6 +60,7 @@ export async function crearObjetivo(n: NuevoObjetivo): Promise<Objetivo> {
         departamento: n.departamento, titulo: n.titulo.trim(), descripcion: n.descripcion?.trim() || null,
         metrica: m ? m.key : 'manual', unidad: m ? m.unidad : n.unidad ?? 'numero',
         valor_meta: n.valor_meta ?? null, valor_inicial: inicial, valor_actual: m ? null : n.valor_actual ?? null, fecha_limite: n.fecha_limite || null,
+        proyecto_id: n.proyecto_id ?? null,
     }).select('*').single()
     if (error) throw new Error(`No se pudo crear el objetivo: ${error.message}`)
     return normal(data as Record<string, unknown>)

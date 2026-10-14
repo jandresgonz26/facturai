@@ -4,6 +4,7 @@
  */
 import { revalidatePath } from 'next/cache'
 import { ejecutarTarea, type EventoTarea } from '@/lib/agent/entregables'
+import { proyectoActivo } from '@/lib/agent/proyecto-activo'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
     const pasoId = typeof body?.pasoId === 'string' && /^[0-9a-f-]{36}$/i.test(body.pasoId) ? body.pasoId : null
     const valores = Object.fromEntries(Object.entries((body?.valores ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>
 
+    const { id: proyecto } = await proyectoActivo()
     const enc = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
                 try { controller.enqueue(enc.encode(`${JSON.stringify(e)}\n`)) } catch { abierto = false } // la página se cerró: el entregable se guarda igual
             }
             try {
-                const entregable = await ejecutarTarea(tareaId, valores, { pasoId, onEvento: enviar })
+                const entregable = await ejecutarTarea(tareaId, valores, { pasoId, proyecto, onEvento: enviar })
                 revalidatePath('/oficina', 'layout')
                 enviar({ t: 'fin', entregable })
             } catch (e) {

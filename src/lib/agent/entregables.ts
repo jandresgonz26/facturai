@@ -15,6 +15,7 @@ import { herramientasLectura } from './rutinas'
 import { leerPlan } from './planes'
 import { modeloPara } from './modelo'
 import { registrarEvento } from './eventos'
+import { contextoProyecto, leerProyecto, porAlcance, type Alcance, type ProyectoId } from './proyectos'
 
 export type Entregable = {
     id: string; created_at: string; departamento: Departamento; tarea: string; titulo: string
@@ -32,8 +33,8 @@ export type EventoTarea =
 const COLS = 'id, created_at, departamento, tarea, titulo, entradas, contenido, estado, plan_paso_id'
 const MAX_VALOR = 3000
 
-export async function listarEntregables(o: { departamento?: Departamento; limite?: number } = {}): Promise<Entregable[]> {
-    let q = supabase.from('entregables').select(COLS).is('proyecto_id', null).neq('estado', 'archivado')
+export async function listarEntregables(o: { departamento?: Departamento; limite?: number; alcance?: Alcance } = {}): Promise<Entregable[]> {
+    let q = porAlcance(supabase.from('entregables').select(COLS), o.alcance ?? null).neq('estado', 'archivado')
     if (o.departamento) q = q.eq('departamento', o.departamento)
     const { data, error } = await q.order('created_at', { ascending: false }).limit(o.limite ?? 20)
     if (error) throw new Error(error.message)
@@ -60,7 +61,7 @@ Orienta el entregable a esa meta.${previos.length ? `\n\nLO QUE YA PRODUJERON LO
 }
 
 /** `onEvento`: recibe el avance en vivo (cada paso del agente empieza de cero; el entregable es el texto del último). */
-export async function ejecutarTarea(tareaId: string, valores: Record<string, string>, opts: { pasoId?: string | null; onEvento?: (e: EventoTarea) => void } = {}): Promise<Entregable> {
+export async function ejecutarTarea(tareaId: string, valores: Record<string, string>, opts: { pasoId?: string | null; proyecto?: ProyectoId; onEvento?: (e: EventoTarea) => void } = {}): Promise<Entregable> {
     const t = TAREA.get(tareaId)
     if (!t) throw new Error('Esa tarea guiada no existe.')
     const limpios = Object.fromEntries(t.campos.map((c) => [c.key, String(valores[c.key] ?? '').trim().slice(0, MAX_VALOR)]).filter(([, v]) => v))
@@ -68,11 +69,14 @@ export async function ejecutarTarea(tareaId: string, valores: Record<string, str
     if (falta) throw new Error(`Falta: ${falta.etiqueta}`)
     const info = DEPARTAMENTOS[t.departamento]
 
-    const [cerebro, memoria, plan] = await Promise.all([
-        cerebroParaPrompt(), memoriaParaPrompt(t.departamento), opts.pasoId ? contextoDePaso(opts.pasoId) : Promise.resolve(''),
+    // Un paso de un plan trabaja en el proyecto de su plan; si no, en el proyecto activo.
+    const proyecto = opts.pasoId ? (await supabase.from('plan_pasos').select('planes(proyecto_id)').eq('id', opts.pasoId).maybeSingle()).data?.planes as unknown as { proyecto_id: string | null } | null : null
+    const enProyecto: ProyectoId = opts.pasoId ? proyecto?.proyecto_id ?? null : opts.proyecto ?? null
+    const [cerebro, memoria, plan, p] = await Promise.all([
+        cerebroParaPrompt(enProyecto), memoriaParaPrompt(t.departamento), opts.pasoId ? contextoDePaso(opts.pasoId) : Promise.resolve(''), leerProyecto(enProyecto),
     ])
     const datos = t.campos.filter((c) => limpios[c.key]).map((c) => `- ${c.etiqueta}: ${limpios[c.key]}`).join('\n')
-    const tools = herramientasLectura(t.herramientas, t.web)
+    const tools = herramientasLectura(t.herramientas, t.web, enProyecto)
     const { model, providerOptions } = modeloPara('chat')
 
     await registrarEvento({ departamento: t.departamento, tipo: 'herramienta', titulo: `Tarea guiada: ${t.titulo}`, estado: 'en_curso', fuente: 'chat' })
@@ -89,7 +93,7 @@ Estás haciendo la tarea guiada «${t.titulo}»: ${t.para}
 Entrega el documento FINAL, listo para usar o enviar, no un borrador de ideas ni preguntas. En markdown ligero: títulos con ##, listas con guion y **negritas** para lo importante; sin tablas.
 Las cifras de la empresa salen de las herramientas o del cerebro; nunca las inventes. Si falta un dato imprescindible (un precio, un nombre), déjalo marcado como [completar: qué falta] y sigue.
 Respeta la voz de marca y las reglas del cerebro. Nunca recomiendes ni menciones competidores de Wapalink ni de JAM Tech.
-Termina con una línea «**Siguiente paso:** …» con lo primero que debe hacer José con este entregable.${cerebro}${memoria}${plan}`,
+Termina con una línea «**Siguiente paso:** …» con lo primero que debe hacer José con este entregable.${contextoProyecto(p)}${cerebro}${memoria}${plan}`,
             prompt: `${t.encargo}${datos ? `\n\nDATOS QUE DIO JOSÉ:\n${datos}` : ''}`,
         })
         for await (const part of r.fullStream) {
@@ -103,7 +107,7 @@ Termina con una línea «**Siguiente paso:** …» con lo primero que debe hacer
         const contenido = text.trim()
         if (contenido.length < 40) throw new Error('El agente no devolvió un entregable. Inténtalo de nuevo.')
         const { data, error } = await supabase.from('entregables').insert({
-            departamento: t.departamento, tarea: t.id, titulo: tituloEntregable(t, limpios), entradas: limpios, contenido, plan_paso_id: opts.pasoId ?? null,
+            departamento: t.departamento, tarea: t.id, titulo: tituloEntregable(t, limpios), entradas: limpios, contenido, plan_paso_id: opts.pasoId ?? null, proyecto_id: enProyecto,
         }).select(COLS).single()
         if (error) throw new Error(`No se pudo guardar el entregable: ${error.message}`)
         await registrarEvento({ departamento: t.departamento, tipo: 'herramienta', titulo: `Entregable listo: ${data.titulo}`, estado: 'hecho', fuente: 'chat', detalle: { tarea: t.id, entregable: data.id } })

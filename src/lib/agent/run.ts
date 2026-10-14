@@ -1,40 +1,40 @@
 import { convertToModelMessages, readUIMessageStream, stepCountIs, streamText, type UIMessage } from 'ai'
-import { agentTools, toolApproval } from './tools'
-import { marketingTools } from './tools-marketing'
-import { seoTools } from './tools-seo'
-import { direccionTools } from './tools-direccion'
-import { memoriaTools } from './tools-memoria'
-import { objetivosTools } from './tools-objetivos'
-import { cerebroTools } from './cerebro'
-import { planesTools } from './planes'
+import { herramientasPara } from './caja'
+import { aprobacionesPara, leerAutonomias } from './confianza'
+import type { ProyectoId } from './proyectos'
+import type { HiloDe } from './hilos'
 import { buildSystemPrompt } from './system-prompt'
 import { modeloPara } from './modelo'
 import { registrarEvento, type FuenteEvento } from './eventos'
-import { DEPARTAMENTOS, TOOL_LABELS, departamentoDe, isWriteTool, type Departamento } from './shared'
+import { DEPARTAMENTOS, TOOL_LABELS, departamentoDe, isWriteTool } from './shared'
 
-/** Todas las herramientas de la oficina: las de siempre más las de Marketing. */
-export const oficinaTools = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...memoriaTools, ...objetivosTools, ...cerebroTools, ...planesTools }
-
-/** Configuración única del agente, compartida por el chat web y el bot de Telegram. */
-/** `departamento`: el chat de la página de ese agente (habla como su persona y empieza por su área). */
-export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat', opts: { departamento?: Departamento } = {}) {
+/**
+ * Configuración única del agente, compartida por el chat web y el bot de Telegram.
+ * `departamento`: el chat de la página de ese agente (habla como su persona y empieza por su área); «equipo» es la
+ * puerta de entrada de la Oficina. `proyectoId`: el proyecto activo (null = JAM Tech).
+ */
+export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat', opts: { departamento?: HiloDe; proyectoId?: ProyectoId } = {}) {
     const { model, providerOptions } = modeloPara('chat')
     await registrarDecisiones(messages, fuente)
-    const base = await buildSystemPrompt()
-    const d = opts.departamento ? DEPARTAMENTOS[opts.departamento] : null
+    const proyecto = opts.proyectoId ?? null
+    const [base, autonomias] = await Promise.all([buildSystemPrompt(proyecto), leerAutonomias().catch(() => null)])
+    const d = opts.departamento && opts.departamento !== 'equipo' ? DEPARTAMENTOS[opts.departamento] : null
     const system = d
-        ? `${base}\n\nESTÁS EN LA PÁGINA DE ${d.persona.toUpperCase()} (${d.emoji} ${d.nombre}: ${d.descripcion}). Responde siempre como ${d.persona}, en primera persona, y empieza por las herramientas de tu área y por tus objetivos (objetivos_listar con departamento ${opts.departamento}) y los pasos de planes que te tocan (planes_listar con departamento ${opts.departamento}). Si José pide algo de otra área, hazlo igual y menciona qué compañero lo lleva. Cuando proponga una meta, conviértela en objetivo (objetivo_crear) y sus pasos en hitos (hito_crear), siempre con su confirmación.`
-        : base
+        ? `${base}\n\nESTÁS EN LA PÁGINA DE ${d.persona.toUpperCase()} (${d.emoji} ${d.nombre}: ${d.descripcion}). Responde siempre como ${d.persona}, en primera persona, y empieza por las herramientas de tu área y por tus objetivos (objetivos_listar con departamento ${opts.departamento}) y los pasos de planes que te tocan (planes_listar con departamento ${opts.departamento}). Si José pide algo de otra área, hazlo igual y menciona qué compañero lo lleva. Cuando proponga una meta, conviértela en objetivo (objetivo_crear) y sus pasos en hitos (hito_crear).`
+        : opts.departamento === 'equipo'
+            ? `${base}\n\nESTÁS EN LA PUERTA DE ENTRADA DE LA OFICINA: José escribe sin elegir a nadie. Responde quien corresponda según el tema, empezando con su nombre en negrita («**Valeria · Finanzas:** …»). Si toca varias áreas, cada una responde en su propio bloque con su nombre, sin repetir datos entre ellas. Si es un trabajo de varios pasos o que tarda, déjalo como encargo (encargo_crear) del agente que corresponde y di en una línea quién lo hará y que avisará por Telegram.`
+            : base
+    const caja = herramientasPara(proyecto)
     const excluir = (process.env.AGENT_TOOLS_EXCLUDE || '').split(',').filter(Boolean)
-    const tools = excluir.length
-        ? (Object.fromEntries(Object.entries(oficinaTools).filter(([k]) => !excluir.includes(k))) as typeof oficinaTools)
-        : oficinaTools
+    const tools = excluir.length ? (Object.fromEntries(Object.entries(caja).filter(([k]) => !excluir.includes(k))) as typeof caja) : caja
+    // Lo interno se hace sin tarjeta si el agente tiene autonomía; si no se pudo leer, todo pide confirmación.
+    const toolApproval = aprobacionesPara(autonomias ?? Object.fromEntries(Object.keys(DEPARTAMENTOS).map((k) => [k, false])) as Parameters<typeof aprobacionesPara>[0])
     return streamText({
         model,
         system,
         messages: await convertToModelMessages(messages),
         tools,
-        toolApproval,
+        toolApproval: toolApproval as never,
         providerOptions,
         stopWhen: stepCountIs(8),
         experimental_toolApprovalSecret: process.env.AGENT_APPROVAL_SECRET || undefined,
@@ -74,8 +74,8 @@ export async function createAgentStream(messages: UIMessage[], fuente: FuenteEve
  * exactamente como lo vería el chat web. Si `continueFrom` es el último
  * mensaje del asistente (caso de aprobación), la respuesta se fusiona en él.
  */
-export async function runAgentTurn(messages: UIMessage[], continueFrom?: UIMessage): Promise<UIMessage> {
-    const result = await createAgentStream(messages, 'telegram')
+export async function runAgentTurn(messages: UIMessage[], continueFrom?: UIMessage, opts: { proyectoId?: ProyectoId } = {}): Promise<UIMessage> {
+    const result = await createAgentStream(messages, 'telegram', { proyectoId: opts.proyectoId })
     let last: UIMessage | undefined = continueFrom
     for await (const m of readUIMessageStream({ stream: result.toUIMessageStream(), message: continueFrom })) {
         last = m

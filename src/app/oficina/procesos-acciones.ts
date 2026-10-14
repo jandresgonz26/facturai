@@ -9,6 +9,7 @@ import { revalidatePath } from 'next/cache'
 import { guardarSeccion } from '@/lib/agent/cerebro'
 import type { SeccionCerebro } from '@/lib/agent/cerebro-secciones'
 import { cambiarEstadoEntregable, type Entregable } from '@/lib/agent/entregables'
+import { proyectoActivo } from '@/lib/agent/proyecto-activo'
 import { actualizarPaso, cambiarEstadoPlan, generarPlan, pasoATarea, quitarPaso, type EstadoPaso, type EstadoPlan } from '@/lib/agent/planes'
 
 type Resultado<T = undefined> = { ok: true; mensaje: string; data?: T } | { ok: false; mensaje: string }
@@ -16,7 +17,7 @@ const fallo = (e: unknown, def: string): { ok: false; mensaje: string } => ({ ok
 const refrescar = () => revalidatePath('/oficina', 'layout')
 
 export async function guardarCerebroAccion(seccion: SeccionCerebro, contenido: string): Promise<Resultado> {
-    try { await guardarSeccion(seccion, contenido) } catch (e) { return fallo(e, 'No se pudo guardar.') }
+    try { await guardarSeccion(seccion, contenido, (await proyectoActivo()).id) } catch (e) { return fallo(e, 'No se pudo guardar.') }
     refrescar()
     return { ok: true, mensaje: 'Guardado. Todos los agentes ya lo usan.' }
 }
@@ -28,7 +29,7 @@ export async function estadoEntregableAccion(id: string, estado: Entregable['est
 
 export async function generarPlanAccion(meta: string, fechaLimite: string | null, contexto: string | null): Promise<Resultado<{ id: string }>> {
     try {
-        const p = await generarPlan({ meta, fecha_limite: fechaLimite || null, contexto })
+        const p = await generarPlan({ meta, fecha_limite: fechaLimite || null, contexto, proyecto: (await proyectoActivo()).id })
         refrescar()
         return { ok: true, mensaje: 'Plan listo para revisar.', data: { id: p.id } }
     } catch (e) {

@@ -51,6 +51,18 @@ export const WRITE_TOOLS = [
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
+/**
+ * Escrituras INTERNAS: no salen de la casa ni mueven dinero (tareas, notas, recordatorios, objetivos, planes).
+ * Con la autonomía del agente encendida (agent_ajustes) se hacen sin tarjeta de confirmación y quedan registradas.
+ * Todo lo demás (correos, facturas, cobros, cotizaciones, borrar, el cerebro) pide confirmación siempre.
+ */
+export const INTERNAL_WRITE_TOOLS: readonly WriteToolName[] = [
+    'create_task', 'complete_task', 'plan_task', 'set_availability', 'create_reminder', 'cancel_reminder', 'snooze_alert', 'dismiss_alert',
+    'create_task_from_email', 'dismiss_inbox_item', 'create_lead', 'update_client_stage', 'add_client_note', 'update_client_note',
+    'convert_client_note_to_task', 'objetivo_crear', 'objetivo_actualizar', 'hito_crear', 'actualizar_consejo', 'plan_crear', 'plan_paso_actualizar', 'recordar',
+]
+export const isInternalWriteTool = (name: string) => (INTERNAL_WRITE_TOOLS as readonly string[]).includes(name)
+
 export function isWriteTool(name: string): name is WriteToolName {
     return (WRITE_TOOLS as readonly string[]).includes(name)
 }
@@ -62,6 +74,10 @@ export const TOOL_LABELS: Record<string, string> = {
     planes_listar: 'Revisando los planes',
     plan_crear: 'Crear plan guiado',
     plan_paso_actualizar: 'Actualizar paso del plan',
+    encargo_crear: 'Anotando un encargo',
+    encargos_listar: 'Revisando los encargos',
+    encargo_responder: 'Retomando un encargo',
+    encargo_cancelar: 'Cancelando un encargo',
     objetivo_crear: 'Crear objetivo',
     objetivo_actualizar: 'Actualizar objetivo',
     hito_crear: 'Añadir hito al objetivo',
@@ -209,6 +225,7 @@ const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
         'panorama_empresa', 'consejos_direccion', 'actualizar_consejo', 'objetivos_listar', 'objetivo_crear', 'objetivo_actualizar', 'hito_crear',
         'cerebro_leer', 'cerebro_actualizar', 'planes_listar', 'plan_crear', 'plan_paso_actualizar',
     ],
+    // Los encargos son de quien los recibe; la herramienta en sí la usa cualquiera (cuenta como Operaciones).
     operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
 }
 

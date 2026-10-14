@@ -6,6 +6,14 @@ import { leerCerebro } from '@/lib/agent/cerebro'
 import { completitud } from '@/lib/agent/cerebro-secciones'
 import { listarPlanes, type PlanConPasos } from '@/lib/agent/planes'
 import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
+import { PuertaEntrada } from '@/components/oficina/PuertaEntrada'
+import { SelectorProyecto } from '@/components/oficina/SelectorProyecto'
+import { ListaEncargos } from '@/components/oficina/ListaEncargos'
+import { listarEncargos, type Encargo } from '@/lib/agent/encargos'
+import { leerHilo } from '@/lib/agent/hilos'
+import { listarProyectos, porAlcance, type Proyecto, type ProyectoId } from '@/lib/agent/proyectos'
+import { proyectoActivo } from '@/lib/agent/proyecto-activo'
+import type { UIMessage } from 'ai'
 import { OficinaCliente } from './OficinaCliente'
 
 export const dynamic = 'force-dynamic'
@@ -13,23 +21,34 @@ export const dynamic = 'force-dynamic'
 async function cuenta(p: PromiseLike<{ count: number | null }>): Promise<number> {
     try { return (await p).count ?? 0 } catch { return 0 }
 }
-const filas = (tabla: string) => supabase.from(tabla).select('id', { count: 'exact', head: true }).is('proyecto_id', null)
+const filas = (tabla: string, p: ProyectoId) => porAlcance(supabase.from(tabla).select('id', { count: 'exact', head: true }), p)
 
 const FIJAR_OBJETIVOS = 'Ayúdame a fijar mis 3 objetivos principales de los próximos meses: revisa el cerebro de la empresa y las cifras de hoy, propónmelos con su cifra y fecha, y créalos en el departamento que corresponde.'
 
-/** La Oficina: primero la guía (ruta de inicio y planes en marcha), después el equipo en 3D y su actividad. */
+/**
+ * La Oficina: arriba, el proyecto en el que trabajas, la puerta de entrada (un solo chat con todo el equipo) y lo
+ * que están haciendo; después la ruta de inicio, los planes y el equipo en 3D con su actividad.
+ */
 export default async function OficinaPage() {
-    const [cerebro, planes, objetivos, entregables, completados] = await Promise.all([
-        leerCerebro().catch(() => ({})),
-        listarPlanes().catch(() => [] as PlanConPasos[]),
-        cuenta(filas('objetivos').eq('estado', 'activo')),
-        cuenta(filas('entregables')),
-        cuenta(filas('planes').eq('estado', 'completado')),
+    const { id: pid, proyecto } = await proyectoActivo()
+    const [cerebro, planes, objetivos, entregables, completados, proyectos, hilo, abiertos, recientes] = await Promise.all([
+        leerCerebro(pid).catch(() => ({})),
+        listarPlanes({ alcance: pid }).catch(() => [] as PlanConPasos[]),
+        cuenta(filas('objetivos', pid).eq('estado', 'activo')),
+        cuenta(filas('entregables', pid)),
+        cuenta(filas('planes', pid).eq('estado', 'completado')),
+        listarProyectos().catch(() => [] as Proyecto[]),
+        leerHilo('equipo', pid).catch(() => [] as UIMessage[]),
+        listarEncargos({ alcance: pid, abiertos: true }).catch(() => [] as Encargo[]),
+        listarEncargos({ alcance: pid, limite: 6 }).catch(() => [] as Encargo[]),
     ])
+    // Abiertos primero (lo que espera tu respuesta arriba), después los terminados recientes.
+    const encargos = [...abiertos.sort((a, b) => Number(b.estado === 'esperando') - Number(a.estado === 'esperando')), ...recientes.filter((e) => !abiertos.some((x) => x.id === e.id)).slice(0, 4)]
+    const nombre = proyecto?.nombre ?? 'JAM Tech'
     const comp = completitud(cerebro)
     const totalPlanes = planes.length + completados
     const ruta = [
-        { hecho: comp.pct >= 75, titulo: 'Cuéntale a tu equipo quién eres', detalle: `Cerebro de la empresa al ${comp.pct} %: oferta, precios, cliente ideal y metas.`, href: '/oficina/cerebro' },
+        { hecho: comp.pct >= 75, titulo: proyecto ? `Cuéntale al equipo qué es ${nombre}` : 'Cuéntale a tu equipo quién eres', detalle: `Cerebro ${proyecto ? 'del proyecto' : 'de la empresa'} al ${comp.pct} %: oferta, precios, cliente ideal y metas.`, href: '/oficina/cerebro' },
         { hecho: objetivos >= 3, titulo: 'Fija tus 3 objetivos principales', detalle: `${objetivos} de 3 objetivos activos, con cifra y fecha.`, href: `/oficina/direccion?q=${encodeURIComponent(FIJAR_OBJETIVOS)}` },
         { hecho: totalPlanes > 0, titulo: 'Crea tu primer plan guiado', detalle: 'Una meta convertida en pasos, cada uno con su agente.', href: '#nuevo-plan' },
         { hecho: entregables > 0, titulo: 'Haz tu primera tarea guiada', detalle: 'Un entregable listo para usar, por ejemplo con Camila o Mateo.', href: '/oficina/marketing#tareas' },
@@ -38,6 +57,16 @@ export default async function OficinaPage() {
 
     const arriba = (
         <div className="mb-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
+                <SelectorProyecto proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))} actual={pid} />
+                <p className="text-xs text-muted-foreground">{proyecto ? `Todo lo que pidas aquí queda en ${nombre}.` : 'Trabajando en la empresa. Crea un proyecto para Wapalink o un cliente.'}</p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                <PuertaEntrada key={pid ?? 'jamtech'} inicial={hilo} proyecto={pid} />
+                <ListaEncargos encargos={encargos} titulo="En lo que estamos" vacio="Nadie tiene encargos ahora. Pídele algo largo al equipo (una propuesta, una investigación) y lo verás aquí mientras lo trabajan." />
+            </div>
+
             {pendientes > 0 && (
                 <section className="rounded-2xl border bg-card p-4" aria-labelledby="ruta-inicio">
                     <h2 id="ruta-inicio" className="font-semibold">Ruta de inicio <span className="font-normal text-muted-foreground">· {ruta.length - pendientes} de {ruta.length}</span></h2>

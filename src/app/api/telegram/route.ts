@@ -18,7 +18,9 @@ import {
     type TgUpdate,
 } from '@/lib/telegram/api'
 import { escapeHtml, isWritePart, mdToTelegramHtml, renderConfirmation, renderResult, toolNameOf, toolParts, type ToolPartLike } from '@/lib/telegram/format'
-import { loadSession, resetSession, saveSession } from '@/lib/telegram/session'
+import { guardarProyectoSesion, leerProyectoSesion, loadSession, resetSession, saveSession } from '@/lib/telegram/session'
+import { esProyectoId, leerProyecto, listarProyectos } from '@/lib/agent/proyectos'
+import { supabase } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -50,7 +52,10 @@ const HELP = [
     '',
     'Toda escritura te pide confirmación con botones antes de tocar la base de datos.',
     '',
+    'Si me pides algo largo (investigar, preparar una propuesta), el agente que corresponda lo trabaja en segundo plano y te avisa aquí.',
+    '',
     '/pendiente — resumen de hoy',
+    '/proyecto — cambiar de proyecto (JAM Tech, Wapalink…)',
     '/nuevo — empezar conversación de cero',
 ].join('\n')
 
@@ -195,7 +200,7 @@ async function continueIfComplete(chatId: string, history: UIMessage[], idx: num
     const before = structuredClone(assistant) as UIMessage
     // readUIMessageStream fusiona la continuación en el mismo objeto: antes de mutarlo guardamos una copia para saber qué es nuevo.
     const messages = [...history.slice(0, idx), assistant]
-    const updated = await runAgentTurn(messages, assistant)
+    const updated = await runAgentTurn(messages, assistant, { proyectoId: await leerProyectoSesion(chatId) })
     const newHistory = [...history.slice(0, idx), updated, ...history.slice(idx + 1)]
     await saveSession(chatId, newHistory)
     await deliver(chatId, updated, before)
@@ -218,7 +223,7 @@ async function runTurn(chatId: string, text: string, attachment?: TgAttachment):
             history = await continueIfComplete(chatId, history, pending.idx)
         }
         const userMessage = newUserMessage(text, attachment)
-        const assistant = await runAgentTurn([...history, userMessage])
+        const assistant = await runAgentTurn([...history, userMessage], undefined, { proyectoId: await leerProyectoSesion(chatId) })
         await saveSession(chatId, [...history, withoutAttachments(userMessage), assistant])
         await deliver(chatId, assistant)
     } catch (e) {
@@ -258,6 +263,42 @@ async function handleApproval(cq: TgCallbackQuery): Promise<void> {
     } catch (e) {
         console.error('[telegram] continuación fallida', e)
         await sendMessage(chatId, `⚠️ ${escapeHtml(e instanceof Error ? e.message : 'No se pudo completar la acción')}`)
+    }
+}
+
+/** Botón de un informe: hace el pedido guardado como si José lo hubiera escrito. */
+async function handleAccion(cq: TgCallbackQuery): Promise<void> {
+    const chatId = String(cq.message?.chat.id ?? cq.from.id)
+    const id = (cq.data ?? '').slice(4)
+    const { data } = await supabase.from('telegram_acciones').select('etiqueta, pedido').eq('id', id).maybeSingle()
+    if (!data) return answerCallbackQuery(cq.id, 'Esta acción ya no está disponible.')
+    await answerCallbackQuery(cq.id, data.etiqueta)
+    await supabase.from('telegram_acciones').update({ usada_at: new Date().toISOString() }).eq('id', id)
+    await sendMessage(chatId, `▶️ <b>${escapeHtml(data.etiqueta)}</b>`)
+    await runTurn(chatId, data.pedido)
+}
+
+/** /proyecto: en qué proyecto trabajan los agentes en este chat. */
+async function menuProyectos(chatId: string): Promise<void> {
+    const [proyectos, actual] = await Promise.all([listarProyectos(), leerProyectoSesion(chatId)])
+    const filas = [{ id: 'none', nombre: 'JAM Tech' }, ...proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))]
+    const nombreActual = filas.find((f) => (f.id === 'none' ? actual === null : f.id === actual))?.nombre ?? 'JAM Tech'
+    await sendMessage(chatId, `📁 Ahora trabajamos en <b>${escapeHtml(nombreActual)}</b>. ¿Cambiamos?${proyectos.length ? '' : '\n\n<i>Aún no hay proyectos: créalos en la Oficina, en Proyectos.</i>'}`, {
+        inline_keyboard: filas.map((f) => [{ text: `${(f.id === 'none' ? actual === null : f.id === actual) ? '✓ ' : ''}${f.nombre}`, callback_data: `pry:${f.id}` }]),
+    })
+}
+
+async function handleProyecto(cq: TgCallbackQuery): Promise<void> {
+    const chatId = String(cq.message?.chat.id ?? cq.from.id)
+    const id = (cq.data ?? '').slice(4)
+    const proyecto = id === 'none' ? null : esProyectoId(id) ? await leerProyecto(id) : null
+    if (id !== 'none' && !proyecto) return answerCallbackQuery(cq.id, 'Ese proyecto ya no existe.')
+    await guardarProyectoSesion(chatId, proyecto?.id ?? null)
+    const nombre = proyecto?.nombre ?? 'JAM Tech'
+    await answerCallbackQuery(cq.id, nombre)
+    if (cq.message) {
+        await editMessageReplyMarkup(chatId, cq.message.message_id, null)
+        await editMessageText(chatId, cq.message.message_id, `📁 Ahora trabajamos en <b>${escapeHtml(nombre)}</b>. Lo que me pidas (objetivos, planes, encargos) queda en este proyecto.`)
     }
 }
 
@@ -324,6 +365,7 @@ async function handleMessage(msg: TgMessage): Promise<void> {
         return void (await sendMessage(chatId, 'Conversación reiniciada. ¿Qué hacemos?'))
     }
     if (text === '/pendiente') text = '¿Qué tengo pendiente hoy?'
+    if (text === '/proyecto' || text === '/proyectos') return void (await menuProyectos(chatId))
 
     await runTurn(chatId, text)
 }
@@ -361,7 +403,12 @@ export async function POST(req: NextRequest) {
         after(() =>
             withLock(chatId, async () => {
                 try {
-                    if (update.callback_query) await handleApproval(update.callback_query)
+                    const cq = update.callback_query
+                    // Solo el dueño (los mismos chats permitidos que para los mensajes).
+                    if (cq && !allowedChatIds().includes(chatId)) await answerCallbackQuery(cq.id)
+                    else if (cq?.data?.startsWith('acc:')) await handleAccion(cq)
+                    else if (cq?.data?.startsWith('pry:')) await handleProyecto(cq)
+                    else if (cq) await handleApproval(cq)
                     else if (update.message) await handleMessage(update.message)
                 } catch (e) {
                     console.error('[telegram] error procesando update', e)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
-import { DEPARTAMENTOS_CON_RUTINA, correrRutina } from '@/lib/agent/rutinas'
+import { DEPARTAMENTOS_CON_RUTINA, accionesDeInforme, correrRutina } from '@/lib/agent/rutinas'
+import { retomarAtascados } from '@/lib/agent/encargos'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
 import { appendAssistantMessage } from '@/lib/telegram/session'
@@ -33,6 +34,9 @@ export async function POST(req: NextRequest) {
         : DEPARTAMENTOS_CON_RUTINA
     if (deps.length === 0) return NextResponse.json({ ok: false, error: `Departamento desconocido: ${pedido}` }, { status: 400 })
 
+    // De paso, retoma los encargos que se quedaron a medias (un reinicio del servidor mientras trabajaban).
+    if (!dryRun) await retomarAtascados().catch((e) => console.error('[oficina] retomar encargos', e))
+
     const chatIds = (process.env.TELEGRAM_ALLOWED_CHAT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean)
     const resultados: Record<string, { enviado: boolean; informe?: string; error?: string }> = {}
 
@@ -44,8 +48,11 @@ export async function POST(req: NextRequest) {
                 continue
             }
             const texto = `[Informe automático de ${DEPARTAMENTOS[dep].persona}, de ${DEPARTAMENTOS[dep].nombre}]\n\n${informe}`
+            // Hasta 3 botones con lo que propone el informe; si la extracción falla, el informe sale igual sin botones.
+            const acciones = await accionesDeInforme(dep, informe).catch((e) => { console.error('[oficina] acciones del informe', e); return [] })
+            const botones = acciones.length ? { inline_keyboard: acciones.map((a) => [{ text: `▶️ ${a.etiqueta}`, callback_data: `acc:${a.id}` }]) } : undefined
             for (const chatId of chatIds) {
-                await sendMessage(chatId, mdToTelegramHtml(informe))
+                await sendMessage(chatId, mdToTelegramHtml(informe), botones)
                 await appendAssistantMessage(chatId, texto)
             }
             resultados[dep] = { enviado: true, informe }

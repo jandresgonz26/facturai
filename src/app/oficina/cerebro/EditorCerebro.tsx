@@ -10,9 +10,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { MIN_COMPLETA, SECCIONES, completitud, type SeccionCerebro } from '@/lib/agent/cerebro-secciones'
 import { guardarCerebroAccion } from '../procesos-acciones'
 
-const ENTREVISTA = 'Entrevístame para completar el cerebro de la empresa: revisa qué secciones faltan y pregúntame una a la vez.'
+const entrevista = (proyecto: string | null) => `Entrevístame para completar el cerebro ${proyecto ? `del proyecto ${proyecto}` : 'de la empresa'}: revisa qué secciones faltan y pregúntame una a la vez.`
 
-export function EditorCerebro({ inicial }: { inicial: Partial<Record<SeccionCerebro, string>> }) {
+export function EditorCerebro({ inicial, proyecto = null }: { inicial: Partial<Record<SeccionCerebro, string>>; proyecto?: string | null }) {
     const [guardado, setGuardado] = useState(inicial)
     const [textos, setTextos] = useState(inicial)
     const [busy, start] = useTransition()
@@ -33,7 +33,7 @@ export function EditorCerebro({ inicial }: { inicial: Partial<Record<SeccionCere
                             <div className="h-full rounded-full bg-[#D4A72C] transition-all" style={{ width: `${comp.pct}%` }} />
                         </div>
                     </div>
-                    <Button variant="outline" asChild><Link href={`/oficina/direccion?q=${encodeURIComponent(ENTREVISTA)}`}><MessageCircle /> Que Ramón me entreviste</Link></Button>
+                    <Button variant="outline" asChild><Link href={`/oficina/direccion?q=${encodeURIComponent(entrevista(proyecto))}`}><MessageCircle /> Que Ramón me entreviste</Link></Button>
                 </div>
             </section>
 
@@ -44,7 +44,7 @@ export function EditorCerebro({ inicial }: { inicial: Partial<Record<SeccionCere
                 return (
                     <section key={s.key} className="rounded-2xl border bg-card p-4" aria-labelledby={`sec-${s.key}`}>
                         <div className="flex items-center justify-between gap-2">
-                            <h2 id={`sec-${s.key}`} className="font-semibold">{s.titulo}</h2>
+                            <h2 id={`sec-${s.key}`} className="font-semibold">{proyecto && s.key === 'empresa' ? `Qué es ${proyecto}` : s.titulo}</h2>
                             {completa ? <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /> Completa</span> : <span className="text-xs text-amber-600 dark:text-amber-400">Falta</span>}
                         </div>
                         <p className="mt-0.5 text-sm text-muted-foreground">{s.preguntas}</p>

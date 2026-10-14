@@ -63,3 +63,15 @@ export async function resetSession(chatId: string | number): Promise<void> {
     memory.delete(key)
     await supabase.from('telegram_sessions').delete().eq('chat_id', key)
 }
+
+/** Proyecto activo de este chat de Telegram (null = JAM Tech). Se cambia con /proyecto. */
+export async function leerProyectoSesion(chatId: string | number): Promise<string | null> {
+    const { data } = await supabase.from('telegram_sessions').select('proyecto_id').eq('chat_id', String(chatId)).maybeSingle()
+    return (data?.proyecto_id as string | null) ?? null
+}
+
+export async function guardarProyectoSesion(chatId: string | number, proyectoId: string | null): Promise<void> {
+    const key = String(chatId)
+    const { error } = await supabase.from('telegram_sessions').upsert({ chat_id: key, proyecto_id: proyectoId, messages: await loadSession(key), updated_at: new Date().toISOString() }, { onConflict: 'chat_id' })
+    if (error) throw new Error(error.message)
+}

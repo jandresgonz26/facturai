@@ -22,7 +22,7 @@ export default async function PaginaPlan({ params }: { params: Promise<{ id: str
         <div className="mx-auto max-w-3xl space-y-4">
             <Link href="/oficina" className="text-sm text-muted-foreground hover:text-foreground">← Oficina</Link>
             <header>
-                <p className="text-xs font-medium uppercase tracking-wide text-[#B08A1E] dark:text-[#D4A72C]">🧭 Plan guiado · {ESTADO[plan.estado]}</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-[#B08A1E] dark:text-[#D4A72C]">🧭 Plan guiado · {ESTADO[plan.estado]}{plan.proyecto && <> · {plan.proyecto}</>}</p>
                 <h1 className="mt-1 text-2xl font-bold leading-tight [text-wrap:balance]">{plan.titulo}</h1>
                 <p className="mt-1 text-sm text-muted-foreground">Meta: {plan.meta}{plan.fecha_limite && <> · hasta el {fechaLarga(plan.fecha_limite)}</>}</p>
                 {plan.resumen && <p className="mt-3 max-w-prose text-sm">{plan.resumen}</p>}

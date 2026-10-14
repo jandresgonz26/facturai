@@ -16,6 +16,7 @@ import { cerebroParaPrompt } from './cerebro'
 import { memoriaParaPrompt } from './tools-memoria'
 import { modeloPara } from './modelo'
 import { TAREA, TAREAS } from './tareas-catalogo'
+import { contextoProyecto, leerProyecto, porAlcance, type Alcance, type ProyectoId } from './proyectos'
 
 export type EstadoPlan = 'borrador' | 'activo' | 'completado' | 'pausado' | 'descartado'
 export type EstadoPaso = 'pendiente' | 'hecho' | 'omitido'
@@ -28,10 +29,12 @@ export type Paso = {
 export type Plan = {
     id: string; created_at: string; titulo: string; meta: string; resumen: string | null; fecha_limite: string | null
     estado: EstadoPlan; objetivo_id: string | null; objetivo_propuesto: ObjetivoPropuesto | null; fuente: string
+    proyecto_id: string | null; proyecto: string | null
 }
 export type PlanConPasos = Plan & { pasos: Paso[]; actual: Paso | null; hechos: number; total: number }
 
-const PLAN_COLS = 'id, created_at, titulo, meta, resumen, fecha_limite, estado, objetivo_id, objetivo_propuesto, fuente'
+const PLAN_COLS = 'id, created_at, titulo, meta, resumen, fecha_limite, estado, objetivo_id, objetivo_propuesto, fuente, proyecto_id, proyectos(nombre)'
+const plan = (r: Record<string, unknown>): Plan => ({ ...(r as unknown as Plan), proyecto: (r.proyectos as { nombre?: string } | null)?.nombre ?? null })
 
 function armar(plan: Plan, pasos: Paso[]): PlanConPasos {
     const ordenados = pasos.filter((p) => p.plan_id === plan.id).sort((a, b) => a.orden - b.orden)
@@ -57,12 +60,11 @@ async function pasosDe(planIds: string[], conEntregables: boolean): Promise<Paso
     return pasos
 }
 
-export async function listarPlanes(o: { estados?: EstadoPlan[] } = {}): Promise<PlanConPasos[]> {
-    let q = supabase.from('planes').select(PLAN_COLS).is('proyecto_id', null)
-    q = q.in('estado', o.estados ?? ['borrador', 'activo', 'pausado'])
+export async function listarPlanes(o: { estados?: EstadoPlan[]; alcance?: Alcance } = {}): Promise<PlanConPasos[]> {
+    const q = porAlcance(supabase.from('planes').select(PLAN_COLS), o.alcance ?? null).in('estado', o.estados ?? ['borrador', 'activo', 'pausado'])
     const { data, error } = await q.order('created_at', { ascending: false }).limit(30)
     if (error) throw new Error(error.message)
-    const planes = (data ?? []) as Plan[]
+    const planes = (data ?? []).map((r) => plan(r as Record<string, unknown>))
     const pasos = await pasosDe(planes.map((p) => p.id), false)
     return planes.map((p) => armar(p, pasos))
 }
@@ -71,15 +73,15 @@ export async function leerPlan(id: string): Promise<PlanConPasos | null> {
     const { data, error } = await supabase.from('planes').select(PLAN_COLS).eq('id', id).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) return null
-    return armar(data as Plan, await pasosDe([id], true))
+    return armar(plan(data as Record<string, unknown>), await pasosDe([id], true))
 }
 
 /** Pasos pendientes de un agente en los planes activos (el primero de cada plan es «el que toca»). */
-export async function pasosDelAgente(dep: Departamento): Promise<{ plan: Pick<Plan, 'id' | 'titulo'>; paso: Paso; toca: boolean; numero: number; total: number }[]> {
-    const planes = await listarPlanes({ estados: ['activo'] })
+export async function pasosDelAgente(dep: Departamento, alcance: Alcance = null): Promise<{ plan: Pick<Plan, 'id' | 'titulo' | 'proyecto'>; paso: Paso; toca: boolean; numero: number; total: number }[]> {
+    const planes = await listarPlanes({ estados: ['activo'], alcance })
     return planes.flatMap((p) => p.pasos
         .filter((s) => s.departamento === dep && s.estado === 'pendiente')
-        .map((s) => ({ plan: { id: p.id, titulo: p.titulo }, paso: s, toca: p.actual?.id === s.id, numero: p.pasos.filter((x) => x.estado !== 'omitido').findIndex((x) => x.id === s.id) + 1, total: p.total })))
+        .map((s) => ({ plan: { id: p.id, titulo: p.titulo, proyecto: p.proyecto }, paso: s, toca: p.actual?.id === s.id, numero: p.pasos.filter((x) => x.estado !== 'omitido').findIndex((x) => x.id === s.id) + 1, total: p.total })))
 }
 
 const sumarDias = (iso: string, dias: number) => {
@@ -91,7 +93,7 @@ const sumarDias = (iso: string, dias: number) => {
 export type NuevoPaso = { departamento: Departamento; titulo: string; descripcion?: string | null; tarea_guiada?: string | null; datos?: Record<string, string>; fecha?: string | null; dias?: number }
 export type NuevoPlan = {
     titulo: string; meta: string; resumen?: string | null; fecha_limite?: string | null; objetivo_propuesto?: ObjetivoPropuesto | null
-    pasos: NuevoPaso[]; estado?: EstadoPlan; fuente?: 'web' | 'chat' | 'telegram'
+    pasos: NuevoPaso[]; estado?: EstadoPlan; fuente?: 'web' | 'chat' | 'telegram'; proyecto_id?: ProyectoId
 }
 
 export async function crearPlan(n: NuevoPlan): Promise<PlanConPasos> {
@@ -100,6 +102,7 @@ export async function crearPlan(n: NuevoPlan): Promise<PlanConPasos> {
     const { data: plan, error } = await supabase.from('planes').insert({
         titulo: n.titulo.trim().slice(0, 200), meta: n.meta.trim().slice(0, 1000), resumen: n.resumen?.trim() || null,
         fecha_limite: n.fecha_limite || null, objetivo_propuesto: n.objetivo_propuesto ?? null, estado: n.estado ?? 'borrador', fuente: n.fuente ?? 'web',
+        proyecto_id: n.proyecto_id ?? null,
     }).select(PLAN_COLS).single()
     if (error || !plan) throw new Error(`No se pudo crear el plan: ${error?.message}`)
     const filas = n.pasos.slice(0, 12).map((p, i) => {
@@ -121,10 +124,10 @@ export async function crearPlan(n: NuevoPlan): Promise<PlanConPasos> {
 }
 
 async function crearObjetivoDelPlan(planId: string): Promise<void> {
-    const { data: p } = await supabase.from('planes').select('objetivo_id, objetivo_propuesto, fecha_limite').eq('id', planId).single()
+    const { data: p } = await supabase.from('planes').select('objetivo_id, objetivo_propuesto, fecha_limite, proyecto_id').eq('id', planId).single()
     const o = p?.objetivo_propuesto as ObjetivoPropuesto | null
     if (!p || p.objetivo_id || !o || o.valor_meta === null) return
-    const creado = await crearObjetivo({ departamento: o.departamento, titulo: o.titulo, metrica: o.metrica, unidad: o.unidad, valor_meta: o.valor_meta, fecha_limite: p.fecha_limite })
+    const creado = await crearObjetivo({ departamento: o.departamento, titulo: o.titulo, metrica: o.metrica, unidad: o.unidad, valor_meta: o.valor_meta, fecha_limite: p.fecha_limite, proyecto_id: p.proyecto_id })
     await supabase.from('planes').update({ objetivo_id: creado.id }).eq('id', planId)
 }
 
@@ -196,22 +199,24 @@ const esquemaPlan = z.object({
     })).describe('Entre 4 y 9 pasos en orden de ejecución'),
 })
 
-export async function generarPlan(i: { meta: string; fecha_limite?: string | null; contexto?: string | null }): Promise<PlanConPasos> {
+export async function generarPlan(i: { meta: string; fecha_limite?: string | null; contexto?: string | null; proyecto?: ProyectoId }): Promise<PlanConPasos> {
+    const proyecto = i.proyecto ?? null
     const meta = i.meta.trim()
     if (meta.length < 8) throw new Error('Cuéntame la meta con un poco más de detalle.')
     const hoy = todayISO()
-    const [cerebro, memoria, objetivos, cifras] = await Promise.all([
-        cerebroParaPrompt(),
+    const [cerebro, memoria, objetivos, cifras, p] = await Promise.all([
+        cerebroParaPrompt(proyecto),
         memoriaParaPrompt('direccion'),
-        listarObjetivos().catch(() => []),
+        listarObjetivos({ alcance: proyecto }).catch(() => []),
         Promise.all(METRICAS.map(async (m) => `- ${m.etiqueta} (${m.key}, ${DEPARTAMENTOS[m.departamento].nombre}): ${(await valorDe(m.key)) ?? 'sin dato'}`)),
+        leerProyecto(proyecto).catch(() => null),
     ])
     const catalogo = TAREAS.map((t) => `- ${t.id} · ${DEPARTAMENTOS[t.departamento].persona} (${DEPARTAMENTOS[t.departamento].nombre}) · ${t.titulo}: ${t.para} Campos: ${t.campos.map((c) => c.key).join(', ')}`).join('\n')
     const equipo = Object.entries(DEPARTAMENTOS).map(([k, d]) => `- ${k}: ${d.persona}, ${d.nombre} (${d.descripcion})`).join('\n')
     const { model, providerOptions } = modeloPara('chat')
     const { object } = await generateObject({
         model, providerOptions, schema: esquemaPlan,
-        system: `Eres Ramón, director de JAM Tech. Conviertes una meta de José en un plan que la Oficina le guía paso a paso. Fecha de hoy: ${hoy}.${cerebro}${memoria}
+        system: `Eres Ramón, director de JAM Tech. Conviertes una meta de José en un plan que la Oficina le guía paso a paso. Fecha de hoy: ${hoy}.${contextoProyecto(p)}${cerebro}${memoria}
 
 EQUIPO (cada paso lo lleva uno):
 ${equipo}
@@ -236,7 +241,7 @@ Reglas del plan:
         ? { ...object.objetivo, unidad: METRICA.get(object.objetivo.metrica)?.unidad ?? object.objetivo.unidad } as ObjetivoPropuesto
         : null
     return crearPlan({
-        titulo: object.titulo, meta, resumen: object.resumen, fecha_limite: i.fecha_limite || null, objetivo_propuesto: objetivo, estado: 'borrador',
+        titulo: object.titulo, meta, resumen: object.resumen, fecha_limite: i.fecha_limite || null, objetivo_propuesto: objetivo, estado: 'borrador', proyecto_id: proyecto,
         pasos: object.pasos.map((p) => ({
             departamento: p.departamento, titulo: p.titulo, descripcion: p.descripcion, dias: p.dias,
             tarea_guiada: p.tarea_guiada === 'ninguna' ? null : p.tarea_guiada,
@@ -254,15 +259,16 @@ async function run<T>(fn: () => Promise<T>): Promise<ToolResult<T>> {
 const DEP = z.enum(DEPS)
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
-export const planesTools = {
+/** `proyecto`: dónde se crean los planes; `lectura`: qué se lista (las rutinas leen todos los proyectos). */
+export const planesTools = (proyecto: ProyectoId = null, lectura: Alcance = proyecto) => ({
     planes_listar: tool({
         description: 'Planes guiados (una meta convertida en pasos, cada uno con su agente): estado, paso actual («el que toca»), avance y pasos con su id, responsable, fecha y estado. Con departamento, solo los pasos pendientes de ese agente. Úsala para «¿cómo va el plan?», «¿qué toca ahora?» y en los informes.',
         inputSchema: z.object({ departamento: DEP.optional(), incluir_cerrados: z.boolean().optional() }),
         execute: async ({ departamento, incluir_cerrados }) => run(async () => {
-            if (departamento) return (await pasosDelAgente(departamento)).map((x) => ({ plan: x.plan.titulo, plan_id: x.plan.id, paso_id: x.paso.id, paso: x.paso.titulo, numero: `${x.numero} de ${x.total}`, toca_ahora: x.toca, fecha: x.paso.fecha, tarea_guiada: x.paso.tarea_guiada ? TAREA.get(x.paso.tarea_guiada)?.titulo : null }))
-            const planes = await listarPlanes({ estados: incluir_cerrados ? ['borrador', 'activo', 'pausado', 'completado'] : ['borrador', 'activo', 'pausado'] })
+            if (departamento) return (await pasosDelAgente(departamento, lectura)).map((x) => ({ plan: x.plan.titulo, ...(lectura === 'todos' ? { proyecto: x.plan.proyecto ?? 'JAM Tech' } : {}), plan_id: x.plan.id, paso_id: x.paso.id, paso: x.paso.titulo, numero: `${x.numero} de ${x.total}`, toca_ahora: x.toca, fecha: x.paso.fecha, tarea_guiada: x.paso.tarea_guiada ? TAREA.get(x.paso.tarea_guiada)?.titulo : null }))
+            const planes = await listarPlanes({ estados: incluir_cerrados ? ['borrador', 'activo', 'pausado', 'completado'] : ['borrador', 'activo', 'pausado'], alcance: lectura })
             return planes.map((p) => ({
-                id: p.id, titulo: p.titulo, meta: p.meta, estado: p.estado, fecha_limite: p.fecha_limite, avance: `${p.hechos} de ${p.total} pasos`,
+                id: p.id, titulo: p.titulo, ...(lectura === 'todos' ? { proyecto: p.proyecto ?? 'JAM Tech' } : {}), meta: p.meta, estado: p.estado, fecha_limite: p.fecha_limite, avance: `${p.hechos} de ${p.total} pasos`,
                 paso_actual: p.actual ? `${p.actual.titulo} (${DEPARTAMENTOS[p.actual.departamento].persona})` : null, enlace: `/oficina/planes/${p.id}`,
                 pasos: p.pasos.map((s) => ({ id: s.id, orden: s.orden, titulo: s.titulo, responsable: DEPARTAMENTOS[s.departamento].persona, fecha: s.fecha, estado: s.estado })),
             }))
@@ -279,7 +285,7 @@ export const planesTools = {
             })).min(1).max(12),
         }),
         execute: async (i) => run(async () => {
-            const p = await crearPlan({ ...i, estado: 'activo', fuente: 'chat' })
+            const p = await crearPlan({ ...i, estado: 'activo', fuente: 'chat', proyecto_id: proyecto })
             return { id: p.id, titulo: p.titulo, pasos: p.total, enlace: `/oficina/planes/${p.id}` }
         }),
     }),
@@ -289,4 +295,4 @@ export const planesTools = {
         inputSchema: z.object({ paso_id: z.string().uuid(), paso_titulo: z.string().describe('Para la confirmación'), estado: z.enum(['hecho', 'omitido', 'pendiente']) }),
         execute: async ({ paso_id, estado }) => run(() => actualizarPaso(paso_id, estado)),
     }),
-}
+})

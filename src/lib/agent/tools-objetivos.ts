@@ -8,6 +8,7 @@ import { errorMessage } from '@/lib/actions/validation'
 import { DEPARTAMENTOS, type Departamento } from './shared'
 import { METRICAS } from './metricas'
 import { actualizarObjetivo, crearHito, crearObjetivo, listarObjetivos } from './objetivos'
+import type { Alcance, ProyectoId } from './proyectos'
 
 type ToolResult<T> = { ok: true; data: T } | { ok: false; error: string }
 async function run<T>(fn: () => Promise<T>): Promise<ToolResult<T>> {
@@ -18,12 +19,13 @@ const DEP = z.enum(Object.keys(DEPARTAMENTOS) as [Departamento, ...Departamento[
 const CLAVES = ['manual', ...METRICAS.map((m) => m.key)] as [string, ...string[]]
 const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
-export const objetivosTools = {
+/** `proyecto`: dónde se crean los objetivos; `lectura`: qué se lista (las rutinas leen todos los proyectos). */
+export const objetivosTools = (proyecto: ProyectoId = null, lectura: Alcance = proyecto) => ({
     objetivos_listar: tool({
         description: 'Objetivos (roadmap) de un agente o de todos: meta, fecha límite, valor de hoy, avance de 0 a 1, estado e hitos (tareas). Úsala para «¿cómo van mis objetivos?», «¿qué toca ahora para llegar a la meta?» y al revisar el roadmap de un departamento.',
         inputSchema: z.object({ departamento: DEP.optional(), incluir_cerrados: z.boolean().optional() }),
-        execute: async ({ departamento, incluir_cerrados }) => run(async () => (await listarObjetivos({ departamento, incluirCerrados: incluir_cerrados })).map((o) => ({
-            id: o.id, departamento: o.departamento, titulo: o.titulo, meta: o.valor_meta, unidad: o.unidad, inicial: o.valor_inicial, valor_hoy: o.valor,
+        execute: async ({ departamento, incluir_cerrados }) => run(async () => (await listarObjetivos({ departamento, incluirCerrados: incluir_cerrados, alcance: lectura })).map((o) => ({
+            id: o.id, departamento: o.departamento, titulo: o.titulo, ...(lectura === 'todos' ? { proyecto: o.proyecto ?? 'JAM Tech' } : {}), meta: o.valor_meta, unidad: o.unidad, inicial: o.valor_inicial, valor_hoy: o.valor,
             avance: o.avance === null ? null : Math.round(o.avance * 100) / 100, fecha_limite: o.fecha_limite, estado: o.estado,
             metrica: o.automatica ? o.etiquetaMetrica : 'manual', hitos: o.hitos.map((h) => ({ id: h.id, titulo: h.title, estado: h.status, fecha: h.due_date })),
         }))),
@@ -37,7 +39,7 @@ export const objetivosTools = {
             valor_meta: z.number().optional(), valor_inicial: z.number().optional().describe('Vacío con métrica automática = el valor de hoy'),
             fecha_limite: fecha.optional(),
         }),
-        execute: async (i) => run(() => crearObjetivo(i)),
+        execute: async (i) => run(() => crearObjetivo({ ...i, proyecto_id: proyecto })),
     }),
 
     objetivo_actualizar: tool({
@@ -56,4 +58,4 @@ export const objetivosTools = {
         inputSchema: z.object({ objetivo_id: z.string().uuid(), objetivo_titulo: z.string().describe('Para la confirmación'), titulo: z.string().min(3).max(200), fecha: fecha.optional() }),
         execute: async ({ objetivo_id, titulo, fecha: f }) => run(() => crearHito(objetivo_id, { titulo, fecha: f })),
     }),
-}
+})

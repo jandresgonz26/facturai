@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
 import { actualizarObjetivo, crearHito, crearObjetivo, type EstadoObjetivo } from '@/lib/agent/objetivos'
 import { borrarHilo } from '@/lib/agent/hilos'
+import { proyectoActivo } from '@/lib/agent/proyecto-activo'
 
 const ruta = (dep: Departamento) => `/oficina/${dep}`
 function dep(d: string): Departamento {
@@ -28,7 +29,7 @@ export async function crearObjetivoAccion(d: string, f: FormData): Promise<{ ok:
         await crearObjetivo({
             departamento, titulo, descripcion: texto(f.get('descripcion')) || null, metrica: texto(f.get('metrica')) || 'manual',
             unidad: (texto(f.get('unidad')) || 'numero') as 'usd' | 'numero' | 'pct', valor_meta: numero(f.get('meta')),
-            valor_actual: numero(f.get('actual')), fecha_limite: texto(f.get('fecha')) || null,
+            valor_actual: numero(f.get('actual')), fecha_limite: texto(f.get('fecha')) || null, proyecto_id: (await proyectoActivo()).id,
         })
     } catch (e) {
         return { ok: false, mensaje: e instanceof Error ? e.message : 'No se pudo crear.' }
@@ -75,5 +76,5 @@ export async function olvidarAccion(d: string, id: string): Promise<void> {
 }
 
 export async function borrarHiloAccion(d: string): Promise<void> {
-    await borrarHilo(dep(d))
+    await borrarHilo(dep(d), (await proyectoActivo()).id)
 }

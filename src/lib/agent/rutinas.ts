@@ -6,27 +6,24 @@
  */
 import { generateObject, generateText, stepCountIs } from 'ai'
 import { z } from 'zod'
-import { agentTools } from './tools'
-import { marketingTools } from './tools-marketing'
-import { seoTools } from './tools-seo'
-import { direccionTools, guardarConsejos } from './tools-direccion'
+import { guardarConsejos } from './tools-direccion'
 import { memoriaParaPrompt } from './tools-memoria'
-import { objetivosTools } from './tools-objetivos'
-import { cerebroParaPrompt, cerebroTools } from './cerebro'
-import { planesTools } from './planes'
+import { cerebroParaPrompt } from './cerebro'
+import { herramientasPara } from './caja'
+import type { Alcance } from './proyectos'
 import { anthropicProvider, modeloPara, proveedorActivo } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
 import { supabase } from '@/lib/supabase'
 
-const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...objetivosTools, ...cerebroTools, ...planesTools } as Record<string, unknown>
-
 /**
  * Solo las herramientas de LECTURA de la lista (las de escritura se descartan siempre), más la búsqueda web
- * nativa de Claude si se pide. Lo comparten las rutinas y las tareas guiadas, que corren sin confirmación.
+ * nativa de Claude si se pide. Lo comparten las rutinas (que miran todos los proyectos) y las tareas guiadas
+ * (que miran el suyo), que corren sin confirmación.
  */
-export function herramientasLectura(nombres: string[], web = false): Record<string, never> {
+export function herramientasLectura(nombres: string[], web = false, alcance: Alcance = 'todos'): Record<string, never> {
+    const todas = herramientasPara(alcance === 'todos' ? null : alcance, alcance) as Record<string, unknown>
     const tools = Object.fromEntries([...new Set(nombres)].filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, unknown>
     if (web && proveedorActivo() === 'anthropic') tools.web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 4 })
     return tools as Record<string, never>
@@ -131,7 +128,7 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
     const info = DEPARTAMENTOS[dep]
     // Todas las rutinas revisan además sus objetivos (roadmap) y los pasos de los planes que les tocan.
     // Búsqueda web nativa de Claude solo para las rutinas que la piden (Dirección) y con proveedor Anthropic.
-    const tools = herramientasLectura([...cfg.herramientas, 'objetivos_listar', 'planes_listar'], cfg.web)
+    const tools = herramientasLectura([...cfg.herramientas, 'objetivos_listar', 'planes_listar', 'encargos_listar'], cfg.web)
     const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
     const usadas: string[] = []
     // Finanzas compara el mes con la meta de Ajustes; el resto no la necesita.
@@ -156,6 +153,7 @@ FORMATO:
 - Montos con punto de miles y coma decimal ($1.851,88; €95,00), porcentajes con un decimal (33,7 %) y fechas como "5 oct" (nunca 2026-10-05). Sin tablas ni líneas "---".
 Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.
 Si tienes objetivos activos (objetivos_listar con departamento ${dep}), cierra con una línea **Objetivos:** que diga cómo va cada uno frente a su fecha y el siguiente paso.
+Empieza por tus encargos (encargos_listar con departamento ${dep}): si alguno espera una respuesta de José, recuérdalo arriba del todo con su pregunta.
 Si tienes pasos de planes pendientes (planes_listar con departamento ${dep}), añade una línea **Planes:** con el paso que te toca ahora y su fecha; si ya venció, dilo.${cerebro}${memoria}`,
             prompt: cfg.encargo,
             tools,
@@ -180,3 +178,28 @@ Si tienes pasos de planes pendientes (planes_listar con departamento ${dep}), a�
 }
 
 export const DEPARTAMENTOS_CON_RUTINA = Object.keys(RUTINAS) as Departamento[]
+
+/**
+ * Botones del informe en Telegram: hasta 3 acciones concretas que el informe propone, cada una con el pedido
+ * completo que se le hará al asistente al tocarla (como si José lo escribiera). El botón solo lleva el id.
+ */
+export async function accionesDeInforme(dep: Departamento, informe: string): Promise<{ id: string; etiqueta: string }[]> {
+    const { model, providerOptions } = modeloPara('rutinas')
+    const { object } = await generateObject({
+        model, providerOptions,
+        schema: z.object({
+            acciones: z.array(z.object({
+                etiqueta: z.string().describe('Texto del botón, máximo 24 caracteres, empieza con verbo: «Enviar recordatorio», «Crear la tarea»'),
+                pedido: z.string().describe('Lo que José le pediría al asistente para hacerlo, completo y autoexplicativo, con nombres, números de factura y montos tal como aparecen en el informe'),
+            })).describe('Entre 0 y 3 acciones, solo las que el informe propone de forma concreta; vacío si no propone ninguna'),
+        }),
+        prompt: `Del informe de ${DEPARTAMENTOS[dep].persona} (${DEPARTAMENTOS[dep].nombre}), extrae las acciones concretas que propone y que el asistente puede ejecutar o preparar (enviar un recordatorio, crear una tarea, preparar una propuesta, revisar un cliente…). No inventes nada que no esté en el texto.\n\nINFORME:\n${informe}`,
+    })
+    const acciones = object.acciones.filter((a) => a.etiqueta.trim() && a.pedido.trim()).slice(0, 3)
+    if (acciones.length === 0) return []
+    const { data, error } = await supabase.from('telegram_acciones').insert(acciones.map((a) => ({
+        departamento: dep, etiqueta: a.etiqueta.trim().slice(0, 32), pedido: a.pedido.trim().slice(0, 1500),
+    }))).select('id, etiqueta')
+    if (error) throw new Error(error.message)
+    return (data ?? []) as { id: string; etiqueta: string }[]
+}

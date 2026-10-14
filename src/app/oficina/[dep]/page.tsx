@@ -14,6 +14,14 @@ import { TAREA } from '@/lib/agent/tareas-catalogo'
 import { TareasGuiadas } from '@/components/oficina/TareasGuiadas'
 import { ListaEntregables } from '@/components/oficina/ListaEntregables'
 import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
+import { ListaEncargos } from '@/components/oficina/ListaEncargos'
+import { Confianza } from '@/components/oficina/Confianza'
+import { SelectorProyecto } from '@/components/oficina/SelectorProyecto'
+import { listarEncargos, type Encargo } from '@/lib/agent/encargos'
+import { leerAutonomias } from '@/lib/agent/confianza'
+import { listarProyectos, type Proyecto } from '@/lib/agent/proyectos'
+import { proyectoActivo } from '@/lib/agent/proyecto-activo'
+import { INTERNAL_WRITE_TOOLS, TOOL_LABELS, departamentoDe } from '@/lib/agent/shared'
 import { ChatAgente } from './ChatAgente'
 import { PanelObjetivos } from './PanelObjetivos'
 import { MemoriaAgente } from './MemoriaAgente'
@@ -40,20 +48,25 @@ export default async function PaginaAgente({ params, searchParams }: { params: P
     const dep = raw as Departamento
     const info = DEPARTAMENTOS[dep]
     const propias = METRICAS.filter((m) => m.departamento === dep)
+    const { id: pid } = await proyectoActivo()
 
-    const [hilo, objetivos, kpis, informes, memoria, consejos, pasos, entregables, planes] = await Promise.all([
-        seguro<UIMessage[]>(leerHilo(dep), []),
-        seguro<ObjetivoConAvance[]>(listarObjetivos({ departamento: dep }), []),
+    const [hilo, objetivos, kpis, informes, memoria, consejos, pasos, entregables, planes, encargos, autonomias, proyectos] = await Promise.all([
+        seguro<UIMessage[]>(leerHilo(dep, pid), []),
+        seguro<ObjetivoConAvance[]>(listarObjetivos({ departamento: dep, alcance: pid }), []),
         Promise.all(propias.map(async (m) => ({ etiqueta: m.etiqueta, unidad: m.unidad, valor: await valorDe(m.key) }))),
         seguro(Promise.resolve(supabase.from('agent_events').select('id, created_at, titulo, detalle').eq('departamento', dep).eq('tipo', 'rutina').eq('estado', 'hecho').order('created_at', { ascending: false }).limit(5))
             .then(({ data }) => (data ?? []) as { id: string; created_at: string; titulo: string; detalle: { informe?: string } | null }[]), []),
         seguro(Promise.resolve(supabase.from('agent_memoria').select('id, hecho, departamento').eq('activo', true).or(`departamento.eq.${dep},departamento.is.null`).order('created_at'))
             .then(({ data }) => (data ?? []).map((r) => ({ id: r.id as string, hecho: r.hecho as string, general: r.departamento === null }))), []),
         dep === 'direccion' ? seguro(listarConsejos(10), []) : Promise.resolve([] as Consejo[]),
-        seguro(pasosDelAgente(dep), []),
-        seguro<Entregable[]>(listarEntregables({ departamento: dep, limite: 10 }), []),
-        dep === 'direccion' ? seguro<PlanConPasos[]>(listarPlanes({ estados: ['borrador', 'activo', 'pausado', 'completado'] }), []) : Promise.resolve([] as PlanConPasos[]),
+        seguro(pasosDelAgente(dep, pid), []),
+        seguro<Entregable[]>(listarEntregables({ departamento: dep, limite: 10, alcance: pid }), []),
+        dep === 'direccion' ? seguro<PlanConPasos[]>(listarPlanes({ estados: ['borrador', 'activo', 'pausado', 'completado'], alcance: pid }), []) : Promise.resolve([] as PlanConPasos[]),
+        seguro<Encargo[]>(listarEncargos({ departamento: dep, alcance: pid, limite: 8 }), []),
+        seguro(leerAutonomias(), null),
+        seguro<Proyecto[]>(listarProyectos(), []),
     ])
+    const internas = INTERNAL_WRITE_TOOLS.filter((t) => departamentoDe(t) === dep).map((t) => (TOOL_LABELS[t] ?? t).toLowerCase())
     const metricas = METRICAS.map((m) => ({ key: m.key, etiqueta: m.etiqueta, unidad: m.unidad, propia: m.departamento === dep }))
 
     return (
@@ -65,10 +78,11 @@ export default async function PaginaAgente({ params, searchParams }: { params: P
                     <h1 className="text-2xl font-bold leading-tight">{info.persona} <span className="font-normal text-muted-foreground">· {info.nombre}</span></h1>
                     <p className="text-sm text-muted-foreground">{info.descripcion}{informes[0] && <> · último informe: {fechaHora(informes[0].created_at)}</>}</p>
                 </div>
+                <div className="sm:ml-auto"><SelectorProyecto proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))} actual={pid} /></div>
             </header>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                <ChatAgente dep={dep} inicial={hilo} preguntas={PREGUNTAS[dep] ?? []} semilla={q?.slice(0, 1500)} />
+                <ChatAgente key={pid ?? 'jamtech'} dep={dep} inicial={hilo} preguntas={PREGUNTAS[dep] ?? []} semilla={q?.slice(0, 1500)} proyecto={pid} />
 
                 <div className="space-y-4">
                     {kpis.length > 0 && (
@@ -97,6 +111,8 @@ export default async function PaginaAgente({ params, searchParams }: { params: P
                             </ul>
                         </section>
                     )}
+
+                    {encargos.length > 0 && <ListaEncargos encargos={encargos} titulo="En lo que estoy" vacio="" mostrarQuien={false} />}
 
                     <TareasGuiadas dep={dep} />
 
@@ -155,6 +171,8 @@ export default async function PaginaAgente({ params, searchParams }: { params: P
                     </section>
 
                     <ListaEntregables entregables={entregables} titulo={`Entregables de ${info.persona}`} />
+
+                    {autonomias && <Confianza dep={dep} persona={info.persona} inicial={autonomias[dep]} internas={internas} />}
 
                     <MemoriaAgente dep={dep} persona={info.persona} recuerdos={memoria} />
                 </div>

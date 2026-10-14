@@ -14,14 +14,14 @@ import { emitDataChanged } from '@/lib/events'
 import { borrarHiloAccion } from './acciones'
 
 /** `semilla`: mensaje que llega ya escrito (desde un paso de un plan o la ruta de inicio), para revisarlo y enviarlo. */
-export function ChatAgente({ dep, inicial, preguntas, semilla }: { dep: Departamento; inicial: UIMessage[]; preguntas: string[]; semilla?: string }) {
+export function ChatAgente({ dep, inicial, preguntas, semilla, proyecto = null }: { dep: Departamento; inicial: UIMessage[]; preguntas: string[]; semilla?: string; proyecto?: string | null }) {
     const info = DEPARTAMENTOS[dep]
     const router = useRouter()
     const [input, setInput] = useState(semilla ?? '')
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const transport = useMemo(() => new DefaultChatTransport({ api: '/api/agent', body: { departamento: dep } }), [dep])
     const chat = useChat({
-        id: `hilo-${dep}`,
+        id: `hilo-${dep}-${proyecto ?? 'jamtech'}`,
         messages: inicial,
         transport,
         sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
