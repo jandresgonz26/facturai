@@ -12,15 +12,27 @@ import { seoTools } from './tools-seo'
 import { direccionTools, guardarConsejos } from './tools-direccion'
 import { memoriaParaPrompt } from './tools-memoria'
 import { objetivosTools } from './tools-objetivos'
+import { cerebroParaPrompt, cerebroTools } from './cerebro'
+import { planesTools } from './planes'
 import { anthropicProvider, modeloPara, proveedorActivo } from './modelo'
 import { registrarEvento } from './eventos'
 import { DEPARTAMENTOS, isWriteTool, type Departamento } from './shared'
 import { todayISO } from '@/lib/actions/validation'
 import { supabase } from '@/lib/supabase'
 
-const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...objetivosTools } as Record<string, unknown>
+const todas = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...objetivosTools, ...cerebroTools, ...planesTools } as Record<string, unknown>
 
-/** Contexto de la empresa para Dirección (lo que no está en los datos). */
+/**
+ * Solo las herramientas de LECTURA de la lista (las de escritura se descartan siempre), más la búsqueda web
+ * nativa de Claude si se pide. Lo comparten las rutinas y las tareas guiadas, que corren sin confirmación.
+ */
+export function herramientasLectura(nombres: string[], web = false): Record<string, never> {
+    const tools = Object.fromEntries([...new Set(nombres)].filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, unknown>
+    if (web && proveedorActivo() === 'anthropic') tools.web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 4 })
+    return tools as Record<string, never>
+}
+
+/** Contexto inicial de la empresa: con él se sembró la sección «Quiénes somos» del cerebro (schema_update_procesos.sql). */
 export const EMPRESA = `JAM Tech Corp (marca "JAM Tech") es una agencia de software y marketing de Puerto Ordaz, Venezuela, dirigida por José González (pronto con una socia). Líneas de negocio: desarrollo web y de apps; SEO para clientes con una plataforma propia; automatización e IA para pequeños negocios (asistente Jami, regalo de mensajes de WhatsApp y boletín "Aprende con Jami"); Wapalink, su producto de asistente de IA para WhatsApp (en lista de espera); y comisiones como Hostinger Partner (20 % en ventas nuevas). Clientes: sobre todo pequeños negocios de Venezuela y Latinoamérica; cobra en USD y EUR.`
 
 type Rutina = {
@@ -81,7 +93,7 @@ Para cada caso propone UNA acción concreta. Si un reporte ya está enviado y ti
     direccion: {
         herramientas: ['panorama_empresa', 'consejos_direccion', 'seo_cartera', 'brevo_resumen', 'leads_web', 'list_pipeline'],
         modelo: 'chat', web: true, maxTokens: 4000, pasos: 12,
-        encargo: `Haz la revisión semanal de TODA la empresa como su director y consejero. ${EMPRESA}
+        encargo: `Haz la revisión semanal de TODA la empresa como su director y consejero (quién es la empresa, su oferta y sus metas están en el CEREBRO DE LA EMPRESA).
 
 Empieza siempre con panorama_empresa y consejos_direccion; usa las demás herramientas solo si aportan. Busca en la web solo para validar una oportunidad de mercado concreta (tendencias, precios o demanda en Venezuela y Latinoamérica) y cita la fuente con su enlace.
 
@@ -90,6 +102,7 @@ Entrega exactamente, en este orden:
 - **Oportunidades**: 3 formas concretas de ganar más dinero o escalar, cada una con el impacto esperado y el primer paso de esta semana.
 - **Riesgos**: 3 riesgos o fallos de la empresa con su evidencia en cifras (dependencia de un cliente, cobros, recurrencia baja, pipeline vacío, sobrecarga…).
 - **Decisión de la semana**: 1 decisión que José debe tomar, con tu recomendación y por qué.
+- **Planes**: una línea por plan activo (planes_listar): en qué paso va y si va a tiempo. Si el cerebro de la empresa tiene secciones vacías, recuerda en una línea cuál completar.
 
 Reglas: sé franco, sin suavizar. Separa los hechos (cifras de las herramientas) de tus hipótesis. Si un consejo anterior sigue "propuesta" desde hace más de dos semanas, recuérdalo en vez de inventar uno nuevo parecido; no repitas los "descartada". Nunca recomiendes ni menciones competidores de Wapalink ni de JAM Tech. Máximo 350 palabras.`,
         despues: async (informe) => {
@@ -116,17 +129,16 @@ Reglas: sé franco, sin suavizar. Separa los hechos (cifras de las herramientas)
 export async function correrRutina(dep: Departamento, opts: { guardar?: boolean } = {}): Promise<{ informe: string; herramientas_usadas: string[] }> {
     const cfg = RUTINAS[dep]
     const info = DEPARTAMENTOS[dep]
-    // Todas las rutinas revisan además sus objetivos (roadmap) y dicen cómo van.
-    const tools = Object.fromEntries([...cfg.herramientas, 'objetivos_listar'].filter((t) => t in todas && !isWriteTool(t)).map((t) => [t, todas[t]])) as Record<string, never>
-    const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
+    // Todas las rutinas revisan además sus objetivos (roadmap) y los pasos de los planes que les tocan.
     // Búsqueda web nativa de Claude solo para las rutinas que la piden (Dirección) y con proveedor Anthropic.
-    if (cfg.web && proveedorActivo() === 'anthropic') (tools as Record<string, unknown>).web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 4 })
+    const tools = herramientasLectura([...cfg.herramientas, 'objetivos_listar', 'planes_listar'], cfg.web)
+    const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
     const usadas: string[] = []
     // Finanzas compara el mes con la meta de Ajustes; el resto no la necesita.
     const meta = dep === 'finanzas' ? (await supabase.from('company_settings').select('monthly_goal').limit(1).maybeSingle()).data?.monthly_goal : null
     const contexto = meta ? `\nMETA MENSUAL DE FACTURACIÓN: $${Number(meta).toFixed(2)} USD.` : ''
 
-    const memoria = await memoriaParaPrompt(dep)
+    const [memoria, cerebro] = await Promise.all([memoriaParaPrompt(dep), cerebroParaPrompt()])
     await registrarEvento({ departamento: dep, tipo: 'rutina', titulo: `Revisión automática de ${info.nombre}`, estado: 'en_curso', fuente: 'cron' })
     try {
         const { text } = await generateText({
@@ -134,7 +146,8 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
             providerOptions,
             system: `Eres ${info.persona}, del departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
 Redacta un informe breve en markdown ligero para Telegram: título "${info.emoji} ${info.persona} · ${info.nombre}", luego viñetas con guion, **negritas** solo en montos, nombres y fechas, sin tablas. Si no hay nada que amerite atención, responde exactamente "SIN_NOVEDADES". No inventes datos: todo sale de las herramientas. No prometas que harás algo: solo propón, el dueño decide.
-Si tienes objetivos activos (objetivos_listar con departamento ${dep}), cierra con una línea **Objetivos:** que diga cómo va cada uno frente a su fecha y el siguiente paso.${memoria}`,
+Si tienes objetivos activos (objetivos_listar con departamento ${dep}), cierra con una línea **Objetivos:** que diga cómo va cada uno frente a su fecha y el siguiente paso.
+Si tienes pasos de planes pendientes (planes_listar con departamento ${dep}), añade una línea **Planes:** con el paso que te toca ahora y su fecha; si ya venció, dilo.${cerebro}${memoria}`,
             prompt: cfg.encargo,
             tools,
             stopWhen: stepCountIs(cfg.pasos ?? 6),

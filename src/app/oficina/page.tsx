@@ -1,143 +1,97 @@
-'use client'
-
-import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useState } from 'react'
-import { useTheme } from 'next-themes'
-import { Bot, CircleCheck, CircleDashed, Hand, LoaderCircle, TriangleAlert } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { useAgent } from '@/components/agent/AgentProvider'
-import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
-import type { AgentEvent, EstadoDepartamento } from '@/lib/agent/eventos'
-import type { EstadoDeps } from '@/components/oficina/Oficina3D'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { ArrowRight, Check } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { DEPARTAMENTOS } from '@/lib/agent/shared'
+import { leerCerebro } from '@/lib/agent/cerebro'
+import { completitud } from '@/lib/agent/cerebro-secciones'
+import { listarPlanes, type PlanConPasos } from '@/lib/agent/planes'
+import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
+import { OficinaCliente } from './OficinaCliente'
 
-// Three.js solo existe en el navegador: sin render en el servidor.
-const Oficina3D = dynamic(() => import('@/components/oficina/Oficina3D'), { ssr: false, loading: () => <div className="h-full grid place-items-center text-sm text-muted-foreground">Abriendo la oficina…</div> })
+export const dynamic = 'force-dynamic'
 
-const DEPS = Object.keys(DEPARTAMENTOS) as Departamento[]
-const NOMBRES = DEPS.map((d) => DEPARTAMENTOS[d].persona)
-const EQUIPO = `${NOMBRES.slice(0, -1).join(', ')} y ${NOMBRES[NOMBRES.length - 1]}`
-
-const ESTADO_UI: Record<EstadoDepartamento, { texto: string; clase: string; Icono: typeof CircleCheck }> = {
-    libre: { texto: 'Libre', clase: 'text-muted-foreground', Icono: CircleDashed },
-    trabajando: { texto: 'Trabajando', clase: 'text-emerald-600 dark:text-emerald-400', Icono: LoaderCircle },
-    esperando: { texto: 'Espera tu OK', clase: 'text-amber-600 dark:text-amber-400', Icono: Hand },
+async function cuenta(p: PromiseLike<{ count: number | null }>): Promise<number> {
+    try { return (await p).count ?? 0 } catch { return 0 }
 }
+const filas = (tabla: string) => supabase.from(tabla).select('id', { count: 'exact', head: true }).is('proyecto_id', null)
 
-const ESTADO_EVENTO: Record<AgentEvent['estado'], string> = {
-    hecho: '✅', en_curso: '⏳', espera_aprobacion: '✋', cancelado: '✖️', error: '⚠️',
-}
+const FIJAR_OBJETIVOS = 'Ayúdame a fijar mis 3 objetivos principales de los próximos meses: revisa el cerebro de la empresa y las cifras de hoy, propónmelos con su cifra y fecha, y créalos en el departamento que corresponde.'
 
-type Estado = { departamentos: Record<Departamento, { estado: EstadoDepartamento; ultimo: AgentEvent | null }>; eventos: AgentEvent[] }
+/** La Oficina: primero la guía (ruta de inicio y planes en marcha), después el equipo en 3D y su actividad. */
+export default async function OficinaPage() {
+    const [cerebro, planes, objetivos, entregables, completados] = await Promise.all([
+        leerCerebro().catch(() => ({})),
+        listarPlanes().catch(() => [] as PlanConPasos[]),
+        cuenta(filas('objetivos').eq('estado', 'activo')),
+        cuenta(filas('entregables')),
+        cuenta(filas('planes').eq('estado', 'completado')),
+    ])
+    const comp = completitud(cerebro)
+    const totalPlanes = planes.length + completados
+    const ruta = [
+        { hecho: comp.pct >= 75, titulo: 'Cuéntale a tu equipo quién eres', detalle: `Cerebro de la empresa al ${comp.pct} %: oferta, precios, cliente ideal y metas.`, href: '/oficina/cerebro' },
+        { hecho: objetivos >= 3, titulo: 'Fija tus 3 objetivos principales', detalle: `${objetivos} de 3 objetivos activos, con cifra y fecha.`, href: `/oficina/direccion?q=${encodeURIComponent(FIJAR_OBJETIVOS)}` },
+        { hecho: totalPlanes > 0, titulo: 'Crea tu primer plan guiado', detalle: 'Una meta convertida en pasos, cada uno con su agente.', href: '#nuevo-plan' },
+        { hecho: entregables > 0, titulo: 'Haz tu primera tarea guiada', detalle: 'Un entregable listo para usar, por ejemplo con Camila o Mateo.', href: '/oficina/marketing#tareas' },
+    ]
+    const pendientes = ruta.filter((r) => !r.hecho).length
 
-const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })
-const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
-
-export default function OficinaPage() {
-    const { openWith } = useAgent()
-    const router = useRouter()
-    const { resolvedTheme } = useTheme()
-    const [montado, setMontado] = useState(false)
-    useEffect(() => setMontado(true), [])
-    const oscuro = montado && resolvedTheme === 'dark'
-    const [estado, setEstado] = useState<Estado | null>(null)
-    const [error, setError] = useState<string | null>(null)
-
-    const cargar = useCallback(async () => {
-        try {
-            const r = await fetch('/api/oficina/estado', { cache: 'no-store' })
-            const d = (await r.json()) as Estado & { ok: boolean; error?: string }
-            if (!d.ok) throw new Error(d.error || 'No se pudo leer la oficina')
-            setEstado(d)
-            setError(null)
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'No se pudo leer la oficina')
-        }
-    }, [])
-
-    // La oficina se refresca sola cada 5 s mientras la pestaña está visible.
-    useEffect(() => {
-        void cargar()
-        const id = setInterval(() => { if (document.visibilityState === 'visible') void cargar() }, 5000)
-        return () => clearInterval(id)
-    }, [cargar])
-
-    const estados = Object.fromEntries(DEPS.map((d) => [d, estado?.departamentos[d]?.estado ?? 'libre'])) as EstadoDeps
-    // Tocar a un agente (en 3D o en su tarjeta) abre su página: su chat, sus objetivos y sus informes.
-    const hablar = (dep: Departamento) => router.push(`/oficina/${dep}`)
-
-    return (
-        <div className="max-w-6xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
-                <div>
-                    <h1 className="text-2xl font-bold">Oficina</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Tu equipo de IA: {EQUIPO}. Toca a alguien para abrir su página: su chat, sus objetivos y sus informes. Levanta la mano cuando espera tu confirmación.</p>
-                </div>
-                <Button variant="outline" onClick={() => openWith('¿Qué está pasando hoy en la oficina? Dame un resumen por departamento.')}><Bot /> Resumen del equipo</Button>
-            </div>
-
-            {error && <p className="text-sm text-destructive flex items-center gap-1 mb-3"><TriangleAlert className="w-4 h-4" /> {error}</p>}
-
-            {/* La oficina ocupa todo el ancho; las tarjetas de cada agente van debajo. */}
-            <div className="flex flex-col gap-4">
-                <div className="w-full rounded-2xl border overflow-hidden aspect-[4/3] sm:aspect-[16/9] max-h-[78vh] min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-30px_rgba(11,15,20,0.45)] bg-[radial-gradient(120%_90%_at_50%_0%,#ffffff_0%,#e6edf3_55%,#d5dfe8_100%)] dark:bg-[radial-gradient(120%_90%_at_50%_0%,#1b2634_0%,#111822_55%,#0b0f14_100%)] dark:shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
-                    <Oficina3D estados={estados} onSelect={hablar} oscuro={oscuro} className="w-full h-full" />
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {DEPS.map((dep) => {
-                        const info = DEPARTAMENTOS[dep]
-                        const d = estado?.departamentos[dep]
-                        const ui = ESTADO_UI[d?.estado ?? 'libre']
-                        return (
-                            <Link
-                                key={dep}
-                                href={`/oficina/${dep}`}
-                                className="text-left rounded-xl border bg-card px-4 py-3 hover:bg-accent/50 transition-colors"
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold">{info.emoji} {info.persona} <span className="font-normal text-muted-foreground">· {info.nombre}</span></span>
-                                    <span className={`text-xs flex items-center gap-1 ${ui.clase}`}>
-                                        <ui.Icono className={`w-3.5 h-3.5 ${d?.estado === 'trabajando' ? 'animate-spin' : ''}`} /> {ui.texto}
+    const arriba = (
+        <div className="mb-5 space-y-4">
+            {pendientes > 0 && (
+                <section className="rounded-2xl border bg-card p-4" aria-labelledby="ruta-inicio">
+                    <h2 id="ruta-inicio" className="font-semibold">Ruta de inicio <span className="font-normal text-muted-foreground">· {ruta.length - pendientes} de {ruta.length}</span></h2>
+                    <p className="text-xs text-muted-foreground">Cuatro pasos para que tu equipo trabaje con tu información y te lleve hacia tus metas.</p>
+                    <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {ruta.map((r, i) => (
+                            <li key={r.titulo}>
+                                <Link href={r.href} className={`flex h-full gap-3 rounded-xl border p-3 transition-colors hover:bg-accent/50 ${r.hecho ? 'opacity-60' : ''}`}>
+                                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${r.hecho ? 'bg-emerald-500 text-white' : 'border'}`}>{r.hecho ? <Check className="h-3.5 w-3.5" /> : i + 1}</span>
+                                    <span className="min-w-0">
+                                        <span className={`block text-sm font-medium ${r.hecho ? 'line-through' : ''}`}>{r.titulo}</span>
+                                        <span className="block text-xs text-muted-foreground">{r.detalle}</span>
                                     </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1 truncate">
-                                    {d?.ultimo ? `${ESTADO_EVENTO[d.ultimo.estado]} ${d.ultimo.titulo} · ${fecha(d.ultimo.created_at)} ${hora(d.ultimo.created_at)}` : info.descripcion}
-                                </p>
-                            </Link>
-                        )
-                    })}
-                </div>
-            </div>
+                                </Link>
+                            </li>
+                        ))}
+                    </ol>
+                </section>
+            )}
 
-            <section className="mt-6">
-                <h2 className="text-lg font-semibold mb-2">Actividad reciente</h2>
-                {!estado ? (
-                    <p className="text-sm text-muted-foreground">Cargando…</p>
-                ) : estado.eventos.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Todavía no hay actividad. Pídele algo al asistente o espera el primer informe automático.</p>
-                ) : (
-                    <ul className="divide-y rounded-xl border bg-card">
-                        {estado.eventos.slice(0, 25).map((e) => {
-                            const info = DEPARTAMENTOS[e.departamento]
-                            const informe = e.tipo === 'rutina' && typeof e.detalle?.informe === 'string' ? (e.detalle.informe as string) : null
+            {planes.length > 0 && (
+                <section aria-labelledby="planes-marcha">
+                    <div className="mb-2 flex items-baseline justify-between gap-2">
+                        <h2 id="planes-marcha" className="text-lg font-semibold">Planes</h2>
+                        <Link href="/oficina/cerebro" className="text-xs text-muted-foreground hover:text-foreground">🧠 Cerebro al {comp.pct} %</Link>
+                    </div>
+                    <ul className="grid gap-3 md:grid-cols-2">
+                        {planes.map((p) => {
+                            const a = p.actual
+                            const info = a ? DEPARTAMENTOS[a.departamento] : null
                             return (
-                                <li key={e.id} className="px-4 py-2.5 text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-muted-foreground tabular-nums w-24 shrink-0">{fecha(e.created_at)} {hora(e.created_at)}</span>
-                                        <span className="shrink-0" title={`${info.persona} · ${info.nombre}`}>{info.emoji}</span>
-                                        <span className="shrink-0 text-xs font-medium text-muted-foreground">{info.persona}</span>
-                                        <span className="truncate">{ESTADO_EVENTO[e.estado]} {e.titulo}</span>
-                                        <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{e.fuente}</span>
-                                    </div>
-                                    {informe && <details className="mt-1 ml-26"><summary className="text-xs text-muted-foreground cursor-pointer">Ver informe</summary><pre className="whitespace-pre-wrap text-xs mt-1 font-sans">{informe}</pre></details>}
+                                <li key={p.id}>
+                                    <Link href={`/oficina/planes/${p.id}`} className="block h-full rounded-xl border bg-card p-4 transition-colors hover:bg-accent/50">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <span className="font-semibold leading-snug">{p.titulo}</span>
+                                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{p.estado === 'borrador' ? 'Por revisar' : p.estado === 'pausado' ? 'En pausa' : `${p.hechos}/${p.total}`}</span>
+                                        </div>
+                                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-[#D4A72C]" style={{ width: `${p.total ? Math.round((p.hechos / p.total) * 100) : 0}%` }} /></div>
+                                        <p className="mt-2 flex items-center gap-1 text-sm">
+                                            {p.estado === 'borrador' ? <>Revísalo y actívalo <ArrowRight className="h-3.5 w-3.5" /></>
+                                                : a && info ? <><span className="text-muted-foreground">Toca:</span> {info.emoji} {a.titulo}</>
+                                                    : <span className="text-muted-foreground">{p.estado === 'pausado' ? 'Reanúdalo cuando quieras.' : 'Sin pasos pendientes.'}</span>}
+                                        </p>
+                                    </Link>
                                 </li>
                             )
                         })}
                     </ul>
-                )}
-            </section>
+                </section>
+            )}
+
+            <GeneradorPlan />
         </div>
     )
+
+    return <OficinaCliente arriba={arriba} />
 }

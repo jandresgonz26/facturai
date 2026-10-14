@@ -8,6 +8,12 @@ import { listarObjetivos, type ObjetivoConAvance } from '@/lib/agent/objetivos'
 import { METRICAS, valorDe } from '@/lib/agent/metricas'
 import { listarConsejos, type Consejo } from '@/lib/agent/tools-direccion'
 import { PREGUNTAS } from '@/components/oficina/preguntas'
+import { listarEntregables, type Entregable } from '@/lib/agent/entregables'
+import { listarPlanes, pasosDelAgente, type PlanConPasos } from '@/lib/agent/planes'
+import { TAREA } from '@/lib/agent/tareas-catalogo'
+import { TareasGuiadas } from '@/components/oficina/TareasGuiadas'
+import { ListaEntregables } from '@/components/oficina/ListaEntregables'
+import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
 import { ChatAgente } from './ChatAgente'
 import { PanelObjetivos } from './PanelObjetivos'
 import { MemoriaAgente } from './MemoriaAgente'
@@ -22,15 +28,20 @@ async function seguro<T>(p: Promise<T>, vacio: T): Promise<T> {
     try { return await p } catch (e) { console.error('[página del agente]', e instanceof Error ? e.message : e); return vacio }
 }
 
-/** Página de un agente de la Oficina: su chat, su roadmap de objetivos, sus cifras, sus informes y lo que recuerda. */
-export default async function PaginaAgente({ params }: { params: Promise<{ dep: string }> }) {
-    const { dep: raw } = await params
+const fechaCorta = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
+
+/**
+ * Página de un agente de la Oficina: su chat, los pasos de planes que le tocan, sus tareas guiadas, su roadmap
+ * de objetivos, sus cifras, sus entregables, sus informes y lo que recuerda. `?q=` deja un mensaje ya escrito.
+ */
+export default async function PaginaAgente({ params, searchParams }: { params: Promise<{ dep: string }>; searchParams: Promise<{ q?: string }> }) {
+    const [{ dep: raw }, { q }] = await Promise.all([params, searchParams])
     if (!(raw in DEPARTAMENTOS)) notFound()
     const dep = raw as Departamento
     const info = DEPARTAMENTOS[dep]
     const propias = METRICAS.filter((m) => m.departamento === dep)
 
-    const [hilo, objetivos, kpis, informes, memoria, consejos] = await Promise.all([
+    const [hilo, objetivos, kpis, informes, memoria, consejos, pasos, entregables, planes] = await Promise.all([
         seguro<UIMessage[]>(leerHilo(dep), []),
         seguro<ObjetivoConAvance[]>(listarObjetivos({ departamento: dep }), []),
         Promise.all(propias.map(async (m) => ({ etiqueta: m.etiqueta, unidad: m.unidad, valor: await valorDe(m.key) }))),
@@ -39,6 +50,9 @@ export default async function PaginaAgente({ params }: { params: Promise<{ dep: 
         seguro(Promise.resolve(supabase.from('agent_memoria').select('id, hecho, departamento').eq('activo', true).or(`departamento.eq.${dep},departamento.is.null`).order('created_at'))
             .then(({ data }) => (data ?? []).map((r) => ({ id: r.id as string, hecho: r.hecho as string, general: r.departamento === null }))), []),
         dep === 'direccion' ? seguro(listarConsejos(10), []) : Promise.resolve([] as Consejo[]),
+        seguro(pasosDelAgente(dep), []),
+        seguro<Entregable[]>(listarEntregables({ departamento: dep, limite: 10 }), []),
+        dep === 'direccion' ? seguro<PlanConPasos[]>(listarPlanes({ estados: ['borrador', 'activo', 'pausado', 'completado'] }), []) : Promise.resolve([] as PlanConPasos[]),
     ])
     const metricas = METRICAS.map((m) => ({ key: m.key, etiqueta: m.etiqueta, unidad: m.unidad, propia: m.departamento === dep }))
 
@@ -54,7 +68,7 @@ export default async function PaginaAgente({ params }: { params: Promise<{ dep: 
             </header>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                <ChatAgente dep={dep} inicial={hilo} preguntas={PREGUNTAS[dep] ?? []} />
+                <ChatAgente dep={dep} inicial={hilo} preguntas={PREGUNTAS[dep] ?? []} semilla={q?.slice(0, 1500)} />
 
                 <div className="space-y-4">
                     {kpis.length > 0 && (
@@ -68,7 +82,47 @@ export default async function PaginaAgente({ params }: { params: Promise<{ dep: 
                         </section>
                     )}
 
+                    {pasos.length > 0 && (
+                        <section className="rounded-2xl border bg-card p-4" style={{ borderColor: `${info.color}88` }}>
+                            <h2 className="font-semibold">Lo que me toca en los planes</h2>
+                            <ul className="mt-2 space-y-2">
+                                {pasos.map(({ plan, paso, toca, numero, total }) => (
+                                    <li key={paso.id}>
+                                        <Link href={`/oficina/planes/${plan.id}`} className="block rounded-xl border px-3 py-2 transition-colors hover:bg-accent/50">
+                                            <div className="text-sm font-medium">{toca && <span className="mr-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white" style={{ background: info.color }}>Ahora</span>}{paso.titulo}</div>
+                                            <div className="text-xs text-muted-foreground">Paso {numero} de {total} · {plan.titulo}{paso.fecha && <> · para el {fechaCorta(paso.fecha)}</>}{paso.tarea_guiada && TAREA.get(paso.tarea_guiada) && <> · {TAREA.get(paso.tarea_guiada)!.titulo}</>}</div>
+                                        </Link>
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
+
+                    <TareasGuiadas dep={dep} />
+
                     <PanelObjetivos dep={dep} color={info.color} objetivos={objetivos} metricas={metricas} />
+
+                    {dep === 'direccion' && (
+                        <section className="rounded-2xl border bg-card p-4">
+                            <div className="flex items-baseline justify-between gap-2">
+                                <h2 className="font-semibold">Planes</h2>
+                                <Link href="/oficina/cerebro" className="text-xs text-muted-foreground hover:text-foreground">🧠 Cerebro de la empresa</Link>
+                            </div>
+                            {planes.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">Sin planes todavía. Dime una meta abajo o en el chat.</p> : (
+                                <ul className="mt-2 divide-y">
+                                    {planes.map((p) => (
+                                        <li key={p.id} className="py-2">
+                                            <Link href={`/oficina/planes/${p.id}`} className="flex items-center justify-between gap-3 text-sm hover:underline">
+                                                <span className="min-w-0 truncate">{p.titulo}</span>
+                                                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{p.estado === 'borrador' ? 'por revisar' : p.estado === 'completado' ? 'completado' : p.estado === 'pausado' ? 'en pausa' : `${p.hechos}/${p.total}`}</span>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    )}
+                    {dep === 'direccion' && <GeneradorPlan compacto />}
 
                     {dep === 'direccion' && consejos.length > 0 && (
                         <section className="rounded-2xl border bg-card p-4">
@@ -99,6 +153,8 @@ export default async function PaginaAgente({ params }: { params: Promise<{ dep: 
                             </ul>
                         )}
                     </section>
+
+                    <ListaEntregables entregables={entregables} titulo={`Entregables de ${info.persona}`} />
 
                     <MemoriaAgente dep={dep} persona={info.persona} recuerdos={memoria} />
                 </div>

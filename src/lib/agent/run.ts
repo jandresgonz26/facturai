@@ -5,13 +5,15 @@ import { seoTools } from './tools-seo'
 import { direccionTools } from './tools-direccion'
 import { memoriaTools } from './tools-memoria'
 import { objetivosTools } from './tools-objetivos'
+import { cerebroTools } from './cerebro'
+import { planesTools } from './planes'
 import { buildSystemPrompt } from './system-prompt'
 import { modeloPara } from './modelo'
 import { registrarEvento, type FuenteEvento } from './eventos'
 import { DEPARTAMENTOS, TOOL_LABELS, departamentoDe, isWriteTool, type Departamento } from './shared'
 
 /** Todas las herramientas de la oficina: las de siempre más las de Marketing. */
-export const oficinaTools = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...memoriaTools, ...objetivosTools }
+export const oficinaTools = { ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...memoriaTools, ...objetivosTools, ...cerebroTools, ...planesTools }
 
 /** Configuración única del agente, compartida por el chat web y el bot de Telegram. */
 /** `departamento`: el chat de la página de ese agente (habla como su persona y empieza por su área). */
@@ -21,7 +23,7 @@ export async function createAgentStream(messages: UIMessage[], fuente: FuenteEve
     const base = await buildSystemPrompt()
     const d = opts.departamento ? DEPARTAMENTOS[opts.departamento] : null
     const system = d
-        ? `${base}\n\nESTÁS EN LA PÁGINA DE ${d.persona.toUpperCase()} (${d.emoji} ${d.nombre}: ${d.descripcion}). Responde siempre como ${d.persona}, en primera persona, y empieza por las herramientas de tu área y por tus objetivos (objetivos_listar con departamento ${opts.departamento}). Si José pide algo de otra área, hazlo igual y menciona qué compañero lo lleva. Cuando proponga una meta, conviértela en objetivo (objetivo_crear) y sus pasos en hitos (hito_crear), siempre con su confirmación.`
+        ? `${base}\n\nESTÁS EN LA PÁGINA DE ${d.persona.toUpperCase()} (${d.emoji} ${d.nombre}: ${d.descripcion}). Responde siempre como ${d.persona}, en primera persona, y empieza por las herramientas de tu área y por tus objetivos (objetivos_listar con departamento ${opts.departamento}) y los pasos de planes que te tocan (planes_listar con departamento ${opts.departamento}). Si José pide algo de otra área, hazlo igual y menciona qué compañero lo lleva. Cuando proponga una meta, conviértela en objetivo (objetivo_crear) y sus pasos en hitos (hito_crear), siempre con su confirmación.`
         : base
     const excluir = (process.env.AGENT_TOOLS_EXCLUDE || '').split(',').filter(Boolean)
     const tools = excluir.length

@@ -13,10 +13,11 @@ import { DEPARTAMENTOS, isWriteTool, type Departamento } from '@/lib/agent/share
 import { emitDataChanged } from '@/lib/events'
 import { borrarHiloAccion } from './acciones'
 
-export function ChatAgente({ dep, inicial, preguntas }: { dep: Departamento; inicial: UIMessage[]; preguntas: string[] }) {
+/** `semilla`: mensaje que llega ya escrito (desde un paso de un plan o la ruta de inicio), para revisarlo y enviarlo. */
+export function ChatAgente({ dep, inicial, preguntas, semilla }: { dep: Departamento; inicial: UIMessage[]; preguntas: string[]; semilla?: string }) {
     const info = DEPARTAMENTOS[dep]
     const router = useRouter()
-    const [input, setInput] = useState('')
+    const [input, setInput] = useState(semilla ?? '')
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const transport = useMemo(() => new DefaultChatTransport({ api: '/api/agent', body: { departamento: dep } }), [dep])
     const chat = useChat({

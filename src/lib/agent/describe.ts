@@ -265,6 +265,18 @@ export function describeInput(tool: string, raw: unknown): { title: string; rows
             return { title: 'Guardar en la memoria', rows: [{ label: 'Recordar', value: str(input.hecho) ?? '-' }, ...(input.departamento ? [{ label: 'Departamento', value: str(input.departamento)! }] : [])], note: 'Todos los agentes lo tendrán en cuenta en cada conversación y en los informes.' }
         case 'olvidar':
             return { title: 'Quitar de la memoria', rows: [{ label: 'Olvidar', value: str(input.hecho) ?? '-' }] }
+        case 'cerebro_actualizar':
+            return { title: 'Guardar en el cerebro de la empresa', rows: [{ label: 'Sección', value: str(input.seccion) ?? '-' }, { label: 'Texto', value: str(input.contenido) ?? '-' }], note: 'Reemplaza el texto de esa sección. Todos los agentes lo usarán.' }
+        case 'plan_crear': {
+            const pasos = Array.isArray(input.pasos) ? (input.pasos as Rec[]) : []
+            const rows: Row[] = [{ label: 'Plan', value: str(input.titulo) ?? '-' }, { label: 'Meta', value: str(input.meta) ?? '-' }]
+            if (input.fecha_limite) rows.push({ label: 'Fecha límite', value: dateLabel(str(input.fecha_limite)) })
+            return { title: 'Crear plan guiado', rows, items: pasos.map((p, i) => `${i + 1}. ${str(p.titulo) ?? ''} (${str(p.departamento) ?? ''})${p.fecha ? ` · ${dateLabel(str(p.fecha))}` : ''}`), note: 'La Oficina te guiará paso a paso.' }
+        }
+        case 'plan_paso_actualizar': {
+            const estados: Record<string, string> = { hecho: 'Hecho', omitido: 'Omitido', pendiente: 'Pendiente otra vez' }
+            return { title: 'Actualizar paso del plan', rows: [{ label: 'Paso', value: str(input.paso_titulo) ?? '-' }, { label: 'Nuevo estado', value: estados[str(input.estado) ?? ''] ?? '-' }] }
+        }
         case 'actualizar_consejo': {
             const estados: Record<string, string> = { aceptada: 'Aceptado', descartada: 'Descartado', hecha: 'Hecho' }
             const rows: Row[] = [{ label: 'Consejo', value: str(input.titulo) ?? '-' }, { label: 'Nuevo estado', value: estados[str(input.estado) ?? ''] ?? '-' }]
@@ -534,6 +546,12 @@ export function describeResult(tool: string, raw: unknown): { title: string; lin
             return { title: 'Guardado en la memoria', lines: [str(d.hecho) ?? ''] }
         case 'olvidar':
             return { title: 'Quitado de la memoria', lines: [str(d.hecho) ?? ''] }
+        case 'cerebro_actualizar':
+            return { title: 'Cerebro actualizado', lines: [str(d.seccion) ?? ''] }
+        case 'plan_crear':
+            return { title: 'Plan creado', lines: [`${str(d.titulo) ?? ''} · ${num(d.pasos) ?? 0} pasos`] }
+        case 'plan_paso_actualizar':
+            return { title: d.plan_completado ? '¡Plan completado!' : 'Paso actualizado', lines: [str(d.paso) ?? '', ...(d.siguiente ? [`Sigue: ${str(d.siguiente)}`] : [])] }
         case 'actualizar_consejo':
             return { title: 'Consejo actualizado', lines: [`${str(d.titulo) ?? ''} · ${str(d.estado) ?? ''}`, ...(d.resultado ? [str(d.resultado)!] : [])] }
         case 'snooze_alert':

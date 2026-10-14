@@ -45,6 +45,9 @@ export const WRITE_TOOLS = [
     'objetivo_crear',
     'objetivo_actualizar',
     'hito_crear',
+    'cerebro_actualizar',
+    'plan_crear',
+    'plan_paso_actualizar',
 ] as const
 export type WriteToolName = (typeof WRITE_TOOLS)[number]
 
@@ -54,6 +57,11 @@ export function isWriteTool(name: string): name is WriteToolName {
 
 export const TOOL_LABELS: Record<string, string> = {
     objetivos_listar: 'Revisando los objetivos',
+    cerebro_leer: 'Leyendo el cerebro de la empresa',
+    cerebro_actualizar: 'Guardar en el cerebro de la empresa',
+    planes_listar: 'Revisando los planes',
+    plan_crear: 'Crear plan guiado',
+    plan_paso_actualizar: 'Actualizar paso del plan',
     objetivo_crear: 'Crear objetivo',
     objetivo_actualizar: 'Actualizar objetivo',
     hito_crear: 'Añadir hito al objetivo',
@@ -197,7 +205,10 @@ const TOOLS_POR_DEPARTAMENTO: Record<Departamento, readonly string[]> = {
     ],
     marketing: ['brevo_resumen', 'brevo_campanas', 'redactar_boletin'],
     seo: ['seo_cartera', 'seo_cliente'],
-    direccion: ['panorama_empresa', 'consejos_direccion', 'actualizar_consejo', 'objetivos_listar', 'objetivo_crear', 'objetivo_actualizar', 'hito_crear'],
+    direccion: [
+        'panorama_empresa', 'consejos_direccion', 'actualizar_consejo', 'objetivos_listar', 'objetivo_crear', 'objetivo_actualizar', 'hito_crear',
+        'cerebro_leer', 'cerebro_actualizar', 'planes_listar', 'plan_crear', 'plan_paso_actualizar',
+    ],
     operaciones: [], // todo lo demás: tareas, plan del día, correo, recordatorios, briefing
 }
 
