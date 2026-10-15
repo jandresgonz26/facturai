@@ -15,7 +15,7 @@ export default async function PaginaProyectos() {
                 <h1 className="text-2xl font-bold">📁 Proyectos</h1>
                 <p className="mt-1 max-w-prose text-sm text-muted-foreground">Cada proyecto tiene su propio cerebro, objetivos, planes, encargos y conversaciones con los agentes. Elige uno y todo lo que pidas en la Oficina (o en Telegram con /proyecto) queda en él.</p>
             </header>
-            <GestorProyectos proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre, tipo: TIPOS_PROYECTO[p.tipo], descripcion: p.descripcion, estado: p.estado }))} actual={id} />
+            <GestorProyectos proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre, tipo: TIPOS_PROYECTO[p.tipo], descripcion: p.descripcion, estado: p.estado, checklist: p.checklist_slug }))} actual={id} />
         </div>
     )
 }

@@ -11,13 +11,16 @@ import { objetivosTools } from './tools-objetivos'
 import { cerebroTools } from './cerebro'
 import { planesTools } from './planes'
 import { encargosTools } from './encargos'
+import { checklistTools } from './checklist'
 import type { Alcance, ProyectoId } from './proyectos'
 
 /** `lectura`: qué ven los listados (las rutinas de los lunes miran todos los proyectos). */
-export function herramientasPara(proyecto: ProyectoId = null, lectura: Alcance = proyecto) {
+/** `checklist`: slug de Seguimiento de Tareas del proyecto activo (si lo tiene), para no tener que nombrarlo. */
+export function herramientasPara(proyecto: ProyectoId = null, lectura: Alcance = proyecto, checklist: string | null = null) {
     return {
         ...agentTools, ...marketingTools, ...seoTools, ...direccionTools, ...memoriaTools,
         ...objetivosTools(proyecto, lectura), ...cerebroTools(proyecto), ...planesTools(proyecto, lectura), ...encargosTools(proyecto, lectura),
+        ...checklistTools(checklist),
     }
 }
 export type Herramientas = ReturnType<typeof herramientasPara>

@@ -8,9 +8,10 @@ import { Check, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { crearProyectoAccion, elegirProyectoAccion, estadoProyectoAccion } from '../clic-acciones'
+import { crearProyectoAccion, elegirProyectoAccion, estadoProyectoAccion, vincularChecklistAccion } from '../clic-acciones'
 
-type Fila = { id: string; nombre: string; tipo: string; descripcion: string | null; estado: 'activo' | 'pausado' | 'archivado' }
+type Fila = { id: string; nombre: string; tipo: string; descripcion: string | null; estado: 'activo' | 'pausado' | 'archivado'; checklist: string | null }
+const SITIO = 'https://tasks.jamtech.cloud'
 
 export function GestorProyectos({ proyectos, actual }: { proyectos: Fila[]; actual: string | null }) {
     const router = useRouter()
@@ -46,6 +47,10 @@ export function GestorProyectos({ proyectos, actual }: { proyectos: Fila[]; actu
                         <label className="grid gap-1 text-sm" htmlFor="proy-desc"><span className="font-medium">¿De qué se trata?</span>
                             <Textarea id="proy-desc" name="descripcion" rows={3} placeholder="Ej.: asistente de IA para WhatsApp para pequeños negocios; lanzamiento en diciembre." />
                         </label>
+                        <label className="grid gap-1 text-sm" htmlFor="proy-checklist"><span className="font-medium">Seguimiento de Tareas <span className="font-normal text-muted-foreground">(opcional)</span></span>
+                            <Input id="proy-checklist" name="checklist" placeholder="https://tasks.jamtech.cloud/p/perfect-trainer" />
+                            <span className="text-xs text-muted-foreground">Si es un proyecto de desarrollo con checklist, pega su enlace público: los agentes verán su avance real.</span>
+                        </label>
                         <div className="flex justify-end gap-2">
                             {proyectos.length > 0 && <Button type="button" variant="ghost" onClick={() => setNuevo(false)}>Cancelar</Button>}
                             <Button type="submit" disabled={busy}>{busy ? 'Creando…' : 'Crear y completar su cerebro'}</Button>
@@ -68,6 +73,15 @@ export function GestorProyectos({ proyectos, actual }: { proyectos: Fila[]; actu
                             <div className="min-w-0">
                                 <div className="font-medium">{p.nombre} {p.estado === 'pausado' && <span className="text-xs font-normal text-muted-foreground">· en pausa</span>}</div>
                                 <div className="text-xs text-muted-foreground">{p.tipo}{p.descripcion && <> · {p.descripcion}</>}</div>
+                                <div className="mt-0.5 text-xs">
+                                    {p.checklist
+                                        ? <>📋 <a href={`${SITIO}/p/${p.checklist}`} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:underline">Seguimiento: {p.checklist}</a></>
+                                        : <span className="text-muted-foreground">Sin Seguimiento de Tareas</span>}
+                                    <button type="button" disabled={busy} className="ml-2 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                                        onClick={() => { const v = window.prompt('Enlace del proyecto en Seguimiento de Tareas (vacío para desvincular):', p.checklist ? `${SITIO}/p/${p.checklist}` : ''); if (v !== null) start(async () => { const r = await vincularChecklistAccion(p.id, v); if (r.ok) toast.success(r.mensaje); else toast.error(r.mensaje) }) }}>
+                                        {p.checklist ? 'Cambiar' : 'Vincular'}
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-1.5">
                                 {actual === p.id ? <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /> Trabajando aquí</span>

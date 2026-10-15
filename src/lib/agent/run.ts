@@ -1,7 +1,7 @@
 import { convertToModelMessages, readUIMessageStream, stepCountIs, streamText, type UIMessage } from 'ai'
 import { herramientasPara } from './caja'
 import { aprobacionesPara, leerAutonomias } from './confianza'
-import type { ProyectoId } from './proyectos'
+import { leerProyecto, type ProyectoId } from './proyectos'
 import type { HiloDe } from './hilos'
 import { buildSystemPrompt } from './system-prompt'
 import { modeloPara } from './modelo'
@@ -17,14 +17,14 @@ export async function createAgentStream(messages: UIMessage[], fuente: FuenteEve
     const { model, providerOptions } = modeloPara('chat')
     await registrarDecisiones(messages, fuente)
     const proyecto = opts.proyectoId ?? null
-    const [base, autonomias] = await Promise.all([buildSystemPrompt(proyecto), leerAutonomias().catch(() => null)])
+    const [base, autonomias, p] = await Promise.all([buildSystemPrompt(proyecto), leerAutonomias().catch(() => null), leerProyecto(proyecto).catch(() => null)])
     const d = opts.departamento && opts.departamento !== 'equipo' ? DEPARTAMENTOS[opts.departamento] : null
     const system = d
         ? `${base}\n\nESTÁS EN LA PÁGINA DE ${d.persona.toUpperCase()} (${d.emoji} ${d.nombre}: ${d.descripcion}). Responde siempre como ${d.persona}, en primera persona, y empieza por las herramientas de tu área y por tus objetivos (objetivos_listar con departamento ${opts.departamento}) y los pasos de planes que te tocan (planes_listar con departamento ${opts.departamento}). Si José pide algo de otra área, hazlo igual y menciona qué compañero lo lleva. Cuando proponga una meta, conviértela en objetivo (objetivo_crear) y sus pasos en hitos (hito_crear).`
         : opts.departamento === 'equipo'
             ? `${base}\n\nESTÁS EN LA PUERTA DE ENTRADA DE LA OFICINA: José escribe sin elegir a nadie. Responde quien corresponda según el tema, empezando con su nombre en negrita («**Valeria · Finanzas:** …»). Si toca varias áreas, cada una responde en su propio bloque con su nombre, sin repetir datos entre ellas. Si es un trabajo de varios pasos o que tarda, déjalo como encargo (encargo_crear) del agente que corresponde y di en una línea quién lo hará y que avisará por Telegram.`
             : base
-    const caja = herramientasPara(proyecto)
+    const caja = herramientasPara(proyecto, proyecto, p?.checklist_slug ?? null)
     const excluir = (process.env.AGENT_TOOLS_EXCLUDE || '').split(',').filter(Boolean)
     const tools = excluir.length ? (Object.fromEntries(Object.entries(caja).filter(([k]) => !excluir.includes(k))) as typeof caja) : caja
     // Lo interno se hace sin tarjeta si el agente tiene autonomía; si no se pudo leer, todo pide confirmación.

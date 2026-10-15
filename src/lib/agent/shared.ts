@@ -74,6 +74,8 @@ export const TOOL_LABELS: Record<string, string> = {
     planes_listar: 'Revisando los planes',
     plan_crear: 'Crear plan guiado',
     plan_paso_actualizar: 'Actualizar paso del plan',
+    checklist_proyectos: 'Revisando el avance de los proyectos',
+    checklist_proyecto: 'Revisando el proyecto en Seguimiento de Tareas',
     encargo_crear: 'Anotando un encargo',
     encargos_listar: 'Revisando los encargos',
     encargo_responder: 'Retomando un encargo',

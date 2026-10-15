@@ -6,7 +6,8 @@
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
-import { actualizarProyecto, crearProyecto, esProyectoId, type TipoProyecto } from '@/lib/agent/proyectos'
+import { actualizarProyecto, crearProyecto, esProyectoId, slugChecklist, type TipoProyecto } from '@/lib/agent/proyectos'
+import { avanceDeProyecto } from '@/lib/agent/checklist'
 import { COOKIE_PROYECTO } from '@/lib/agent/proyecto-activo'
 import { cancelarEncargo, responderEncargo } from '@/lib/agent/encargos'
 import { guardarAutonomia } from '@/lib/agent/confianza'
@@ -27,7 +28,9 @@ export async function elegirProyectoAccion(id: string | null): Promise<void> {
 export async function crearProyectoAccion(f: FormData): Promise<Resultado> {
     try {
         const tipo = String(f.get('tipo') ?? 'producto') as TipoProyecto
-        const p = await crearProyecto({ nombre: String(f.get('nombre') ?? ''), tipo: ['producto', 'cliente', 'interno'].includes(tipo) ? tipo : 'producto', descripcion: String(f.get('descripcion') ?? '') })
+        const checklist = String(f.get('checklist') ?? '').trim()
+        if (checklist && !slugChecklist(checklist)) return { ok: false, mensaje: 'El enlace de Seguimiento de Tareas no es válido (ej.: https://tasks.jamtech.cloud/p/perfect-trainer).' }
+        const p = await crearProyecto({ nombre: String(f.get('nombre') ?? ''), tipo: ['producto', 'cliente', 'interno'].includes(tipo) ? tipo : 'producto', descripcion: String(f.get('descripcion') ?? ''), checklist_slug: checklist })
         await elegirProyectoAccion(p.id) // al crearlo, pasas a trabajar en él
         return { ok: true, mensaje: `Proyecto «${p.nombre}» creado. Ahora trabajas en él.`, id: p.id }
     } catch (e) { return fallo(e, 'No se pudo crear el proyecto.') }
@@ -40,6 +43,16 @@ export async function estadoProyectoAccion(id: string, estado: 'activo' | 'pausa
         refrescar()
         return { ok: true, mensaje: estado === 'archivado' ? 'Proyecto archivado.' : 'Proyecto actualizado.' }
     } catch (e) { return fallo(e, 'No se pudo actualizar el proyecto.') }
+}
+
+/** Vincula (o desvincula, con texto vacío) un proyecto con su checklist en Seguimiento de Tareas. */
+export async function vincularChecklistAccion(id: string, enlace: string): Promise<Resultado> {
+    const slug = slugChecklist(enlace)
+    if (enlace.trim() && !slug) return { ok: false, mensaje: 'Pega el enlace del proyecto en Seguimiento de Tareas (ej.: https://tasks.jamtech.cloud/p/perfect-trainer).' }
+    if (slug && !(await avanceDeProyecto(slug).catch(() => null))) return { ok: false, mensaje: `No encuentro «${slug}» en Seguimiento de Tareas, o no es público.` }
+    try { await actualizarProyecto(id, { checklist_slug: slug }) } catch (e) { return fallo(e, 'No se pudo vincular.') }
+    refrescar()
+    return { ok: true, mensaje: slug ? 'Vinculado con Seguimiento de Tareas.' : 'Desvinculado.' }
 }
 
 export async function responderEncargoAccion(id: string, respuesta: string): Promise<Resultado> {

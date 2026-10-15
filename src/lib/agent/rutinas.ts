@@ -64,11 +64,12 @@ Para cada caso propone UNA acción concreta (un mensaje de seguimiento listo par
 Cifras exactas, en USD con dos decimales. Máximo 5 puntos.`,
     },
     operaciones: {
-        herramientas: ['get_day_plan', 'list_tasks', 'list_reminders', 'list_inbox_items', 'list_active_alerts'],
+        herramientas: ['get_day_plan', 'list_tasks', 'list_reminders', 'list_inbox_items', 'list_active_alerts', 'checklist_proyectos'],
         encargo: `Revisa la carga de trabajo:
 - Tareas arrastradas (carried_over) y las que lleven más de dos semanas sin planificarse.
 - Correos de personas reales que parecen esperar respuesta (ignora notificaciones automáticas).
 - Si el plan de hoy se pasa de la capacidad.
+- Proyectos de clientes en Seguimiento de Tareas (checklist_proyectos): tareas en «Listo» que esperan pasar a producción y fases pendientes de aprobación del cliente; menciónalos solo si hay algo que mover.
 Propón qué hacer hoy, qué partir y qué soltar. Máximo 5 puntos.`,
     },
     marketing: {
@@ -88,7 +89,7 @@ Propón una acción concreta (por ejemplo, "redactar la edición #N" o "reenviar
 Para cada caso propone UNA acción concreta. Si un reporte ya está enviado y tiene enlace público, ofrece un mensaje corto de WhatsApp para mandárselo al cliente. Máximo 5 puntos.`,
     },
     direccion: {
-        herramientas: ['panorama_empresa', 'consejos_direccion', 'seo_cartera', 'brevo_resumen', 'leads_web', 'list_pipeline'],
+        herramientas: ['panorama_empresa', 'consejos_direccion', 'seo_cartera', 'brevo_resumen', 'leads_web', 'list_pipeline', 'checklist_proyectos'],
         modelo: 'chat', web: true, maxTokens: 4000, pasos: 12,
         encargo: `Haz la revisión semanal de TODA la empresa como su director y consejero (quién es la empresa, su oferta y sus metas están en el CEREBRO DE LA EMPRESA).
 

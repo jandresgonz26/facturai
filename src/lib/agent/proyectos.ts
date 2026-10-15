@@ -14,6 +14,8 @@ export type TipoProyecto = 'producto' | 'cliente' | 'interno'
 export type Proyecto = {
     id: string; created_at: string; nombre: string; tipo: TipoProyecto; descripcion: string | null
     color: string | null; client_id: string | null; estado: 'activo' | 'pausado' | 'archivado'
+    /** Proyecto enlazado en Seguimiento de Tareas (tasks.jamtech.cloud), p. ej. 'perfect-trainer'. */
+    checklist_slug: string | null
 }
 
 export const TIPOS_PROYECTO: Record<TipoProyecto, string> = { producto: 'Producto propio', cliente: 'Cliente', interno: 'Interno' }
@@ -41,17 +43,26 @@ export async function leerProyecto(id: ProyectoId): Promise<Proyecto | null> {
     return (data as Proyecto | null) ?? null
 }
 
-export async function crearProyecto(p: { nombre: string; tipo: TipoProyecto; descripcion?: string | null; color?: string | null; client_id?: string | null }): Promise<Proyecto> {
+export async function crearProyecto(p: { nombre: string; tipo: TipoProyecto; descripcion?: string | null; color?: string | null; client_id?: string | null; checklist_slug?: string | null }): Promise<Proyecto> {
     const nombre = p.nombre.trim()
     if (nombre.length < 2) throw new Error('Ponle un nombre al proyecto.')
     const { data, error } = await supabase.from('proyectos').insert({
-        nombre, tipo: p.tipo, descripcion: p.descripcion?.trim() || null, color: p.color || null, client_id: p.client_id || null,
+        nombre, tipo: p.tipo, descripcion: p.descripcion?.trim() || null, color: p.color || null, client_id: p.client_id || null, checklist_slug: slugChecklist(p.checklist_slug),
     }).select('*').single()
     if (error) throw new Error(`No se pudo crear el proyecto: ${error.message}`)
     return data as Proyecto
 }
 
-export async function actualizarProyecto(id: string, p: Partial<Pick<Proyecto, 'nombre' | 'descripcion' | 'estado' | 'tipo' | 'color'>>): Promise<void> {
+/** Acepta el slug o el enlace completo («https://tasks.jamtech.cloud/p/perfect-trainer»). */
+export function slugChecklist(v: string | null | undefined): string | null {
+    const t = (v ?? '').trim()
+    if (!t) return null
+    const m = /\/(?:p|admin)\/([a-z0-9-]+)/i.exec(t)
+    const slug = (m ? m[1] : t).toLowerCase()
+    return /^[a-z0-9-]{2,80}$/.test(slug) ? slug : null
+}
+
+export async function actualizarProyecto(id: string, p: Partial<Pick<Proyecto, 'nombre' | 'descripcion' | 'estado' | 'tipo' | 'color' | 'checklist_slug'>>): Promise<void> {
     const { error } = await supabase.from('proyectos').update(p).eq('id', id)
     if (error) throw new Error(error.message)
 }
@@ -62,5 +73,5 @@ export function contextoProyecto(p: Proyecto | null): string {
     return `\n\nPROYECTO ACTIVO: «${p.nombre}» (${TIPOS_PROYECTO[p.tipo].toLowerCase()})${p.descripcion ? `: ${p.descripcion}` : ''}. José eligió trabajar en este proyecto: TODO lo que respondas va centrado en él.
 - Son del proyecto: su cerebro, sus objetivos, sus planes, sus encargos y sus entregables (lo que crees queda en él). El cerebro del proyecto manda sobre el de la empresa cuando hablen de lo mismo.
 - Son de toda la empresa (no se separan por proyecto): tareas, plan del día, clientes, cotizaciones, facturas, cobros y correo. No los traigas a la conversación salvo que José los pida, que tengan que ver con ${p.nombre}, o que haya algo urgente; en ese caso, una sola línea al final marcada «De toda la empresa: …».
-- Preguntas generales («¿qué hago hoy?», «¿cómo vamos?») se responden para ${p.nombre}: sus objetivos, el paso que toca de sus planes y sus encargos. Si el proyecto aún no tiene cerebro, objetivos ni plan, dilo claro y propone el siguiente paso concreto para ${p.nombre} (completar su cerebro, fijar un objetivo, armar el plan) en vez de rellenar con lo de la empresa.`
+- Preguntas generales («¿qué hago hoy?», «¿cómo vamos?») se responden para ${p.nombre}: sus objetivos, el paso que toca de sus planes y sus encargos.${p.checklist_slug ? ` Su avance real de desarrollo está en Seguimiento de Tareas (checklist_proyecto, slug «${p.checklist_slug}»): úsalo para hablar de qué está hecho, qué falta, el sprint y lo que espera aprobación del cliente.` : ''} Si el proyecto aún no tiene cerebro, objetivos ni plan, dilo claro y propone el siguiente paso concreto para ${p.nombre} (completar su cerebro, fijar un objetivo, armar el plan) en vez de rellenar con lo de la empresa.`
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
 import { DEPARTAMENTOS_CON_RUTINA, accionesDeInforme, correrRutina } from '@/lib/agent/rutinas'
 import { retomarAtascados } from '@/lib/agent/encargos'
+import { avisarCambios } from '@/lib/agent/checklist'
 import { sendMessage } from '@/lib/telegram/api'
 import { mdToTelegramHtml } from '@/lib/telegram/format'
 import { appendAssistantMessage } from '@/lib/telegram/session'
@@ -36,6 +37,8 @@ export async function POST(req: NextRequest) {
 
     // De paso, retoma los encargos que se quedaron a medias (un reinicio del servidor mientras trabajaban).
     if (!dryRun) await retomarAtascados().catch((e) => console.error('[oficina] retomar encargos', e))
+    // Y los cambios del cliente en Seguimiento de Tareas que no se hubieran avisado (por si falló el aviso inmediato).
+    if (!dryRun) await avisarCambios().catch((e) => console.error('[oficina] avisos del checklist', e))
 
     const chatIds = (process.env.TELEGRAM_ALLOWED_CHAT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean)
     const resultados: Record<string, { enviado: boolean; informe?: string; error?: string }> = {}

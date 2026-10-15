@@ -7,7 +7,9 @@ import { NextResponse, type NextRequest } from 'next/server'
  * También refresca la cookie de sesión en cada petición, que es lo que
  * mantiene al usuario dentro sin tener que volver a entrar cada hora.
  */
-const PUBLIC_PREFIXES = ['/login', '/api/telegram', '/api/cron']
+// /api/checklist/aviso: lo llama la base de Seguimiento de Tareas al cambiar un estado; solo despierta la revisión
+// (no confía en lo que recibe: vuelve a leer los cambios con su propia clave).
+const PUBLIC_PREFIXES = ['/login', '/api/telegram', '/api/cron', '/api/checklist/aviso']
 
 export async function proxy(request: NextRequest) {
     let response = NextResponse.next({ request })

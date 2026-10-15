@@ -9,6 +9,8 @@ import { GeneradorPlan } from '@/components/oficina/GeneradorPlan'
 import { PuertaEntrada } from '@/components/oficina/PuertaEntrada'
 import { SelectorProyecto } from '@/components/oficina/SelectorProyecto'
 import { ListaEncargos } from '@/components/oficina/ListaEncargos'
+import { AvanceChecklist } from '@/components/oficina/AvanceChecklist'
+import { avanceDeProyecto, type AvanceProyecto } from '@/lib/agent/checklist'
 import { listarEncargos, retomarAtascados, type Encargo } from '@/lib/agent/encargos'
 import { leerHilo } from '@/lib/agent/hilos'
 import { listarProyectos, porAlcance, type Proyecto, type ProyectoId } from '@/lib/agent/proyectos'
@@ -33,7 +35,7 @@ export default async function OficinaPage() {
     const { id: pid, proyecto } = await proyectoActivo()
     // Un despliegue a mitad de un encargo lo deja colgado: al abrir la Oficina se retoma (sin esperar).
     void retomarAtascados().catch((e) => console.error('[oficina] retomar encargos', e))
-    const [cerebro, planes, objetivos, entregables, completados, proyectos, hilo, abiertos, recientes] = await Promise.all([
+    const [cerebro, planes, objetivos, entregables, completados, proyectos, hilo, abiertos, recientes, avance] = await Promise.all([
         leerCerebro(pid).catch(() => ({})),
         listarPlanes({ alcance: pid }).catch(() => [] as PlanConPasos[]),
         cuenta(filas('objetivos', pid).eq('estado', 'activo')),
@@ -43,6 +45,7 @@ export default async function OficinaPage() {
         leerHilo('equipo', pid).catch(() => [] as UIMessage[]),
         listarEncargos({ alcance: pid, abiertos: true }).catch(() => [] as Encargo[]),
         listarEncargos({ alcance: pid, limite: 6 }).catch(() => [] as Encargo[]),
+        proyecto?.checklist_slug ? avanceDeProyecto(proyecto.checklist_slug).catch(() => null) : Promise.resolve(null as AvanceProyecto | null),
     ])
     // Abiertos primero (lo que espera tu respuesta arriba), después los terminados recientes.
     const encargos = [...abiertos.sort((a, b) => Number(b.estado === 'esperando') - Number(a.estado === 'esperando')), ...recientes.filter((e) => !abiertos.some((x) => x.id === e.id)).slice(0, 4)]
@@ -68,7 +71,10 @@ export default async function OficinaPage() {
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
                 <PuertaEntrada key={pid ?? 'jamtech'} inicial={hilo} proyecto={pid} />
-                <ListaEncargos encargos={encargos} titulo="En lo que estamos" vacio="Nadie tiene encargos ahora. Pídele algo largo al equipo (una propuesta, una investigación) y lo verás aquí mientras lo trabajan." />
+                <div className="space-y-4">
+                    {avance && <AvanceChecklist a={avance} />}
+                    <ListaEncargos encargos={encargos} titulo="En lo que estamos" vacio="Nadie tiene encargos ahora. Pídele algo largo al equipo (una propuesta, una investigación) y lo verás aquí mientras lo trabajan." />
+                </div>
             </div>
 
             {pendientes > 0 && (

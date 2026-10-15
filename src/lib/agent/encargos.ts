@@ -98,7 +98,7 @@ async function trabajarEncargo(id: string): Promise<void> {
             import('./caja'), leerAutonomias(), cerebroParaPrompt(e.proyecto_id), memoriaParaPrompt(e.departamento), leerProyecto(e.proyecto_id),
         ])
         // Solo lectura y, si el agente tiene autonomía, sus escrituras internas. Nunca nada que salga de la casa.
-        const caja = herramientasPara(e.proyecto_id) as Record<string, unknown>
+        const caja = herramientasPara(e.proyecto_id, e.proyecto_id, proyecto?.checklist_slug ?? null) as Record<string, unknown>
         const tools = Object.fromEntries(Object.entries(caja).filter(([n]) => !n.startsWith('encargo') && (!isWriteTool(n) || sinPreguntar(n, autonomias)))) as Record<string, never>
         if (proveedorActivo() === 'anthropic') (tools as Record<string, unknown>).web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 5 })
         const { model, providerOptions } = modeloPara('chat')
