@@ -5,7 +5,14 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
+    ChevronDown,
     ClipboardList,
+    ExternalLink,
+    LineChart,
+    ListChecks,
+    QrCode,
+    Video,
+    Wrench,
     FileText,
     LayoutDashboard,
     Building2,
@@ -34,6 +41,14 @@ const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
 
+/** Otras herramientas de JAM Tech: se abren en su propia pestaña, agrupadas para no llenar el menú. */
+const herramientasJam: { href: string; label: string; host: string; icon: LucideIcon }[] = [
+    { href: 'https://seoagency.jamtech.cloud/', label: 'SEO Agency', host: 'seoagency.jamtech.cloud', icon: LineChart },
+    { href: 'https://qr.jamtech.cloud/', label: 'Generador de QR', host: 'qr.jamtech.cloud', icon: QrCode },
+    { href: 'https://spuckee.jamtech.cloud/', label: 'Spuckee Loom', host: 'spuckee.jamtech.cloud', icon: Video },
+    { href: 'https://tasks.jamtech.cloud/admin', label: 'Seguimiento de Tareas', host: 'tasks.jamtech.cloud', icon: ListChecks },
+]
+
 /** Avatar con iniciales y anillo en los tres colores del logo. */
 export function BrandAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
     const outer = size === 'sm' ? 'h-9 w-9' : 'h-11 w-11'
@@ -51,6 +66,8 @@ export function Sidebar() {
     const pathname = usePathname()
     const router = useRouter()
     const [mobileOpen, setMobileOpen] = useState(false)
+    // El menú vive en el layout, así que el grupo recuerda si estaba abierto mientras navegas.
+    const [herramientasAbiertas, setHerramientasAbiertas] = useState(false)
 
     const signOut = async () => {
         await supabase.auth.signOut()
@@ -109,7 +126,7 @@ export function Sidebar() {
                 </Link>
 
                 {/* Navegación: el activo es una pastilla blanca sobre el azul, no un borde tímido. */}
-                <nav className="flex-1 w-full px-4 space-y-1">
+                <nav className="flex-1 w-full min-h-0 overflow-y-auto px-4 space-y-1">
                     {navLinks.map((link) => {
                         const isActive = pathname === link.href
                         const Icon = link.icon
@@ -129,6 +146,46 @@ export function Sidebar() {
                             </Link>
                         )
                     })}
+
+                    {/* Herramientas JAM: enlaces externos agrupados y plegables. */}
+                    <div className="pt-3">
+                        <button
+                            type="button"
+                            onClick={() => setHerramientasAbiertas((v) => !v)}
+                            aria-expanded={herramientasAbiertas}
+                            aria-controls="herramientas-jam"
+                            className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                        >
+                            <Wrench className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                            Herramientas JAM
+                            <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${herramientasAbiertas ? 'rotate-180' : ''}`} />
+                        </button>
+                        {herramientasAbiertas && (
+                            <ul id="herramientas-jam" className="mt-1 space-y-0.5 border-l border-white/15 ml-6 pl-2">
+                                {herramientasJam.map((h) => {
+                                    const Icon = h.icon
+                                    return (
+                                        <li key={h.href}>
+                                            <a
+                                                href={h.href}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={() => setMobileOpen(false)}
+                                                className="group flex items-center gap-2.5 rounded-lg px-3 py-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                                            >
+                                                <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-[13px] font-medium">{h.label}</span>
+                                                    <span className="block truncate text-[10.5px] text-white/45 group-hover:text-white/60">{h.host}</span>
+                                                </span>
+                                                <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90" aria-label="Se abre en una pestaña nueva" />
+                                            </a>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        )}
+                    </div>
                 </nav>
 
                 <div className="px-4 pb-6 pt-4">
