@@ -8,6 +8,7 @@ import {
     Check,
     ChevronDown,
     ChevronUp,
+    FileSignature,
     FileText,
     HeartHandshake,
     ListTodo,
@@ -21,6 +22,7 @@ import {
     RotateCcw,
     StickyNote,
     Trash2,
+    Wallet,
     Wrench,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -47,6 +49,8 @@ import { emitDataChanged, useDataChanged } from '@/lib/events'
 
 const ICONS: Record<TimelineEvent['type'], React.ComponentType<{ className?: string }>> = {
     quote: FileText,
+    proposal: FileSignature,
+    control: Wallet,
     invoice: ReceiptText,
     payment: HeartHandshake,
     email: Mail,
@@ -55,6 +59,8 @@ const ICONS: Record<TimelineEvent['type'], React.ComponentType<{ className?: str
 }
 const COLORS: Record<TimelineEvent['type'], string> = {
     quote: 'text-sky-600 bg-sky-500/10',
+    proposal: 'text-violet-600 bg-violet-500/10',
+    control: 'text-slate-600 bg-slate-500/10',
     invoice: 'text-teal-600 bg-teal-500/10',
     payment: 'text-emerald-600 bg-emerald-500/10',
     email: 'text-indigo-600 bg-indigo-500/10',
@@ -442,7 +448,9 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
                                     <span className={`absolute -left-3 mt-0.5 h-6 w-6 rounded-full flex items-center justify-center ${COLORS[ev.type]}`}>
                                         <Icon className="w-3.5 h-3.5" />
                                     </span>
-                                    <p className="text-sm font-medium leading-tight">{ev.title}</p>
+                                    <p className="text-sm font-medium leading-tight">
+                                        {ev.href ? <Link href={ev.href} className="underline-offset-2 hover:underline">{ev.title}</Link> : ev.title}
+                                    </p>
                                     <p className="text-xs text-muted-foreground">
                                         {fmt(ev.date)}
                                         {ev.detail ? ` · ${ev.detail}` : ''}

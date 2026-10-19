@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { calcular as calcularControl, type Acuerdo, type Cuota, type Movimiento } from '@/lib/control/calculo'
+import { dinero, type Moneda } from '@/lib/propuestas/precios'
+import { estadoDe, type EstadoPropuesta } from '@/lib/propuestas/tipos'
 import { supabase } from '@/lib/supabase'
 import { Client, ClientNote, ClientStage, EmailLog, Task } from '@/types'
 import { createClient, getClient, listClients } from './clients'
@@ -159,23 +162,28 @@ export async function deleteClientNote(id: string): Promise<void> {
 
 // ───────────── Línea de tiempo por cliente ─────────────
 export interface TimelineEvent {
-    type: 'quote' | 'invoice' | 'payment' | 'email' | 'note' | 'log'
+    type: 'quote' | 'proposal' | 'control' | 'invoice' | 'payment' | 'email' | 'note' | 'log'
     date: string
     title: string
     detail?: string
     amount?: number | null
     ref_id?: string
+    /** Dónde abrirlo en FacturAI (propuestas y control interno). */
+    href?: string
 }
 
 export async function getClientTimeline(clientId: string): Promise<TimelineEvent[]> {
     const client = await getClient(clientId)
     const ids = [clientId]
-    const [quotes, invoices, emails, notes, logs] = await Promise.all([
+    const [quotes, invoices, emails, notes, logs, proposals, controles] = await Promise.all([
         supabase.from('quotes').select('id, quote_number, total_amount, total_hours, quote_type, currency, issue_date, created_at').eq('client_id', clientId),
         supabase.from('invoices').select('id, invoice_number, total_amount, status, issue_date, paid_at, sent_at').in('client_id', ids),
         supabase.from('email_log').select('*').eq('client_id', clientId),
         supabase.from('client_notes').select('*').eq('client_id', clientId),
         supabase.from('logs').select('id, description, value, hours, status, created_at').in('client_id', ids).order('created_at', { ascending: false }).limit(30),
+        // Propuestas y control interno: así la ficha (y los agentes) reúnen todo lo propuesto, cobrado y pactado.
+        supabase.from('proposals').select('id, number, title, status, currency, total_once, total_recurring, created_at, sent_at, accepted_at, accepted_by').eq('client_id', clientId),
+        supabase.from('control_proyectos').select('id, nombre, moneda, estado, created_at, control_cuotas(*), control_acuerdos(*), control_movimientos(*)').eq('client_id', clientId),
     ])
     const events: TimelineEvent[] = []
     for (const q of (quotes.data || []) as { id: string; quote_number: string; total_amount: number; total_hours: number; quote_type: string; currency: string; issue_date: string; created_at: string }[]) {
@@ -195,6 +203,20 @@ export async function getClientTimeline(clientId: string): Promise<TimelineEvent
     }
     for (const l of (logs.data || []) as { id: string; description: string; value: number | null; hours: number | null; status: string; created_at: string }[]) {
         events.push({ type: 'log', date: l.created_at, title: l.description, detail: l.hours ? `${l.hours} h` : l.value != null ? `$${Number(l.value).toFixed(2)}` : undefined, amount: l.value, ref_id: l.id })
+    }
+    for (const p of (proposals.data || []) as { id: string; number: string; title: string; status: EstadoPropuesta; currency: Moneda; total_once: number; total_recurring: number; created_at: string; sent_at: string | null; accepted_at: string | null; accepted_by: string | null }[]) {
+        const total = [Number(p.total_once) > 0 ? dinero(Number(p.total_once), p.currency) : '', Number(p.total_recurring) > 0 ? `${dinero(Number(p.total_recurring), p.currency)}/mes` : ''].filter(Boolean).join(' + ')
+        events.push({ type: 'proposal', date: p.created_at, title: `Propuesta ${p.number} · ${p.title}`, detail: [total, estadoDe(p.status).label].filter(Boolean).join(' · '), amount: Number(p.total_once), ref_id: p.id, href: `/propuestas/${p.id}` })
+        if (p.accepted_at) events.push({ type: 'proposal', date: p.accepted_at, title: `Propuesta ${p.number} aceptada`, detail: [p.accepted_by ? `por ${p.accepted_by}` : '', total].filter(Boolean).join(' · '), amount: Number(p.total_once), ref_id: `${p.id}-ok`, href: `/propuestas/${p.id}` })
+    }
+    type FilaControl = { id: string; nombre: string; moneda: Moneda; estado: string; created_at: string; control_cuotas: Cuota[]; control_acuerdos: Acuerdo[]; control_movimientos: Movimiento[] }
+    for (const c of (controles.data || []) as FilaControl[]) {
+        const num = <T extends { monto: number }>(xs: T[]) => (xs ?? []).map((x) => ({ ...x, monto: Number(x.monto) }))
+        const r = calcularControl(num(c.control_cuotas), num(c.control_acuerdos), num(c.control_movimientos))
+        events.push({ type: 'control', date: c.created_at, title: `Control interno · ${c.nombre}${c.estado === 'cerrado' ? ' (cerrado)' : ''}`, detail: `Plan ${dinero(r.totalCobrar, c.moneda)} · cobrado ${dinero(r.cobrado, c.moneda)} · falta ${dinero(r.porCobrar, c.moneda)}`, amount: r.totalCobrar, ref_id: c.id, href: `/control/${c.id}` })
+        for (const a of r.abonos) {
+            events.push({ type: 'payment', date: `${a.fecha}T12:00:00Z`, title: `Abono recibido · ${c.nombre}`, detail: [dinero(a.monto, c.moneda), a.metodo, a.nota].filter(Boolean).join(' · '), amount: a.monto, ref_id: a.id, href: `/control/${c.id}` })
+        }
     }
     events.sort((a, b) => (a.date < b.date ? 1 : -1))
     void client

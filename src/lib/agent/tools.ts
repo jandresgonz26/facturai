@@ -143,7 +143,7 @@ export const agentTools = {
     }),
 
     get_client_timeline: tool({
-        description: 'Historial de un cliente: cotizaciones, facturas, pagos, correos enviados, notas y actividades, del más reciente al más antiguo.',
+        description: 'Historial completo de un cliente, del más reciente al más antiguo: propuestas (número, título, total, estado y si la aceptó), cotizaciones, proyectos del control interno (plan de cobro, cobrado y lo que falta) con sus abonos, facturas, pagos, correos, notas y actividades. Úsala SIEMPRE que José pregunte qué se le propuso, cotizó, cobró o acordó con un cliente («¿cuánto le cobré a Blanca?», «¿qué le propuse a Total Envíos?») y responde con números y fechas.',
         inputSchema: z.object({ client_id: uuidSchema, limit: z.number().int().min(1).max(50).optional() }),
         execute: async ({ client_id, limit }) => run(async () => (await actions.getClientTimeline(client_id)).slice(0, limit ?? 25)),
     }),
