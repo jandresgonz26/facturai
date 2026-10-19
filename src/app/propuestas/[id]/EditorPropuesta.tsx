@@ -3,7 +3,7 @@
  * Pantalla de una propuesta: título, editor tipo Notion, precios, y a la derecha el estado, el enlace para
  * compartir, la actividad del cliente y (si la aceptó) la facturación. Guarda sola mientras escribes.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -71,6 +71,13 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
     const [menu, setMenu] = useState(false)
     const [pendiente, start] = useTransition()
     const editorRef = useRef<EditorPropuestaBN | null>(null)
+    const tituloRef = useRef<HTMLTextAreaElement>(null)
+    useLayoutEffect(() => {
+        const el = tituloRef.current
+        if (!el) return
+        el.style.height = 'auto'
+        el.style.height = `${el.scrollHeight}px`
+    }, [titulo])
     const cambios = useRef<{ title?: string; content?: unknown; pricing?: Pricing; valid_until?: string | null }>({})
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -214,7 +221,8 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
                         <div className="px-[54px]">
                             <div className="font-mono text-xs text-muted-foreground">{inicial.number} · {inicial.cliente.name}</div>
                             <label htmlFor="titulo-propuesta" className="sr-only">Título</label>
-                            <input id="titulo-propuesta" value={titulo} onChange={(e) => { setTitulo(e.target.value); if (e.target.value.trim().length >= 3) programar({ title: e.target.value }) }} className="font-display mt-1 w-full bg-transparent text-3xl font-semibold outline-none placeholder:text-muted-foreground/50" placeholder="Título de la propuesta" />
+                            {/* Crece en altura con el texto: un título largo pasa a la línea siguiente en vez de esconderse. */}
+                            <textarea id="titulo-propuesta" ref={tituloRef} rows={1} value={titulo} onChange={(e) => { const v = e.target.value.replace(/\n/g, ' '); setTitulo(v); if (v.trim().length >= 3) programar({ title: v }) }} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} className="font-display mt-1 block w-full resize-none overflow-hidden bg-transparent text-3xl leading-tight font-semibold text-balance outline-none placeholder:text-muted-foreground/50" placeholder="Título de la propuesta" />
                         </div>
                         {aceptada && <p className="mx-[54px] mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">El cliente ya la aceptó: lo que aceptó quedó guardado tal cual. Si cambias algo aquí, el enlace seguirá mostrando la versión aceptada salvo que la reabras.</p>}
                         <div className="mt-4">
