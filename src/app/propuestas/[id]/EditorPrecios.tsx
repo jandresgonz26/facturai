@@ -58,14 +58,33 @@ function EditorItem({ item, onChange, onQuitar, onSubir, onBajar, onDuplicar, mo
     const id = `it-${item.id}`
     return (
         <div className="rounded-lg border bg-card p-3">
-            <div className="grid gap-2 sm:grid-cols-[1fr_7rem_5rem_6rem_8rem]">
-                <input id={`${id}-servicio`} aria-label="Servicio" value={item.servicio} onChange={(e) => set('servicio', e.target.value)} placeholder="Servicio (ej.: Diseño web)" className={`${campo} font-medium`} />
-                <Num id={`${id}-precio`} etiqueta="Precio unitario" value={item.precio} onChange={(v) => set('precio', v)} />
-                <Num id={`${id}-cantidad`} etiqueta="Cantidad" value={item.cantidad} onChange={(v) => set('cantidad', v)} />
-                <input id={`${id}-unidad`} aria-label="Unidad" value={item.unidad} onChange={(e) => set('unidad', e.target.value)} placeholder="unidad" className={campo} />
-                <select id={`${id}-frecuencia`} aria-label="Frecuencia" value={item.frecuencia} onChange={(e) => set('frecuencia', e.target.value as Frecuencia)} className={campo}>
-                    {FRECUENCIAS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                </select>
+            {/* En el orden en que se lee: «Fotografía · 20 horas × $25 · pago único». */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem_8rem]">
+                <label className="col-span-2 space-y-1 sm:col-span-1">
+                    <span className="text-xs text-muted-foreground">Servicio</span>
+                    <input id={`${id}-servicio`} value={item.servicio} onChange={(e) => set('servicio', e.target.value)} placeholder="Ej.: Diseño web" className={`${campo} font-medium`} />
+                </label>
+                <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Cantidad</span>
+                    <Num id={`${id}-cantidad`} etiqueta="Cantidad" value={item.cantidad} onChange={(v) => set('cantidad', v)} />
+                </label>
+                <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Unidad <span className="opacity-70">(opcional)</span></span>
+                    <input id={`${id}-unidad`} value={item.unidad} onChange={(e) => set('unidad', e.target.value)} placeholder="horas, páginas…" className={campo} />
+                </label>
+                <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Precio {item.unidad ? `por ${item.unidad.replace(/s$/, '')}` : 'unitario'}</span>
+                    <span className="relative block">
+                        <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">{moneda === 'EUR' ? '€' : '$'}</span>
+                        <Num id={`${id}-precio`} etiqueta="Precio unitario" value={item.precio} onChange={(v) => set('precio', v)} className="pl-6" />
+                    </span>
+                </label>
+                <label className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Se cobra</span>
+                    <select id={`${id}-frecuencia`} value={item.frecuencia} onChange={(e) => set('frecuencia', e.target.value as Frecuencia)} className={campo}>
+                        {FRECUENCIAS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                </label>
             </div>
             <textarea id={`${id}-desc`} aria-label="Descripción" value={item.descripcion} onChange={(e) => set('descripcion', e.target.value)} placeholder="Qué incluye (opcional)" rows={1} className="mt-2 w-full resize-y rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30" />
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
