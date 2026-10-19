@@ -7,6 +7,7 @@ import { useState } from 'react'
 import {
     ChevronDown,
     ClipboardList,
+    FileSignature,
     ExternalLink,
     LineChart,
     ListChecks,
@@ -37,6 +38,7 @@ const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
     { href: '/month-end', label: 'Facturación', icon: ReceiptText },
     { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
+    { href: '/propuestas', label: 'Propuestas', icon: FileSignature },
     { href: '/invoices', label: 'Facturas', icon: FileText },
     { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
@@ -128,7 +130,7 @@ export function Sidebar() {
                 {/* Navegación: el activo es una pastilla blanca sobre el azul, no un borde tímido. */}
                 <nav className="flex-1 w-full min-h-0 overflow-y-auto px-4 space-y-1">
                     {navLinks.map((link) => {
-                        const isActive = pathname === link.href
+                        const isActive = pathname === link.href || (link.href !== '/' && pathname?.startsWith(`${link.href}/`))
                         const Icon = link.icon
                         return (
                             <Link

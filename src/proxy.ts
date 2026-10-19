@@ -9,7 +9,9 @@ import { NextResponse, type NextRequest } from 'next/server'
  */
 // /api/checklist/aviso: lo llama la base de Seguimiento de Tareas al cambiar un estado; solo despierta la revisión
 // (no confía en lo que recibe: vuelve a leer los cambios con su propia clave).
-const PUBLIC_PREFIXES = ['/login', '/api/telegram', '/api/cron', '/api/checklist/aviso']
+// /propuesta/<token> y /api/propuesta/<token>/…: la propuesta que abre el cliente. Solo se encuentra por su token
+// (imposible de adivinar) y solo si José ya la envió; el panel de propuestas (/propuestas) sigue protegido.
+const PUBLIC_PREFIXES = ['/login', '/api/telegram', '/api/cron', '/api/checklist/aviso', '/propuesta', '/api/propuesta']
 
 export async function proxy(request: NextRequest) {
     let response = NextResponse.next({ request })

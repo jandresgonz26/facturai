@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { PropuestasCliente } from '@/components/propuestas/PropuestasCliente'
 import {
     CalendarClock,
     Check,
@@ -242,6 +243,8 @@ export function ClientActivityPanel({ client, onClientChanged }: { client: Clien
                     <p className="text-sm py-2">{client.source || <span className="text-muted-foreground">Sin indicar</span>}</p>
                 </div>
             </section>
+
+            <PropuestasCliente clientId={client.id} />
 
             <section className="rounded-lg border p-3 space-y-2 bg-muted/30">
                 <div className="flex items-center justify-between">

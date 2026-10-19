@@ -12,7 +12,8 @@ import { AgentLauncher } from '@/components/agent/AgentLauncher'
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname()
-    if (pathname === '/login') return <>{children}</>
+    // La propuesta pública (/propuesta/<token>) la abre el cliente y su vista previa se ve igual: sin el armazón de la app.
+    if (pathname === '/login' || pathname?.startsWith('/propuesta/') || /^\/propuestas\/[^/]+\/vista$/.test(pathname ?? '')) return <>{children}</>
 
     return (
         <>
