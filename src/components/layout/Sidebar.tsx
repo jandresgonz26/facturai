@@ -8,6 +8,7 @@ import {
     ChevronDown,
     ClipboardList,
     FileSignature,
+    Wallet,
     ExternalLink,
     LineChart,
     ListChecks,
@@ -39,6 +40,7 @@ const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/month-end', label: 'Facturación', icon: ReceiptText },
     { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
     { href: '/propuestas', label: 'Propuestas', icon: FileSignature },
+    { href: '/control', label: 'Control interno', icon: Wallet },
     { href: '/invoices', label: 'Facturas', icon: FileText },
     { href: '/settings', label: 'Ajustes', icon: Settings },
 ]

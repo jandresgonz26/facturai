@@ -213,7 +213,7 @@ export function tieneContenido(p: Pricing): boolean {
 // ─── Formato ──────────────────────────────────────────────────────────────────
 
 export function dinero(n: number, moneda: Moneda): string {
-    const s = new Intl.NumberFormat('es-ES', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2, useGrouping: true }).format(n)
+    const s = new Intl.NumberFormat('es-ES', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2, useGrouping: 'always' }).format(n)
     return moneda === 'EUR' ? `${s} €` : `$${s}`
 }
 
