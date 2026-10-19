@@ -73,9 +73,9 @@ export function PanelControl({ datos }: { datos: ControlCompleto }) {
                         <h2 className="font-semibold">Lo que cobras al cliente</h2>
                         {r.proximaCuota && <p className="text-sm text-muted-foreground">Próxima: {r.proximaCuota.concepto} · faltan {m(r.proximaCuota.falta)}{r.proximaCuota.vence ? ` · vence ${fecha(r.proximaCuota.vence)}` : ''}</p>}
                     </div>
-                    <ol className="divide-y rounded-lg border">
+                    <ol className="divide-y border-y">
                         {r.cuotas.map((c, i) => (
-                            <li key={c.id} className="flex items-start gap-3 px-3 py-2.5 text-sm">
+                            <li key={c.id} className="flex items-start gap-3 py-2.5 text-sm">
                                 <span className="mt-0.5 w-5 shrink-0 text-xs text-muted-foreground tabular-nums">{c.extra ? '+' : i + 1}</span>
                                 <div className="min-w-0 flex-1">
                                     <div className="font-medium">{c.concepto}</div>
@@ -91,7 +91,7 @@ export function PanelControl({ datos }: { datos: ControlCompleto }) {
                                 <Button variant="ghost" size="icon-xs" aria-label={`Borrar ${c.concepto}`} onClick={() => borrar('cuota', c.id, `«${c.concepto}»`)}><Trash2 /></Button>
                             </li>
                         ))}
-                        {r.cuotas.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted-foreground">Aún no hay plan de cuotas.</li>}
+                        {r.cuotas.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Aún no hay plan de cuotas.</li>}
                     </ol>
                     <FormCuota pendiente={pendiente} onGuardar={(c, limpiar) => correr(() => agregarCuotaAccion(p.id, c), limpiar)} />
 
@@ -170,9 +170,9 @@ function Proveedor({ pr, m, proyectoId, pendiente, correr, borrar }: { pr: Cuent
                 {pr.porConfirmar > 0 && <> · <span className="text-amber-700 dark:text-amber-400">{m(pr.porConfirmar)} por confirmar</span></>}
                 {pr.alRitmo > 0 && <> · al ritmo de lo que ya cobraste le corresponden <span className="font-medium text-foreground">{m(pr.alRitmo)}</span> ahora</>}
             </p>
-            <ul className="divide-y rounded-lg border">
+            <ul className="divide-y border-y">
                 {pr.acuerdos.map((a) => (
-                    <li key={a.id} className="px-3 py-2.5 text-sm">
+                    <li key={a.id} className="py-2.5 text-sm">
                         <div className="flex items-start gap-2">
                             <div className="min-w-0 flex-1">
                                 <div className="font-medium">{a.concepto}</div>
