@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { controlDePropuesta } from '@/lib/control/datos'
 import { eventosDe, leerPropuesta } from '@/lib/propuestas/datos'
 import { EditorPropuesta, type DatosEditor } from './EditorPropuesta'
 
@@ -8,7 +9,7 @@ export default async function PaginaPropuesta({ params }: { params: Promise<{ id
     const { id } = await params
     const p = await leerPropuesta(id).catch(() => null)
     if (!p) notFound()
-    const eventos = await eventosDe(id)
+    const [eventos, controlId] = await Promise.all([eventosDe(id), controlDePropuesta(id).catch(() => null)])
     const a = p.accepted_snapshot
     const datos: DatosEditor = {
         id: p.id,
@@ -29,6 +30,7 @@ export default async function PaginaPropuesta({ params }: { params: Promise<{ id
         accepted_at: p.accepted_at,
         aceptacion: a ? { opcion_nombre: a.opcion_nombre, varias: a.pricing.opciones.length > 1, extras: a.extras_ids.length, totales: a.totales } : null,
         billing: p.billing,
+        control_id: controlId,
         updated_at: p.updated_at,
     }
     // key: si otra pestaña o el cliente cambian algo, al refrescar se monta con los datos nuevos.

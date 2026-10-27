@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, Check, Copy, Eye, FileDown, Link2, Loader2, MessageCircle, MoreHorizontal, Receipt, Repeat, RotateCcw, Sparkles, Trash2, Wand2, XCircle } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Wallet, Eye, FileDown, Link2, Loader2, MessageCircle, MoreHorizontal, Receipt, Repeat, RotateCcw, Sparkles, Trash2, Wand2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import type { Bloque } from '@/lib/propuestas/bloques'
@@ -17,6 +17,7 @@ import { estadoDe, type EstadoPropuesta } from '@/lib/propuestas/tipos'
 import type { BorradorIA } from '@/lib/propuestas/ia'
 import { dinero, frecuencia, type Moneda, type Pricing, type Totales } from '@/lib/propuestas/precios'
 import { borrarPropuestaAccion, crearFijosAccion, duplicarPropuestaAccion, enviarPropuestaAccion, facturarPropuestaAccion, guardarPropuestaAccion, reabrirPropuestaAccion, rechazarPropuestaAccion } from '../acciones'
+import { crearControlDesdePropuestaAccion } from '@/app/control/acciones'
 import { InversionCtx } from './contexto'
 import { DialogoIA } from './DialogoIA'
 import { EditorPrecios } from './EditorPrecios'
@@ -44,6 +45,8 @@ export type DatosEditor = {
     aceptacion: { opcion_nombre: string; varias: boolean; extras: number; totales: Totales } | null
     billing: Facturacion
     updated_at: string
+    /** El control interno que salió de esta propuesta, si ya se creó. */
+    control_id: string | null
 }
 
 const fechaHora = (iso: string) => new Date(iso).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Caracas' })
@@ -282,6 +285,9 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
                                         </Button>
                                     )}
                                     {tieneRecurrente && !b.fijos?.length && <Button variant="outline" disabled={pendiente} onClick={() => accion(() => crearFijosAccion(inicial.id))}><Repeat /> Crear servicios fijos</Button>}
+                                    {inicial.control_id
+                                        ? <Button variant="outline" asChild><Link href={`/control/${inicial.control_id}`}><Wallet /> Ver control interno</Link></Button>
+                                        : <Button variant="outline" disabled={pendiente} onClick={() => accion(() => crearControlDesdePropuestaAccion(inicial.id), (d) => router.push(`/control/${d as string}`))}><Wallet /> Crear control interno</Button>}
                                 </div>
                                 {(b.facturas?.length || b.fijos?.length) ? (
                                     <ul className="space-y-1 text-xs text-muted-foreground">

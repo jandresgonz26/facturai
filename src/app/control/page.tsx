@@ -1,14 +1,14 @@
 import Link from 'next/link'
 import { listClients } from '@/lib/actions/clients'
 import { dinero } from '@/lib/control/calculo'
-import { listarControles } from '@/lib/control/datos'
+import { listarControles, propuestasEnlazables } from '@/lib/control/datos'
 import { NuevoControl } from './NuevoControl'
 
 export const dynamic = 'force-dynamic'
 
 /** Control interno de proyectos: cuánto falta cobrar al cliente, cuánto falta pagar a los programadores y el margen. */
 export default async function PaginaControl() {
-    const [proyectos, clientes] = await Promise.all([listarControles().catch(() => []), listClients().catch(() => [])])
+    const [proyectos, clientes, propuestas] = await Promise.all([listarControles().catch(() => []), listClients().catch(() => []), propuestasEnlazables().catch(() => [])])
     const activos = proyectos.filter((p) => p.estado === 'activo')
     const porCobrar = activos.reduce((s, p) => s + p.resumen.porCobrar, 0)
     const porPagar = activos.reduce((s, p) => s + p.resumen.porPagar, 0)
@@ -20,7 +20,7 @@ export default async function PaginaControl() {
                     <h1 className="font-display text-2xl font-bold">Control de proyectos</h1>
                     <p className="mt-1 max-w-prose text-sm text-muted-foreground">Solo para ti: lo que cobras a cada cliente, lo que pagas a los programadores y lo que te queda. No toca facturas ni nada que vea el cliente.</p>
                 </div>
-                <NuevoControl clientes={clientes.map((c) => ({ id: c.id, name: c.name }))} />
+                <NuevoControl clientes={clientes.map((c) => ({ id: c.id, name: c.name }))} propuestas={propuestas} />
             </header>
 
             {activos.length > 0 && (

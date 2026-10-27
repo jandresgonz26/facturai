@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { leerControl } from '@/lib/control/datos'
+import { leerControl, propuestasEnlazables } from '@/lib/control/datos'
 import { PanelControl } from './PanelControl'
 
 export const dynamic = 'force-dynamic'
@@ -8,5 +8,7 @@ export default async function PaginaControlProyecto({ params }: { params: Promis
     const { id } = await params
     const c = await leerControl(id).catch(() => null)
     if (!c) notFound()
-    return <PanelControl datos={c} />
+    // Para enlazar una propuesta si el control aún no tiene: las del mismo cliente (o todas, si no tiene cliente).
+    const propuestas = c.proyecto.propuesta_id ? [] : await propuestasEnlazables(c.proyecto.client_id).catch(() => [])
+    return <PanelControl datos={c} propuestas={propuestas} />
 }

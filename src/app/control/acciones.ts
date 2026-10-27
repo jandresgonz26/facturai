@@ -17,7 +17,26 @@ async function hacer<T>(proyectoId: string | null, fn: () => Promise<T>, mensaje
     }
 }
 
-export const crearControlAccion = async (input: { nombre: string; client_id?: string | null; moneda?: 'USD' | 'EUR'; notas?: string }) => hacer(null, () => d.crearControl(input), 'Proyecto creado.')
+export const crearControlAccion = async (input: { nombre: string; client_id?: string | null; moneda?: 'USD' | 'EUR'; notas?: string; propuesta_id?: string | null }) =>
+    input.propuesta_id ? desdePropuesta(input.propuesta_id, input.nombre) : hacer(null, () => d.crearControl(input), 'Proyecto creado.')
+
+/** Crea (o abre, si ya existe) el control de una propuesta, con sus cuotas. */
+export const crearControlDesdePropuestaAccion = async (propuestaId: string) => desdePropuesta(propuestaId)
+
+async function desdePropuesta(propuestaId: string, nombre?: string): Promise<Resultado<string>> {
+    const r = await hacer(null, () => d.crearControlDesdePropuesta(propuestaId, nombre), '')
+    if (!r.ok) return r
+    revalidatePath(`/propuestas/${propuestaId}`)
+    return { ok: true, mensaje: r.data!.nuevo ? 'Control creado con las cuotas de la propuesta.' : 'Esta propuesta ya tenía su control: te lo abro.', data: r.data!.id }
+}
+
+export const enlazarPropuestaAccion = async (controlId: string, propuestaId: string | null) => {
+    const r = await hacer(controlId, () => d.enlazarPropuesta(controlId, propuestaId), '')
+    if (!r.ok) return r
+    if (propuestaId) revalidatePath(`/propuestas/${propuestaId}`)
+    const n = r.data?.cuotas ?? 0
+    return { ok: true as const, mensaje: !propuestaId ? 'Propuesta desenlazada.' : n ? `Propuesta enlazada y ${n} ${n === 1 ? 'cuota cargada' : 'cuotas cargadas'}.` : 'Propuesta enlazada. Tus cuotas no se tocaron.' }
+}
 export const actualizarControlAccion = async (id: string, c: { nombre?: string; estado?: 'activo' | 'cerrado'; notas?: string | null }) => hacer(id, () => d.actualizarControl(id, c), 'Guardado.')
 export const borrarControlAccion = async (id: string) => hacer(null, () => d.borrarControl(id), 'Proyecto borrado.')
 export const agregarCuotaAccion = async (pid: string, c: { concepto: string; monto: string; vence?: string | null; detalle?: string; extra?: boolean }) => hacer(pid, () => d.agregarCuota(pid, c), c.extra ? 'Cobro añadido.' : 'Cuota añadida.')

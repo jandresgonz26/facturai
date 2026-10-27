@@ -5,6 +5,8 @@
 import { randomUUID } from 'node:crypto'
 import { supabase } from '@/lib/supabase'
 import { ActionError } from '@/lib/actions/validation'
+import { leerPropuesta, type Propuesta } from '@/lib/propuestas/datos'
+import { calcular as calcularPropuesta, dinero as dineroPropuesta, frecuencia } from '@/lib/propuestas/precios'
 import { calcular, type Acuerdo, type Cuota, type Movimiento, type Resumen } from './calculo'
 
 export type ProyectoControl = {
@@ -71,6 +73,78 @@ export async function crearControl(input: { nombre: string; client_id?: string |
     if (nombre.length < 3) throw new ActionError('Ponle un nombre al proyecto.')
     const r = await supabase.from('control_proyectos').insert({ nombre, client_id: input.client_id || null, moneda: input.moneda === 'EUR' ? 'EUR' : 'USD', notas: texto(input.notas) }).select('id').single()
     return revisar(r, 'crear el proyecto').id
+}
+
+// ─── Desde una propuesta ─────────────────────────────────────────────────────
+
+/**
+ * Lo que se cobra según la propuesta: las cuotas de su plan de pagos o, sin plan, el pago único entero. Usa lo que
+ * el cliente aceptó (opción y extras); si aún no la aceptó, la opción recomendada sin extras.
+ */
+function cobrosDePropuesta(p: Propuesta): { cuotas: { concepto: string; monto: number; detalle: string | null }[]; nota: string | null } {
+    const t = p.accepted_snapshot?.totales ?? calcularPropuesta(p.pricing)
+    const cuotas = t.cuotas.length
+        ? t.cuotas.map((c, i) => ({ concepto: c.cuota.concepto.trim() || `Cuota ${i + 1}`, monto: c.monto, detalle: `${c.cuota.pct} % de la propuesta ${p.number}` }))
+        : t.unico.total > 0 ? [{ concepto: 'Pago único', monto: t.unico.total, detalle: `Propuesta ${p.number}` }] : []
+    // Lo recurrente se cobra con los servicios fijos, no con cuotas: queda anotado para tenerlo a la vista.
+    const nota = t.recurrentes.length
+        ? `Además, recurrente: ${t.recurrentes.map((r) => `${dineroPropuesta(r.bloque.total, p.currency)} ${frecuencia(r.frecuencia).label.toLowerCase()}`).join(' + ')} (se cobra con los servicios fijos).`
+        : null
+    return { cuotas, nota }
+}
+
+async function insertarCuotas(proyectoId: string, cuotas: { concepto: string; monto: number; detalle: string | null }[]): Promise<void> {
+    if (!cuotas.length) return
+    revisar(await supabase.from('control_cuotas').insert(cuotas.map((c, i) => ({ proyecto_id: proyectoId, concepto: c.concepto.slice(0, 160), monto: c.monto, detalle: c.detalle, extra: false, orden: i + 1 }))), 'cargar las cuotas de la propuesta')
+}
+
+export type PropuestaEnlazable = { id: string; number: string; title: string; client_id: string; status: string }
+
+/** Propuestas para los selectores del control (sin el contenido, que pesa). */
+export async function propuestasEnlazables(clientId?: string | null): Promise<PropuestaEnlazable[]> {
+    let q = supabase.from('proposals').select('id, number, title, client_id, status').neq('status', 'rejected').order('created_at', { ascending: false }).limit(200)
+    if (clientId) q = q.eq('client_id', clientId)
+    const { data } = await q
+    return (data ?? []) as PropuestaEnlazable[]
+}
+
+/** El control interno que ya salió de esta propuesta, si lo hay. */
+export async function controlDePropuesta(propuestaId: string): Promise<string | null> {
+    const { data } = await supabase.from('control_proyectos').select('id').eq('propuesta_id', propuestaId).order('created_at').limit(1)
+    return (data?.[0]?.id as string | undefined) ?? null
+}
+
+/** Crea el control enlazado a la propuesta, con su cliente, moneda y cuotas. Si ya existe uno, devuelve ese. */
+export async function crearControlDesdePropuesta(propuestaId: string, nombre?: string): Promise<{ id: string; nuevo: boolean }> {
+    const existente = await controlDePropuesta(propuestaId)
+    if (existente) return { id: existente, nuevo: false }
+    const p = await leerPropuesta(propuestaId)
+    const { cuotas, nota } = cobrosDePropuesta(p)
+    const r = await supabase.from('control_proyectos').insert({
+        nombre: (nombre?.trim() || p.title).slice(0, 200), client_id: p.client_id, propuesta_id: p.id, moneda: p.currency, notas: nota,
+    }).select('id').single()
+    const id = revisar(r, 'crear el proyecto').id as string
+    await insertarCuotas(id, cuotas)
+    return { id, nuevo: true }
+}
+
+/** Enlaza (o desenlaza) una propuesta a un control ya creado. Si el control aún no tiene cuotas, trae las de la propuesta. */
+export async function enlazarPropuesta(controlId: string, propuestaId: string | null): Promise<{ cuotas: number }> {
+    if (!propuestaId) {
+        revisar(await supabase.from('control_proyectos').update({ propuesta_id: null }).eq('id', controlId), 'quitar el enlace')
+        return { cuotas: 0 }
+    }
+    const p = await leerPropuesta(propuestaId)
+    const { data: actual } = await supabase.from('control_proyectos').select('client_id, notas').eq('id', controlId).maybeSingle()
+    if (!actual) throw new ActionError('Ese proyecto no existe.')
+    if (actual.client_id && actual.client_id !== p.client_id) throw new ActionError('Esa propuesta es de otro cliente.')
+    const { count } = await supabase.from('control_cuotas').select('id', { count: 'exact', head: true }).eq('proyecto_id', controlId)
+    const { cuotas, nota } = (count ?? 0) === 0 ? cobrosDePropuesta(p) : { cuotas: [], nota: null }
+    revisar(await supabase.from('control_proyectos').update({
+        propuesta_id: p.id, client_id: p.client_id, ...(cuotas.length ? { moneda: p.currency } : {}), ...(nota && !actual.notas ? { notas: nota } : {}),
+    }).eq('id', controlId), 'enlazar la propuesta')
+    await insertarCuotas(controlId, cuotas)
+    return { cuotas: cuotas.length }
 }
 
 export async function actualizarControl(id: string, c: { nombre?: string; estado?: 'activo' | 'cerrado'; notas?: string | null }): Promise<void> {

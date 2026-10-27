@@ -10,8 +10,8 @@ import { ArrowLeft, FileText, Paperclip, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { dinero, type CuentaProveedor, type CuotaCalculada } from '@/lib/control/calculo'
-import type { ControlCompleto } from '@/lib/control/datos'
-import { actualizarAcuerdoAccion, actualizarControlAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion } from '../acciones'
+import type { ControlCompleto, PropuestaEnlazable } from '@/lib/control/datos'
+import { actualizarAcuerdoAccion, actualizarControlAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion, enlazarPropuestaAccion } from '../acciones'
 
 const campo = 'h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30'
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -26,7 +26,7 @@ const ESTADO_CUOTA: Record<CuotaCalculada['estado'], { label: string; tono: stri
 
 type Accion = () => Promise<{ ok: boolean; mensaje: string }>
 
-export function PanelControl({ datos }: { datos: ControlCompleto }) {
+export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; propuestas: PropuestaEnlazable[] }) {
     const router = useRouter()
     const [pendiente, start] = useTransition()
     const { proyecto: p, resumen: r } = datos
@@ -49,6 +49,15 @@ export function PanelControl({ datos }: { datos: ControlCompleto }) {
             <div className="flex flex-wrap items-center gap-3">
                 <Link href="/control" className="mr-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Control de proyectos</Link>
                 {p.proposals && p.propuesta_id && <Link href={`/propuestas/${p.propuesta_id}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><FileText className="size-4" /> Propuesta {p.proposals.number}</Link>}
+                {!p.propuesta_id && propuestas.length > 0 && (
+                    <>
+                        <label htmlFor="enlazar-propuesta" className="sr-only">Enlazar una propuesta</label>
+                        <select id="enlazar-propuesta" value="" disabled={pendiente} onChange={(e) => e.target.value && correr(() => enlazarPropuestaAccion(p.id, e.target.value))} className="h-8 max-w-56 rounded-md border bg-background px-2 text-sm text-muted-foreground">
+                            <option value="">Enlazar propuesta…</option>
+                            {propuestas.map((x) => <option key={x.id} value={x.id}>{x.number} · {x.title}</option>)}
+                        </select>
+                    </>
+                )}
                 <Button variant="outline" size="sm" disabled={pendiente} onClick={() => correr(() => actualizarControlAccion(p.id, { estado: p.estado === 'activo' ? 'cerrado' : 'activo' }))}>{p.estado === 'activo' ? 'Cerrar proyecto' : 'Reabrir'}</Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Borrar proyecto" onClick={() => { if (confirm('¿Borrar este proyecto del control con todas sus cuotas, acuerdos y pagos? No se puede deshacer.')) start(async () => { const x = await borrarControlAccion(p.id); if (!x.ok) return void toast.error(x.mensaje); router.push('/control') }) }}><Trash2 /></Button>
             </div>
