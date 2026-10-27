@@ -14,7 +14,7 @@ import { DEPARTAMENTOS, TOOL_LABELS, departamentoDe, isWriteTool } from './share
  * puerta de entrada de la Oficina. `proyectoId`: el proyecto activo (null = JAM Tech).
  */
 export async function createAgentStream(messages: UIMessage[], fuente: FuenteEvento = 'chat', opts: { departamento?: HiloDe; proyectoId?: ProyectoId } = {}) {
-    const { model, providerOptions } = modeloPara('chat')
+    const { model, providerOptions } = modeloPara('chat', { cache: true })
     await registrarDecisiones(messages, fuente)
     const proyecto = opts.proyectoId ?? null
     const [base, autonomias, p] = await Promise.all([buildSystemPrompt(proyecto), leerAutonomias().catch(() => null), leerProyecto(proyecto).catch(() => null)])

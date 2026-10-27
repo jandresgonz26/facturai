@@ -5,7 +5,7 @@
  */
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
-import type { LanguageModel } from 'ai'
+import type { JSONValue, LanguageModel } from 'ai'
 
 export const MODELO_CHAT_DEFECTO = 'claude-opus-5-5'
 export const MODELO_RUTINAS_DEFECTO = 'claude-sonnet-5-5'
@@ -40,13 +40,18 @@ export function esfuerzo(): 'low' | 'medium' | 'high' {
     return e === 'low' || e === 'high' ? e : 'medium'
 }
 
-export function modeloPara(uso: 'chat' | 'rutinas'): { model: LanguageModel; providerOptions: Record<string, Record<string, string>> } {
+/**
+ * `cache: true` en las llamadas de varios pasos (rutinas, encargos, chat): Claude guarda en caché todo lo que ya
+ * leyó (instrucciones, cerebro, resultados de herramientas) y en el paso siguiente lo relee a un 5 % del precio.
+ * En una llamada de un solo paso no compensa: escribir en caché cuesta un 25 % más y nadie lo vuelve a leer.
+ */
+export function modeloPara(uso: 'chat' | 'rutinas', opts: { cache?: boolean } = {}): { model: LanguageModel; providerOptions: Record<string, Record<string, JSONValue>> } {
     const proveedor = proveedorActivo()
     if (proveedor === 'anthropic') {
         const anthropic = anthropicProvider()
         return {
             model: anthropic(uso === 'chat' ? modeloChat() : modeloRutinas()),
-            providerOptions: { anthropic: { effort: esfuerzo() } },
+            providerOptions: { anthropic: { effort: esfuerzo(), ...(opts.cache ? { cacheControl: { type: 'ephemeral' } } : {}) } },
         }
     }
     if (proveedor === 'openai') {

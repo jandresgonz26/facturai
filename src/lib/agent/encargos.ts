@@ -101,7 +101,7 @@ async function trabajarEncargo(id: string): Promise<void> {
         const caja = herramientasPara(e.proyecto_id, e.proyecto_id, proyecto?.checklist_slug ?? null) as Record<string, unknown>
         const tools = Object.fromEntries(Object.entries(caja).filter(([n]) => !n.startsWith('encargo') && (!isWriteTool(n) || sinPreguntar(n, autonomias)))) as Record<string, never>
         if (proveedorActivo() === 'anthropic') (tools as Record<string, unknown>).web_search = anthropicProvider().tools.webSearch_20260209({ maxUses: 5 })
-        const { model, providerOptions } = modeloPara('chat')
+        const { model, providerOptions } = modeloPara('chat', { cache: true })
         const { text } = await generateText({
             model, providerOptions, tools, stopWhen: stepCountIs(14), maxOutputTokens: 6000,
             system: `Eres ${info.persona}, de ${info.nombre} en JAM Tech (${info.descripcion}). Trabajas para José, el dueño. Fecha de hoy: ${todayISO()}.

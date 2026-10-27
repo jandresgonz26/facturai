@@ -4,7 +4,7 @@
  * informe corto con propuestas. Las acciones las decide el dueño respondiendo al
  * informe en Telegram o en el chat, donde cada escritura pasa por confirmación.
  */
-import { generateObject, generateText, stepCountIs } from 'ai'
+import { generateObject, generateText, stepCountIs, type LanguageModelUsage } from 'ai'
 import { z } from 'zod'
 import { guardarConsejos } from './tools-direccion'
 import { memoriaParaPrompt } from './tools-memoria'
@@ -130,7 +130,7 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
     // Todas las rutinas revisan además sus objetivos (roadmap) y los pasos de los planes que les tocan.
     // Búsqueda web nativa de Claude solo para las rutinas que la piden (Dirección) y con proveedor Anthropic.
     const tools = herramientasLectura([...cfg.herramientas, 'objetivos_listar', 'planes_listar', 'encargos_listar'], cfg.web)
-    const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas')
+    const { model, providerOptions } = modeloPara(cfg.modelo ?? 'rutinas', { cache: true })
     const usadas: string[] = []
     // Finanzas compara el mes con la meta de Ajustes; el resto no la necesita.
     const meta = dep === 'finanzas' ? (await supabase.from('company_settings').select('monthly_goal').limit(1).maybeSingle()).data?.monthly_goal : null
@@ -139,7 +139,7 @@ export async function correrRutina(dep: Departamento, opts: { guardar?: boolean 
     const [memoria, cerebro] = await Promise.all([memoriaParaPrompt(dep), cerebroParaPrompt()])
     await registrarEvento({ departamento: dep, tipo: 'rutina', titulo: `Revisión automática de ${info.nombre}`, estado: 'en_curso', fuente: 'cron' })
     try {
-        const { text } = await generateText({
+        const { text, totalUsage } = await generateText({
             model,
             providerOptions,
             system: `Eres ${info.persona}, del departamento de ${info.nombre} de JAM Tech (${info.descripcion}). Trabajas para el dueño, José. Fecha de hoy: ${todayISO()}.${contexto}
@@ -169,12 +169,22 @@ Si tienes pasos de planes pendientes (planes_listar con departamento ${dep}), a�
         }
         await registrarEvento({
             departamento: dep, tipo: 'rutina', titulo: `Informe de ${info.nombre}`, estado: 'hecho', fuente: 'cron',
-            detalle: { informe: informe.slice(0, 4000), herramientas: usadas, ...(guardados !== null ? { guardados } : {}) },
+            detalle: { informe: informe.slice(0, 4000), herramientas: usadas, tokens: tokensDe(totalUsage), ...(guardados !== null ? { guardados } : {}) },
         })
         return { informe, herramientas_usadas: usadas }
     } catch (e) {
         await registrarEvento({ departamento: dep, tipo: 'rutina', titulo: `Falló la revisión de ${info.nombre}`, estado: 'error', fuente: 'cron', detalle: { error: e instanceof Error ? e.message : String(e) } })
         throw e
+    }
+}
+
+/** Tokens del informe (entrada sin caché, leída de caché, escrita en caché y salida), para saber cuánto cuesta cada rutina. */
+function tokensDe(u: LanguageModelUsage) {
+    return {
+        entrada: u.inputTokenDetails.noCacheTokens ?? null,
+        cache_lectura: u.inputTokenDetails.cacheReadTokens ?? null,
+        cache_escritura: u.inputTokenDetails.cacheWriteTokens ?? null,
+        salida: u.outputTokens ?? null,
     }
 }
 
