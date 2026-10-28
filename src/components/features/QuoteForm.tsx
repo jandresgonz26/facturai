@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { QuoteItem, Quote, Client, ServiceCategory } from '@/types'
 import { createQuote, findOrCreateLead, listCategories, listClients } from '@/lib/actions'
+import { catalogoAccion } from '@/app/servicios/acciones'
+import { aItemCotizacion, precioTexto, type Servicio } from '@/lib/servicios/tipos'
 
 type QuoteType = 'amount' | 'hours'
 type QuoteTemplate = 'jamtech' | 'asiri'
@@ -184,6 +186,18 @@ export function QuoteForm({
     }
 
     const addItem = () => setItems((prev) => [...prev, emptyItem()])
+    /** Catálogo de servicios (opcional): añade una línea ya rellena; se puede seguir escribiendo a mano. */
+    const [catalogo, setCatalogo] = useState<Servicio[] | null>(null)
+    const addFromCatalog = (id: string) => {
+        const sv = catalogo?.find((x) => x.id === id)
+        if (!sv) return
+        const line = { ...emptyItem(), ...aItemCotizacion(sv) }
+        setItems((prev) => {
+            const filled = prev.filter((it) => it.description.trim() || it.unit_price.trim() || it.hours.trim())
+            return [...filled, line]
+        })
+        if (sv.moneda !== currency) toast.message(`«${sv.nombre}» tiene el precio en ${sv.moneda}: revisa la moneda de la cotización.`)
+    }
 
     const removeItem = (index: number) => {
         setItems((prev) => (prev.length === 1 ? prev : prev.filter((_item, i) => i !== index)))
@@ -468,6 +482,22 @@ export function QuoteForm({
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <label className={labelCls}>Tareas</label>
+                                <span className="flex flex-wrap items-center gap-3">
+                                {quoteType === 'amount' && (
+                                    <select
+                                        aria-label="Añadir un servicio del catálogo"
+                                        value=""
+                                        onFocus={async () => { if (!catalogo) setCatalogo(await catalogoAccion()) }}
+                                        onChange={(e) => addFromCatalog(e.target.value)}
+                                        className="h-7 max-w-56 cursor-pointer rounded-md border border-transparent bg-transparent px-1 text-xs font-semibold text-teal-600 outline-none hover:border-teal-200"
+                                    >
+                                        <option value="" disabled>{catalogo ? (catalogo.length ? 'Añadir del catálogo…' : 'Catálogo vacío') : 'Añadir del catálogo…'}</option>
+                                        {(['paquete', 'adicional'] as const).map((t) => {
+                                            const xs = (catalogo ?? []).filter((x) => x.tipo === t)
+                                            return xs.length ? <optgroup key={t} label={t === 'paquete' ? 'Paquetes' : 'Servicios adicionales'}>{xs.map((x) => <option key={x.id} value={x.id}>{x.nombre} · {precioTexto(x)}</option>)}</optgroup> : null
+                                        })}
+                                    </select>
+                                )}
                                 <button
                                     type="button"
                                     onClick={addItem}
@@ -476,6 +506,7 @@ export function QuoteForm({
                                     <Plus className="w-4 h-4" />
                                     Agregar tarea
                                 </button>
+                                </span>
                             </div>
 
                             {items.map((item, index) => (

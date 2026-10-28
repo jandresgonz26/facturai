@@ -26,8 +26,7 @@ import {
     SquareKanban,
     Users,
     X,
-    type LucideIcon,
-} from 'lucide-react'
+    type LucideIcon, Package } from 'lucide-react'
 import { BRAND } from '@/lib/brand'
 import { supabase } from '@/lib/supabase'
 
@@ -41,6 +40,7 @@ const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
     { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
     { href: '/propuestas', label: 'Propuestas', icon: FileSignature },
     { href: '/control', label: 'Control interno', icon: Wallet },
+    { href: '/servicios', label: 'Servicios', icon: Package },
     { href: '/invoices', label: 'Facturas', icon: FileText },
     { href: '/settings', label: 'Ajustes', icon: Settings },
 ]
