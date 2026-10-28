@@ -14,8 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { calcular, dinero, FRECUENCIAS, frecuencia, itemVacio, netoItem, opcionVacia, textoDescuento, uid, type Descuento, type Frecuencia, type ItemPrecio, type Moneda, type Pricing } from '@/lib/propuestas/precios'
 import { cotizacionesAccion } from '../acciones'
-import { catalogoAccion } from '@/app/servicios/acciones'
-import { aItemPropuesta, precioTexto, type Servicio } from '@/lib/servicios/tipos'
+import { CatalogoPicker } from '@/components/servicios/CatalogoPicker'
+import { aItemPropuesta, type Servicio } from '@/lib/servicios/tipos'
 
 /** Campo de formulario normal (secciones de ajustes). */
 const campo = 'h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/30'
@@ -203,7 +203,6 @@ export function EditorPrecios({ abierto, onCerrar, pricing, moneda, onGuardar, c
     const [p, setP] = useState(pricing)
     const [sel, setSel] = useState(pricing.opciones[0]?.id ?? '')
     const [cotizaciones, setCotizaciones] = useState<Awaited<ReturnType<typeof cotizacionesAccion>> | null>(null)
-    const [catalogo, setCatalogo] = useState<Servicio[] | null>(null)
 
     const opcion = p.opciones.find((o) => o.id === sel) ?? p.opciones[0]
     const setOpcion = (cambio: Partial<typeof opcion>) => setP({ ...p, opciones: p.opciones.map((o) => (o.id === opcion.id ? { ...o, ...cambio } : o)) })
@@ -221,9 +220,7 @@ export function EditorPrecios({ abierto, onCerrar, pricing, moneda, onGuardar, c
         toast.success(`${nuevos.length} ${nuevos.length === 1 ? 'línea importada' : 'líneas importadas'}${q.currency !== moneda ? ` (la cotización estaba en ${q.currency}: revisa los precios)` : ''}.`)
     }
 
-    function anadirDelCatalogo(id: string) {
-        const sv = catalogo?.find((x) => x.id === id)
-        if (!sv) return
+    function anadirDelCatalogo(sv: Servicio) {
         const actuales = opcion.items.filter((i) => i.servicio.trim() || i.precio > 0)
         setOpcion({ items: [...actuales, aItemPropuesta(sv)] })
         toast.success(`«${sv.nombre}» añadido${sv.moneda !== moneda ? ` (su precio está en ${sv.moneda}: revísalo)` : ''}.`)
@@ -235,22 +232,7 @@ export function EditorPrecios({ abierto, onCerrar, pricing, moneda, onGuardar, c
         setSel(n.id)
     }
 
-    const delCatalogo = (
-        <select
-            id="pr-catalogo"
-            aria-label="Añadir un servicio del catálogo"
-            value=""
-            onFocus={async () => { if (!catalogo) setCatalogo(await catalogoAccion()) }}
-            onChange={(e) => anadirDelCatalogo(e.target.value)}
-            className="h-8 max-w-64 cursor-pointer rounded-md border border-transparent bg-transparent px-2 text-sm text-muted-foreground outline-none hover:border-border hover:text-foreground focus:border-ring"
-        >
-            <option value="" disabled>{catalogo ? (catalogo.length ? 'Añadir del catálogo…' : 'El catálogo está vacío') : 'Añadir del catálogo…'}</option>
-            {(['paquete', 'adicional'] as const).map((t) => {
-                const xs = (catalogo ?? []).filter((x) => x.tipo === t)
-                return xs.length ? <optgroup key={t} label={t === 'paquete' ? 'Paquetes' : 'Servicios adicionales'}>{xs.map((x) => <option key={x.id} value={x.id}>{x.nombre} · {precioTexto(x)}</option>)}</optgroup> : null
-            })}
-        </select>
-    )
+    const delCatalogo = <CatalogoPicker onElegir={(sv) => anadirDelCatalogo(sv)} />
 
     const importador = (
         <select
