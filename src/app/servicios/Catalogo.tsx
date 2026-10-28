@@ -227,16 +227,16 @@ export function Catalogo({ inicial }: { inicial: Datos }) {
 
     const tarjeta = (s: Servicio) => (
         <article key={s.id} className={`flex flex-col rounded-xl border bg-card p-5 ${s.activo ? '' : 'opacity-60'}`}>
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <h4 className="flex items-center gap-1.5 font-semibold"><Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />{s.nombre}{!s.activo && <span className="text-xs font-normal text-muted-foreground">(archivado)</span>}</h4>
+            <div>
+                <div>
+                    <h4 className="flex items-start gap-1.5 font-semibold"><Star className="mt-0.5 size-4 shrink-0 fill-amber-400 text-amber-400" />{s.nombre}{!s.activo && <span className="text-xs font-normal text-muted-foreground">(archivado)</span>}</h4>
                     <p className="mt-1 font-display text-2xl font-bold tabular-nums">{precioTexto(s)}</p>
                 </div>
-                {acciones(s)}
             </div>
             {s.resumen && <p className="mt-2 text-sm text-muted-foreground">{s.resumen}</p>}
             {s.incluye.length > 0 && <ul className="mt-3 space-y-1.5 text-sm">{s.incluye.map((x) => <li key={x} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />{x}</li>)}</ul>}
             {s.no_incluye.length > 0 && <ul className="mt-3 space-y-1 text-[13px] text-muted-foreground">{s.no_incluye.map((x) => <li key={x} className="flex gap-2"><Minus className="mt-0.5 size-4 shrink-0" />{x}</li>)}</ul>}
+            <div className="mt-auto pt-4"><div className="flex justify-end border-t pt-2">{acciones(s)}</div></div>
         </article>
     )
 
@@ -255,7 +255,7 @@ export function Catalogo({ inicial }: { inicial: Datos }) {
     const nav = (o: { activo: boolean; onClick: () => void; children: React.ReactNode; n: number; color?: string; key?: string }) => (
         <button key={o.key} type="button" onClick={o.onClick} className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${o.activo ? 'bg-accent font-semibold' : 'hover:bg-accent/60'}`}>
             {o.color && <span className="size-2.5 shrink-0 rounded-full" style={{ background: o.color }} />}
-            <span className="min-w-0 flex-1 truncate">{o.children}</span>
+            <span className="min-w-0 flex-1 truncate" title={typeof o.children === 'string' ? o.children : undefined}>{o.children}</span>
             <span className="text-xs tabular-nums text-muted-foreground">{o.n}</span>
         </button>
     )
@@ -284,7 +284,15 @@ export function Catalogo({ inicial }: { inicial: Datos }) {
                 {sinArea.length > 0 && (
                     <div>
                         {nav({ activo: es({ tipo: 'area', id: null }), onClick: () => setSeleccion({ tipo: 'area', id: null }), n: cuenta((s) => !catPorId.get(s.category_id ?? '')?.area_id), color: '#9ca3af', children: 'Sin área' })}
-                        <p className="ml-4 mt-1 text-[11px] leading-snug text-muted-foreground">Categorías de facturación sin área: edítalas para asignarles una.</p>
+                        <div className="ml-4 border-l pl-2">
+                            {sinArea.map((c) => (
+                                <div key={c.id} className="group flex items-center">
+                                    <div className="min-w-0 flex-1">{nav({ activo: es({ tipo: 'categoria', id: c.id }), onClick: () => setSeleccion({ tipo: 'categoria', id: c.id }), n: cuenta((s) => s.category_id === c.id), children: c.name })}</div>
+                                    <button type="button" aria-label={`Asignar área a ${c.name}`} className="ml-0.5 rounded p-1 text-muted-foreground hover:bg-accent" onClick={() => setPanel({ tipo: 'categoria', categoria: c, areaId: null })}><Pencil className="size-3.5" /></button>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="ml-4 mt-1 text-[11px] leading-snug text-muted-foreground">Categorías de facturación sin área: con el lápiz les asignas una.</p>
                     </div>
                 )}
                 <button type="button" className="flex items-center gap-1.5 px-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => setPanel({ tipo: 'area', area: null })}><Plus className="size-4" /> Nueva área</button>
