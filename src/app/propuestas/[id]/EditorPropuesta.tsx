@@ -278,7 +278,8 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
                                     {a.totales.unico.total > 0 && <div className="flex justify-between"><span>Pago único</span><span className="font-semibold">{dinero(a.totales.unico.total, inicial.currency)}</span></div>}
                                     {a.totales.recurrentes.map((r) => <div key={r.frecuencia} className="flex justify-between"><span>{frecuencia(r.frecuencia).label}</span><span className="font-semibold">{dinero(r.bloque.total, inicial.currency)}{frecuencia(r.frecuencia).sufijo}</span></div>)}
                                 </div>
-                                <div className="grid gap-2">
+                                {/* Los textos largos (el concepto de la cuota) parten en varias líneas en vez de salirse de la tarjeta. */}
+                                <div className="grid grid-cols-[minmax(0,1fr)] gap-2 [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-9 [&_[data-slot=button]]:py-2 [&_[data-slot=button]]:text-center [&_[data-slot=button]]:whitespace-normal">
                                     {puedeFacturar && (
                                         <Button disabled={pendiente} onClick={() => accion(() => facturarPropuestaAccion(inicial.id, cuotasPendientes[0]?.cuota.id))}>
                                             <Receipt /> {a.totales.cuotas.length ? `Facturar «${cuotasPendientes[0].cuota.concepto || 'cuota'}» (${dinero(cuotasPendientes[0].monto, inicial.currency)})` : 'Crear la factura'}
