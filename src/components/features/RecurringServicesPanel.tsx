@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Euro, DollarSign, LoaderCircle, Plus, Trash2 } from 'lucide-react'
+import { Euro, DollarSign, LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Client, RecurringService, ServiceCategory } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getEurToUsdRate } from '@/lib/currency'
-import { addRecurringService, deleteRecurringService, listAllRecurringServices, listCategories, setRecurringServiceActive } from '@/lib/actions'
+import { addRecurringService, deleteRecurringService, listAllRecurringServices, listCategories, setRecurringServiceActive, updateRecurringService } from '@/lib/actions'
 import { emitDataChanged } from '@/lib/events'
 
 /** Cada cuántos meses se cobra: 1 = mensual (el caso normal, sin nada especial que configurar). */
@@ -39,6 +39,7 @@ export function RecurringServicesPanel({ client }: { client: Client }) {
     const [intervalMonths, setIntervalMonths] = useState('1')
     const [firstPeriod, setFirstPeriod] = useState(currentPeriodStr())
     const [rate, setRate] = useState(1.08)
+    const [editId, setEditId] = useState<string | null>(null)
     const isEur = client.preferred_input_currency === 'EUR'
     const frequency = FREQUENCY_OPTIONS.find((f) => String(f.months) === intervalMonths) ?? FREQUENCY_OPTIONS[0]
 
@@ -166,6 +167,17 @@ export function RecurringServicesPanel({ client }: { client: Client }) {
                     {services.map((s) => {
                         const freq = FREQUENCY_OPTIONS.find((f) => f.months === s.interval_months)
                         return (
+                            editId === s.id ? (
+                                <li key={s.id}>
+                                    <EditarServicioFijo
+                                        servicio={s}
+                                        categories={categories}
+                                        moneda={(s.currency || client.preferred_input_currency) === 'EUR' ? 'EUR' : 'USD'}
+                                        onCancelar={() => setEditId(null)}
+                                        onGuardado={async () => { setEditId(null); emitDataChanged(); await load() }}
+                                    />
+                                </li>
+                            ) : (
                             <li key={s.id} className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${s.is_active ? 'bg-card' : 'bg-muted/40 opacity-70'}`}>
                                 <div className="min-w-0">
                                     <p className="font-medium text-sm truncate">{s.description}</p>
@@ -189,6 +201,9 @@ export function RecurringServicesPanel({ client }: { client: Client }) {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
+                                    <Button size="icon-sm" variant="ghost" onClick={() => setEditId(s.id)} title="Editar" aria-label={`Editar ${s.description}`}>
+                                        <Pencil />
+                                    </Button>
                                     <Button size="sm" variant="ghost" onClick={() => handleToggle(s)} title={s.is_active ? 'Pausar' : 'Reactivar'}>
                                         {s.is_active ? 'Pausar' : 'Activar'}
                                     </Button>
@@ -197,10 +212,87 @@ export function RecurringServicesPanel({ client }: { client: Client }) {
                                     </Button>
                                 </div>
                             </li>
+                            )
                         )
                     })}
                 </ul>
             )}
         </div>
+    )
+}
+
+/** Edición en línea de un servicio fijo: lo de aquí en adelante; lo ya cargado o facturado no cambia. */
+function EditarServicioFijo({ servicio: s, categories, moneda, onCancelar, onGuardado }: {
+    servicio: RecurringService; categories: ServiceCategory[]; moneda: 'USD' | 'EUR'; onCancelar: () => void; onGuardado: () => Promise<void>
+}) {
+    const [desc, setDesc] = useState(s.description)
+    const [amount, setAmount] = useState(String(moneda === 'EUR' ? (s.original_amount ?? s.amount) : s.amount))
+    const [category, setCategory] = useState(s.category_id ?? '')
+    const [intervalMonths, setIntervalMonths] = useState(String(s.interval_months || 1))
+    const [nextPeriod, setNextPeriod] = useState(s.next_period ?? currentPeriodStr())
+    const [saving, setSaving] = useState(false)
+
+    const guardar = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setSaving(true)
+        try {
+            await updateRecurringService({
+                id: s.id,
+                description: desc,
+                amount: Number(amount),
+                category: category || undefined,
+                interval_months: Number(intervalMonths),
+                next_period: Number(intervalMonths) > 1 ? nextPeriod : undefined,
+            })
+            toast.success('Servicio fijo actualizado')
+            await onGuardado()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Error al guardar')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    return (
+        <form onSubmit={guardar} className="space-y-2 rounded-lg border border-teal-600/40 p-3 bg-card" onKeyDown={(e) => { if (e.key === 'Escape') onCancelar() }}>
+            <Input aria-label="Descripción" value={desc} onChange={(e) => setDesc(e.target.value)} required minLength={3} autoFocus />
+            <div className="flex flex-wrap gap-2">
+                <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger className="flex-1 min-w-[9rem]" aria-label="Categoría"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                    <SelectContent>
+                        {categories.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Select value={intervalMonths} onValueChange={setIntervalMonths}>
+                    <SelectTrigger className="w-32" aria-label="Frecuencia"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        {FREQUENCY_OPTIONS.map((f) => (
+                            <SelectItem key={f.months} value={String(f.months)}>{f.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <div className="relative w-32">
+                    {moneda === 'EUR' ? <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /> : <DollarSign className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />}
+                    <Input type="number" step="0.01" min="0" aria-label={`Monto en ${moneda}`} value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-7" required />
+                </div>
+            </div>
+            {Number(intervalMonths) > 1 && (
+                <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground shrink-0">Próximo cobro:</Label>
+                    <Input type="month" value={nextPeriod} onChange={(e) => setNextPeriod(e.target.value)} className="w-40 h-8 text-sm" required />
+                </div>
+            )}
+            <div className="flex items-center justify-between gap-2 pt-1">
+                <p className="text-[11px] text-muted-foreground">Aplica a lo que se cargue desde ahora; lo ya cargado o facturado no cambia.</p>
+                <div className="flex gap-2 shrink-0">
+                    <Button type="button" size="sm" variant="ghost" onClick={onCancelar}>Cancelar</Button>
+                    <Button type="submit" size="sm" disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white">
+                        {saving ? <LoaderCircle className="animate-spin" /> : 'Guardar'}
+                    </Button>
+                </div>
+            </div>
+        </form>
     )
 }

@@ -112,18 +112,29 @@ export function momentFor(now = new Date()): CheckinMoment {
  */
 function escalate(text: string, timesBefore: number): string {
     if (timesBefore === 0) return text
-    if (timesBefore === 1) return `${text} (ya te lo mencioné ayer)`
+    if (timesBefore === 1) return `${text} (ya te lo había mencionado)`
     if (timesBefore < 4) return `${text} · van ${timesBefore + 1} veces que te lo digo`
     return `${text} · te lo he dicho ${timesBefore + 1} veces. ¿Lo hacemos hoy, lo partimos en algo más chico, o lo soltamos? Si me dices que lo suelte, no vuelvo a mencionarlo.`
+}
+
+/** Lunes de la semana (YYYY-MM-DD): clave de los avisos que, dentro del parte, valen una vez por semana y no cada día. */
+function weekKey(now: Date): string {
+    const d = new Date(`${todayISO(now)}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+    return d.toISOString().slice(0, 10)
 }
 
 /**
  * `ignoreCooldown` sirve para LISTAR lo vigente sin mandarlo: el asistente
  * necesita ver sus propios avisos (con su clave) cuando el usuario dice
  * "suéltalo" o "recuérdamelo el lunes". Lo ya descartado nunca se lista.
+ *
+ * `parte`: para el parte de la mañana. Un asunto dicho no vuelve hasta pasadas
+ * `cooldownHours`, y los avisos que cambian de clave cada día (plan sin armar,
+ * tareas arrastradas, demasiadas empezadas) dejan de repetirse a diario.
  */
-export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: boolean } = {}): Promise<Checkin> {
-    const moment = momentFor(now)
+export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: boolean; cooldownHours?: number; parte?: boolean } = {}): Promise<Checkin> {
+    const moment = opts.parte ? 'morning' : momentFor(now)
     const [briefing, plan, allTasks, signals, nudgeRows, inbox] = await Promise.all([
         getBriefing().catch(() => null),
         getDayPlan().catch(() => null),
@@ -139,7 +150,7 @@ export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: bo
 
     const push = (kind: string, ref_id: string, text: string) => {
         const st = stateOf(kind, ref_id)
-        const allowed = opts.ignoreCooldown ? !st?.dismissed : canSend(st, now)
+        const allowed = opts.ignoreCooldown ? !st?.dismissed : canSend(st, now, opts.cooldownHours)
         if (!allowed) return
         items.push({ kind, ref_id, text: escalate(text, st?.times_sent ?? 0), times_before: st?.times_sent ?? 0 })
     }
@@ -205,7 +216,8 @@ export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: bo
 
     // ── Según el momento del día ──
     if (moment === 'morning') {
-        if (plan && plan.planned.length === 0) {
+        // En el parte no: «todavía no tienes plan» sería la misma frase cada mañana.
+        if (plan && plan.planned.length === 0 && !opts.parte) {
             const top = sortByPriority(plan.available, signals).slice(0, 3)
             if (top.length > 0) {
                 const names = top.map((t) => `**${t.title}**`).join(', ')
@@ -213,14 +225,14 @@ export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: bo
             }
         }
         if (plan && plan.carriedOver.length > 0) {
-            push('carried_over', todayISO(), `Traes **${plan.carriedOver.length} tarea${plan.carriedOver.length === 1 ? '' : 's'}** arrastrándose de días anteriores`)
+            push('carried_over', opts.parte ? weekKey(now) : todayISO(), `Traes **${plan.carriedOver.length} tarea${plan.carriedOver.length === 1 ? '' : 's'}** arrastrándose de días anteriores`)
         }
     }
 
     // Demasiadas cosas empezadas a la vez: es la vía rápida a no terminar ninguna.
     const doing = allTasks.filter((t) => t.status === 'doing')
     if (doing.length > WIP_LIMIT) {
-        push('wip_overload', todayISO(), `Tienes **${doing.length} tareas empezadas** a la vez. Terminar una antes de abrir otra te va a costar menos que arrastrarlas todas`)
+        push('wip_overload', opts.parte ? weekKey(now) : todayISO(), `Tienes **${doing.length} tareas empezadas** a la vez. Terminar una antes de abrir otra te va a costar menos que arrastrarlas todas`)
     }
 
     /**
@@ -272,7 +284,8 @@ export async function buildCheckin(now = new Date(), opts: { ignoreCooldown?: bo
     // Se limita a lo que una persona puede atender de una sentada. Al listar
     // (ignoreCooldown) no se recorta: ahí se quieren ver todos para poder
     // señalar cualquiera.
-    const shown = opts.ignoreCooldown ? items : items.slice(0, 5)
+    // En el parte tampoco: allí se juntan con lo demás y el recorte lo hace el parte.
+    const shown = opts.ignoreCooldown || opts.parte ? items : items.slice(0, 5)
     const greeting =
         moment === 'morning' ? '☀️ **Buenos días.**' : moment === 'midday' ? '⏳ **¿Cómo va el día?**' : '🌙 **Cerrando el día.**'
     const closing =

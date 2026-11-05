@@ -217,6 +217,55 @@ export async function addRecurringService(raw: AddRecurringServiceInput): Promis
     return data as RecurringService
 }
 
+export const updateRecurringServiceSchema = z.object({
+    id: uuidSchema,
+    description: descriptionSchema,
+    /** En la moneda del cliente, igual que al crearlo. */
+    amount: moneySchema,
+    category: z.string().trim().min(1).optional(),
+    interval_months: z.number().int().min(1).max(12),
+    /** Próximo cobro (YYYY-MM); solo aplica si interval_months > 1. */
+    next_period: periodSchema.optional(),
+})
+export type UpdateRecurringServiceInput = z.input<typeof updateRecurringServiceSchema>
+
+/**
+ * Corrige un servicio fijo ya creado. Solo cambia lo que se cargue de aquí en adelante: lo ya cargado o
+ * facturado en meses anteriores se queda como estaba.
+ */
+export async function updateRecurringService(raw: UpdateRecurringServiceInput): Promise<RecurringService> {
+    const input = parseInput(updateRecurringServiceSchema, raw)
+    const { data: actual, error: e0 } = await supabase.from('recurring_services').select('*').eq('id', input.id).single()
+    if (e0 || !actual) throw new ActionError('No se encontró el servicio fijo.')
+    const client = await getClient(actual.client_id)
+    const currency = actual.currency || client.preferred_input_currency || 'USD'
+    const original = round2(input.amount)
+    const amount = currency === 'EUR' ? round2(original * (await getEurToUsdRate())) : original
+
+    const otros = (await listAllRecurringServices(client.id)).filter((s) => s.id !== input.id)
+    if (otros.some((s) => normalizeText(s.description) === normalizeText(input.description))) {
+        throw new ActionError(`${client.name} ya tiene otro servicio fijo llamado "${input.description}".`)
+    }
+
+    const mensual = input.interval_months <= 1
+    const { data, error } = await supabase
+        .from('recurring_services')
+        .update({
+            description: input.description,
+            amount,
+            original_amount: original,
+            category_id: await resolveCategoryId(input.category),
+            interval_months: input.interval_months,
+            // Mensual = siempre debido (sin próximo cobro). Si pasa a trimestral, etc., arranca en el mes indicado o en el actual.
+            next_period: mensual ? null : (input.next_period ?? actual.next_period ?? currentPeriod()),
+        })
+        .eq('id', input.id)
+        .select('*, service_categories(name)')
+        .single()
+    if (error) throw new ActionError(`No se pudo guardar el servicio fijo: ${error.message}`)
+    return data as RecurringService
+}
+
 export async function deleteRecurringService(id: string): Promise<void> {
     const { error } = await supabase.from('recurring_services').delete().eq('id', id)
     if (error) throw new ActionError(`No se pudo eliminar el servicio fijo: ${error.message}`)

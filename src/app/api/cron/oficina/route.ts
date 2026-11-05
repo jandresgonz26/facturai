@@ -12,12 +12,13 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 /**
- * Rutinas de la oficina: cada departamento revisa su área y manda su informe por
- * Telegram. Lo dispara un programador externo (Dokploy) con CRON_SECRET.
+ * Informes sueltos de cada departamento por Telegram. YA NO es el envío diario: desde el «parte del día»
+ * (/api/cron/checkin, lib/agent/parte.ts) los informes se juntan en un solo mensaje por la mañana. Si un
+ * horario viejo de Dokploy sigue llamando aquí, no se hace nada (ni se gasta en el modelo) salvo con forzar=1.
  *
- *   POST /api/cron/oficina?dep=ventas        un departamento
- *   POST /api/cron/oficina                   todos, en orden
- *   ...&dry_run=1                            devuelve los informes sin mandarlos
+ *   POST /api/cron/oficina?dep=ventas&forzar=1   manda el informe de un departamento
+ *   POST /api/cron/oficina?forzar=1              todos, en orden
+ *   ...&dry_run=1                                devuelve los informes sin mandarlos
  *
  * El informe se guarda también en la sesión de Telegram como mensaje del asistente,
  * así el dueño puede responder "hazlo" o "mándale el recordatorio a X" y el
@@ -29,6 +30,9 @@ export async function POST(req: NextRequest) {
     if (req.headers.get('x-cron-secret') !== secret) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
 
     const dryRun = req.nextUrl.searchParams.get('dry_run') === '1'
+    if (!dryRun && req.nextUrl.searchParams.get('forzar') !== '1') {
+        return NextResponse.json({ ok: true, omitido: true, motivo: 'Los informes van ahora en el parte del día (/api/cron/checkin). Borra este horario en Dokploy o usa forzar=1.' })
+    }
     const pedido = req.nextUrl.searchParams.get('dep')
     const deps: Departamento[] = pedido
         ? pedido.split(',').filter((d): d is Departamento => d in DEPARTAMENTOS)
