@@ -60,8 +60,13 @@ function revisar<T>(r: { data: T | null; error: { message: string } | null }, qu
     return r.data as T
 }
 
+/** «1.830», «1.830,50», «1830.5» o «1830,5»: el punto con tres cifras detrás es separador de miles. */
+const leerMonto = (v: unknown) => {
+    const t = String(v ?? '').trim().replace(/[$€\s]/g, '')
+    return Number(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(',', '.'))
+}
 const monto = (v: unknown, minimo = 0) => {
-    const n = Math.round(Number(String(v ?? '').replace(',', '.')) * 100) / 100
+    const n = Math.round(leerMonto(v) * 100) / 100
     if (!Number.isFinite(n) || n < minimo || (minimo > 0 && n === 0)) throw new ActionError('Revisa el monto.')
     return n
 }
@@ -166,9 +171,13 @@ export async function agregarCuota(proyectoId: string, c: { concepto: string; mo
     revisar(await supabase.from('control_cuotas').insert({ proyecto_id: proyectoId, concepto, monto: monto(c.monto), vence: c.vence || null, detalle: texto(c.detalle), extra: !!c.extra, orden: (ult?.[0]?.orden ?? 0) + 1 }), 'agregar la cuota')
 }
 
-export async function actualizarCuota(id: string, c: { concepto?: string; monto?: unknown; vence?: string | null; detalle?: string | null }): Promise<void> {
+export async function actualizarCuota(id: string, c: { concepto?: string; monto?: unknown; vence?: string | null; detalle?: string | null; extra?: boolean }): Promise<void> {
     const row: Record<string, unknown> = {}
-    if (c.concepto !== undefined) row.concepto = c.concepto.trim()
+    if (c.concepto !== undefined) {
+        if (!c.concepto.trim()) throw new ActionError('Ponle un concepto a la cuota.')
+        row.concepto = c.concepto.trim()
+    }
+    if (c.extra !== undefined) row.extra = !!c.extra
     if (c.monto !== undefined) row.monto = monto(c.monto)
     if (c.vence !== undefined) row.vence = c.vence || null
     if (c.detalle !== undefined) row.detalle = texto(c.detalle)
@@ -181,6 +190,48 @@ export async function agregarMovimiento(proyectoId: string, m: { lado: 'cliente'
     revisar(await supabase.from('control_movimientos').insert({ proyecto_id: proyectoId, lado: m.lado, proveedor, fecha: fecha(m.fecha), monto: monto(m.monto, 0.01), metodo: texto(m.metodo, 60), nota: texto(m.nota, 500) }), 'registrar el pago')
 }
 
+export async function actualizarMovimiento(id: string, m: { fecha?: string; monto?: unknown; metodo?: string | null; nota?: string | null }): Promise<void> {
+    const row: Record<string, unknown> = {}
+    if (m.fecha !== undefined) row.fecha = fecha(m.fecha)
+    if (m.monto !== undefined) row.monto = monto(m.monto, 0.01)
+    if (m.metodo !== undefined) row.metodo = texto(m.metodo, 60)
+    if (m.nota !== undefined) row.nota = texto(m.nota, 500)
+    revisar(await supabase.from('control_movimientos').update(row).eq('id', id), 'guardar el pago')
+}
+
+/**
+ * Un requerimiento nuevo a mitad de proyecto, de una vez: lo que se le cobra al cliente (un cobro suelto que
+ * puede ir detrás de una cuota concreta, para que los abonos lo cubran en ese turno) y lo que se le paga al
+ * programador por hacerlo (un acuerdo más con él). Cualquiera de las dos partes puede ir vacía.
+ */
+export async function agregarExtra(proyectoId: string, e: { concepto: string; cobro?: unknown; despuesDe?: number | null; vence?: string | null; proveedor?: string; pago?: unknown; estado?: 'acordado' | 'por_confirmar'; detalle?: string }): Promise<{ cuota: boolean; acuerdo: boolean }> {
+    const concepto = texto(e.concepto, 200)
+    if (!concepto) throw new ActionError('¿Qué es el extra?')
+    const cobro = String(e.cobro ?? '').trim() ? monto(e.cobro) : 0
+    const pago = String(e.pago ?? '').trim() ? monto(e.pago) : 0
+    const proveedor = texto(e.proveedor, 120)
+    if (pago > 0 && !proveedor) throw new ActionError('¿A qué programador le pagas el extra?')
+    if (cobro <= 0 && pago <= 0) throw new ActionError('Pon lo que cobras al cliente, lo que le pagas al programador o las dos cosas.')
+
+    if (cobro > 0) {
+        const { data: filas } = await supabase.from('control_cuotas').select('id, orden').eq('proyecto_id', proyectoId).order('orden')
+        const todas = (filas ?? []) as { id: string; orden: number }[]
+        let orden = (todas.at(-1)?.orden ?? 0) + 1
+        if (e.despuesDe != null && todas.some((c) => c.orden === e.despuesDe)) {
+            // Hace sitio detrás de esa cuota: las siguientes bajan un puesto (de la última hacia atrás).
+            for (const c of [...todas].reverse().filter((c) => c.orden > e.despuesDe!)) {
+                revisar(await supabase.from('control_cuotas').update({ orden: c.orden + 1 }).eq('id', c.id), 'ordenar las cuotas')
+            }
+            orden = e.despuesDe + 1
+        }
+        revisar(await supabase.from('control_cuotas').insert({ proyecto_id: proyectoId, concepto: `Extra · ${concepto}`, monto: cobro, vence: e.vence || null, detalle: texto(e.detalle), extra: true, orden }), 'añadir el cobro del extra')
+    }
+    if (pago > 0) {
+        revisar(await supabase.from('control_acuerdos').insert({ proyecto_id: proyectoId, proveedor, concepto: `Extra · ${concepto}`, monto: pago, estado: e.estado === 'por_confirmar' ? 'por_confirmar' : 'acordado', fecha: fecha(undefined), detalle: texto(e.detalle, 20000) }), 'guardar el acuerdo del extra')
+    }
+    return { cuota: cobro > 0, acuerdo: pago > 0 }
+}
+
 export async function agregarAcuerdo(proyectoId: string, a: { proveedor: string; concepto: string; monto: unknown; estado?: 'acordado' | 'por_confirmar'; fecha?: string; detalle?: string }): Promise<string> {
     const proveedor = texto(a.proveedor, 120)
     const concepto = texto(a.concepto, 200)
@@ -189,9 +240,18 @@ export async function agregarAcuerdo(proyectoId: string, a: { proveedor: string;
     return revisar(r, 'guardar el acuerdo').id
 }
 
-export async function actualizarAcuerdo(id: string, a: { concepto?: string; monto?: unknown; estado?: 'acordado' | 'por_confirmar'; detalle?: string | null }): Promise<void> {
+export async function actualizarAcuerdo(id: string, a: { proveedor?: string; concepto?: string; monto?: unknown; estado?: 'acordado' | 'por_confirmar'; fecha?: string; detalle?: string | null }): Promise<void> {
     const row: Record<string, unknown> = {}
-    if (a.concepto !== undefined) row.concepto = a.concepto.trim()
+    if (a.proveedor !== undefined) {
+        const proveedor = texto(a.proveedor, 120)
+        if (!proveedor) throw new ActionError('Indica el programador.')
+        row.proveedor = proveedor
+    }
+    if (a.concepto !== undefined) {
+        if (!a.concepto.trim()) throw new ActionError('Indica qué hará.')
+        row.concepto = a.concepto.trim().slice(0, 200)
+    }
+    if (a.fecha !== undefined) row.fecha = fecha(a.fecha)
     if (a.monto !== undefined) row.monto = monto(a.monto)
     if (a.estado) row.estado = a.estado
     if (a.detalle !== undefined) row.detalle = texto(a.detalle, 20000)

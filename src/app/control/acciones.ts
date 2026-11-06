@@ -40,8 +40,15 @@ export const enlazarPropuestaAccion = async (controlId: string, propuestaId: str
 export const actualizarControlAccion = async (id: string, c: { nombre?: string; estado?: 'activo' | 'cerrado'; notas?: string | null }) => hacer(id, () => d.actualizarControl(id, c), 'Guardado.')
 export const borrarControlAccion = async (id: string) => hacer(null, () => d.borrarControl(id), 'Proyecto borrado.')
 export const agregarCuotaAccion = async (pid: string, c: { concepto: string; monto: string; vence?: string | null; detalle?: string; extra?: boolean }) => hacer(pid, () => d.agregarCuota(pid, c), c.extra ? 'Cobro añadido.' : 'Cuota añadida.')
-export const actualizarCuotaAccion = async (pid: string, id: string, c: { concepto?: string; monto?: string; vence?: string | null; detalle?: string | null }) => hacer(pid, () => d.actualizarCuota(id, c), 'Cuota actualizada.')
+export const actualizarCuotaAccion = async (pid: string, id: string, c: { concepto?: string; monto?: string; vence?: string | null; detalle?: string | null; extra?: boolean }) => hacer(pid, () => d.actualizarCuota(id, c), 'Cuota actualizada.')
 export const agregarMovimientoAccion = async (pid: string, m: { lado: 'cliente' | 'proveedor'; proveedor?: string; fecha?: string; monto: string; metodo?: string; nota?: string }) => hacer(pid, () => d.agregarMovimiento(pid, m), m.lado === 'cliente' ? 'Abono registrado.' : 'Pago registrado.')
 export const agregarAcuerdoAccion = async (pid: string, a: { proveedor: string; concepto: string; monto: string; estado?: 'acordado' | 'por_confirmar'; fecha?: string; detalle?: string }) => hacer(pid, () => d.agregarAcuerdo(pid, a), 'Acuerdo guardado.')
-export const actualizarAcuerdoAccion = async (pid: string, id: string, a: { concepto?: string; monto?: string; estado?: 'acordado' | 'por_confirmar'; detalle?: string | null }) => hacer(pid, () => d.actualizarAcuerdo(id, a), 'Acuerdo actualizado.')
+export const actualizarAcuerdoAccion = async (pid: string, id: string, a: { proveedor?: string; concepto?: string; monto?: string; estado?: 'acordado' | 'por_confirmar'; fecha?: string; detalle?: string | null }) => hacer(pid, () => d.actualizarAcuerdo(id, a), 'Acuerdo actualizado.')
+export const actualizarMovimientoAccion = async (pid: string, id: string, m: { fecha?: string; monto?: string; metodo?: string | null; nota?: string | null }) => hacer(pid, () => d.actualizarMovimiento(id, m), 'Pago actualizado.')
+export const agregarExtraAccion = async (pid: string, e: { concepto: string; cobro?: string; despuesDe?: number | null; vence?: string | null; proveedor?: string; pago?: string; estado?: 'acordado' | 'por_confirmar'; detalle?: string }) => {
+    const r = await hacer(pid, () => d.agregarExtra(pid, e), '')
+    if (!r.ok) return r
+    const { cuota, acuerdo } = r.data!
+    return { ok: true as const, mensaje: cuota && acuerdo ? 'Extra añadido: el cobro al cliente y el pago al programador.' : cuota ? 'Extra añadido al cobro del cliente.' : 'Extra añadido al acuerdo con el programador.' }
+}
 export const borrarFilaAccion = async (pid: string, tipo: 'cuota' | 'acuerdo' | 'movimiento', id: string) => hacer(pid, () => d.borrarFila(tipo, id), 'Borrado.')
