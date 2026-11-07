@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, Check } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { DEPARTAMENTOS } from '@/lib/agent/shared'
+import { DEPARTAMENTOS, type Departamento } from '@/lib/agent/shared'
 import { leerCerebro } from '@/lib/agent/cerebro'
 import { completitud } from '@/lib/agent/cerebro-secciones'
 import { listarPlanes, type PlanConPasos } from '@/lib/agent/planes'
@@ -17,6 +17,7 @@ import { listarProyectos, porAlcance, type Proyecto, type ProyectoId } from '@/l
 import { proyectoActivo } from '@/lib/agent/proyecto-activo'
 import type { UIMessage } from 'ai'
 import { OficinaCliente } from './OficinaCliente'
+import { ParteDelDia } from './ParteDelDia'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,11 +26,23 @@ async function cuenta(p: PromiseLike<{ count: number | null }>): Promise<number>
 }
 const filas = (tabla: string, p: ProyectoId) => porAlcance(supabase.from(tabla).select('id', { count: 'exact', head: true }), p)
 
+/** El último parte del día con contenido (los días sin novedades se registran vacíos), de los últimos 3 días. */
+async function ultimoParte(): Promise<{ texto: string; created_at: string } | null> {
+    const { data, error } = await supabase.from('agent_events').select('detalle, created_at').eq('tipo', 'aviso').eq('titulo', 'Parte del día')
+        .not('detalle->>texto', 'is', null).gte('created_at', new Date(Date.now() - 3 * 86_400_000).toISOString())
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const texto = (data?.detalle as { texto?: string | null } | null)?.texto?.trim()
+    if (error || !data || !texto) return null
+    // La primera línea es el encabezado de Telegram («☀️ Parte del día · fecha»): aquí ya va en el título.
+    return { texto: texto.replace(/^☀️[^\n]*\n+/, ''), created_at: data.created_at as string }
+}
+
 const FIJAR_OBJETIVOS = 'Ayúdame a fijar mis 3 objetivos principales de los próximos meses: revisa el cerebro de la empresa y las cifras de hoy, propónmelos con su cifra y fecha, y créalos en el departamento que corresponde.'
 
 /**
- * La Oficina: arriba, el proyecto en el que trabajas, la puerta de entrada (un solo chat con todo el equipo) y lo
- * que están haciendo; después la ruta de inicio, los planes y el equipo en 3D con su actividad.
+ * La Oficina: el equipo en 3D y sus tarjetas (quién está libre, trabajando o esperando tu OK), después la
+ * conversación con todo el equipo junto al parte del día y los encargos, la guía (ruta de inicio y planes) y, al
+ * final, la actividad en pestañas y recogida.
  */
 export default async function OficinaPage() {
     const { id: pid, proyecto } = await proyectoActivo()
@@ -60,23 +73,36 @@ export default async function OficinaPage() {
     ]
     const pendientes = ruta.filter((r) => !r.hecho).length
 
-    const arriba = (
-        <div className="mb-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
-                <SelectorProyecto proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))} actual={pid} />
-                <p className="max-w-xl text-xs text-muted-foreground">{proyecto
-                    ? `Los agentes se centran en ${nombre}: su cerebro, objetivos, planes y encargos son propios. Tareas, clientes y facturas son de toda la empresa.`
-                    : 'Trabajando en toda la empresa. Crea un proyecto (Wapalink, un cliente) para que los agentes se centren en él.'}</p>
-            </div>
+    const parte = await ultimoParte()
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-                <PuertaEntrada key={pid ?? 'jamtech'} inicial={hilo} proyecto={pid} />
-                <div className="space-y-4">
-                    {avance && <AvanceChecklist a={avance} />}
+    // Lo que tiene entre manos cada agente (para su tarjeta): sus encargos abiertos, los que esperan respuesta primero.
+    const trabajo = Object.fromEntries((Object.keys(DEPARTAMENTOS) as Departamento[]).map((d) => [d, abiertos.filter((e) => e.departamento === d).map((e) => ({ titulo: e.titulo, esperando: e.estado === 'esperando' }))])) as Record<Departamento, { titulo: string; esperando: boolean }[]>
+    const esperanRespuesta = abiertos.filter((e) => e.estado === 'esperando').length
+
+    const selector = (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border bg-card px-4 py-2.5">
+            <SelectorProyecto proyectos={proyectos.map((p) => ({ id: p.id, nombre: p.nombre }))} actual={pid} />
+            <p className="max-w-xl text-xs text-muted-foreground">{proyecto
+                ? `Los agentes se centran en ${nombre}: su cerebro, objetivos, planes y encargos son propios. Tareas, clientes y facturas son de toda la empresa.`
+                : 'Trabajando en toda la empresa. Crea un proyecto (Wapalink, un cliente) para que los agentes se centren en él.'}</p>
+        </div>
+    )
+
+    const conversacion = (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+            <PuertaEntrada key={pid ?? 'jamtech'} inicial={hilo} proyecto={pid} />
+            <div className="space-y-4">
+                {parte && <ParteDelDia texto={parte.texto} creado={parte.created_at} />}
+                {avance && <AvanceChecklist a={avance} />}
+                <div id="encargos" className="scroll-mt-24">
                     <ListaEncargos encargos={encargos} titulo="En lo que estamos" vacio="Nadie tiene encargos ahora. Pídele algo largo al equipo (una propuesta, una investigación) y lo verás aquí mientras lo trabajan." />
                 </div>
             </div>
+        </div>
+    )
 
+    const guia = (
+        <div className="space-y-4">
             {pendientes > 0 && (
                 <section className="rounded-2xl border bg-card p-4" aria-labelledby="ruta-inicio">
                     <h2 id="ruta-inicio" className="font-semibold">Ruta de inicio <span className="font-normal text-muted-foreground">· {ruta.length - pendientes} de {ruta.length}</span></h2>
@@ -97,13 +123,13 @@ export default async function OficinaPage() {
                 </section>
             )}
 
-            {planes.length > 0 && (
-                <section aria-labelledby="planes-marcha">
-                    <div className="mb-2 flex items-baseline justify-between gap-2">
-                        <h2 id="planes-marcha" className="text-lg font-semibold">Planes</h2>
-                        <Link href="/oficina/cerebro" className="text-xs text-muted-foreground hover:text-foreground">🧠 Cerebro al {comp.pct} %</Link>
-                    </div>
-                    <ul className="grid gap-3 md:grid-cols-2">
+            <section aria-labelledby="planes-marcha">
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <h2 id="planes-marcha" className="text-lg font-semibold">Planes</h2>
+                    <Link href="/oficina/cerebro" className="text-xs text-muted-foreground hover:text-foreground">🧠 Cerebro al {comp.pct} %</Link>
+                </div>
+                {planes.length > 0 && (
+                    <ul className="mb-3 grid gap-3 md:grid-cols-2">
                         {planes.map((p) => {
                             const a = p.actual
                             const info = a ? DEPARTAMENTOS[a.departamento] : null
@@ -125,12 +151,11 @@ export default async function OficinaPage() {
                             )
                         })}
                     </ul>
-                </section>
-            )}
-
-            <GeneradorPlan />
+                )}
+                <GeneradorPlan />
+            </section>
         </div>
     )
 
-    return <OficinaCliente arriba={arriba} />
+    return <OficinaCliente selector={selector} conversacion={conversacion} guia={guia} trabajo={trabajo} esperanRespuesta={esperanRespuesta} />
 }
