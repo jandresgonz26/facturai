@@ -51,7 +51,7 @@ export function NuevoControl({ clientes, propuestas }: { clientes: { id: string;
             <Dialog open={abierto} onOpenChange={setAbierto}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Nuevo proyecto en el control</DialogTitle>
+                        <DialogTitle>Nuevo proyecto</DialogTitle>
                         <DialogDescription>Si sale de una propuesta, elígela: trae el cliente, la moneda y las cuotas. Luego añades los acuerdos con los programadores.</DialogDescription>
                     </DialogHeader>
                     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); crear() }}>

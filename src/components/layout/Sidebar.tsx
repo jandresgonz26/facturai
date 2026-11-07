@@ -7,7 +7,7 @@ import { useState } from 'react'
 import {
     ChevronDown,
     FileSignature,
-    Wallet,
+    FolderKanban,
     ExternalLink,
     LineChart,
     ListChecks,
@@ -38,7 +38,7 @@ const navLinks: { href: string; label: string; icon: LucideIcon; tambien?: strin
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
     { href: '/month-end', label: 'Facturación', icon: ReceiptText, tambien: ['/invoices'] },
     { href: '/propuestas', label: 'Propuestas', icon: FileSignature, tambien: ['/quotes'] },
-    { href: '/control', label: 'Control interno', icon: Wallet },
+    { href: '/control', label: 'Proyectos', icon: FolderKanban },
     { href: '/settings', label: 'Ajustes', icon: Settings, tambien: ['/servicios'] },
 ]
 

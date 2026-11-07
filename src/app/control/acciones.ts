@@ -27,7 +27,7 @@ async function desdePropuesta(propuestaId: string, nombre?: string): Promise<Res
     const r = await hacer(null, () => d.crearControlDesdePropuesta(propuestaId, nombre), '')
     if (!r.ok) return r
     revalidatePath(`/propuestas/${propuestaId}`)
-    return { ok: true, mensaje: r.data!.nuevo ? 'Control creado con las cuotas de la propuesta.' : 'Esta propuesta ya tenía su control: te lo abro.', data: r.data!.id }
+    return { ok: true, mensaje: r.data!.nuevo ? 'Proyecto creado con las cuotas de la propuesta.' : 'Esta propuesta ya tenía su proyecto: te lo abro.', data: r.data!.id }
 }
 
 export const enlazarPropuestaAccion = async (controlId: string, propuestaId: string | null) => {

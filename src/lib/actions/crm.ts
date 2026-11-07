@@ -213,7 +213,7 @@ export async function getClientTimeline(clientId: string): Promise<TimelineEvent
     for (const c of (controles.data || []) as FilaControl[]) {
         const num = <T extends { monto: number }>(xs: T[]) => (xs ?? []).map((x) => ({ ...x, monto: Number(x.monto) }))
         const r = calcularControl(num(c.control_cuotas), num(c.control_acuerdos), num(c.control_movimientos))
-        events.push({ type: 'control', date: c.created_at, title: `Control interno · ${c.nombre}${c.estado === 'cerrado' ? ' (cerrado)' : ''}`, detail: `Plan ${dinero(r.totalCobrar, c.moneda)} · cobrado ${dinero(r.cobrado, c.moneda)} · falta ${dinero(r.porCobrar, c.moneda)}`, amount: r.totalCobrar, ref_id: c.id, href: `/control/${c.id}` })
+        events.push({ type: 'control', date: c.created_at, title: `Proyecto · ${c.nombre}${c.estado === 'cerrado' ? ' (cerrado)' : ''}`, detail: `Plan ${dinero(r.totalCobrar, c.moneda)} · cobrado ${dinero(r.cobrado, c.moneda)} · falta ${dinero(r.porCobrar, c.moneda)}`, amount: r.totalCobrar, ref_id: c.id, href: `/control/${c.id}` })
         for (const a of r.abonos) {
             events.push({ type: 'payment', date: `${a.fecha}T12:00:00Z`, title: `Abono recibido · ${c.nombre}`, detail: [dinero(a.monto, c.moneda), a.metodo, a.nota].filter(Boolean).join(' · '), amount: a.monto, ref_id: a.id, href: `/control/${c.id}` })
         }

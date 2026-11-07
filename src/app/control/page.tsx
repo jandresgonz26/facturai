@@ -17,7 +17,7 @@ export default async function PaginaControl() {
         <div className="mx-auto max-w-5xl space-y-6">
             <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <h1 className="font-display text-2xl font-bold">Control de proyectos</h1>
+                    <h1 className="font-display text-2xl font-bold">Proyectos</h1>
                     <p className="mt-1 max-w-prose text-sm text-muted-foreground">Solo para ti: lo que cobras a cada cliente, lo que pagas a los programadores y lo que te queda. No toca facturas ni nada que vea el cliente.</p>
                 </div>
                 <NuevoControl clientes={clientes.map((c) => ({ id: c.id, name: c.name }))} propuestas={propuestas} />

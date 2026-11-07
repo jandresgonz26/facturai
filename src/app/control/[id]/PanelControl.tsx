@@ -49,7 +49,7 @@ export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; pr
     return (
         <div className="mx-auto max-w-6xl space-y-6">
             <div className="flex flex-wrap items-center gap-3">
-                <Link href="/control" className="mr-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Control de proyectos</Link>
+                <Link href="/control" className="mr-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Proyectos</Link>
                 {p.proposals && p.propuesta_id && <Link href={`/propuestas/${p.propuesta_id}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><FileText className="size-4" /> Propuesta {p.proposals.number}</Link>}
                 {!p.propuesta_id && propuestas.length > 0 && (
                     <>

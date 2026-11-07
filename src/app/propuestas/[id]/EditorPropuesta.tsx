@@ -287,8 +287,8 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
                                     )}
                                     {tieneRecurrente && !b.fijos?.length && <Button variant="outline" disabled={pendiente} onClick={() => accion(() => crearFijosAccion(inicial.id))}><Repeat /> Crear servicios fijos</Button>}
                                     {inicial.control_id
-                                        ? <Button variant="outline" asChild><Link href={`/control/${inicial.control_id}`}><Wallet /> Ver control interno</Link></Button>
-                                        : <Button variant="outline" disabled={pendiente} onClick={() => accion(() => crearControlDesdePropuestaAccion(inicial.id), (d) => router.push(`/control/${d as string}`))}><Wallet /> Crear control interno</Button>}
+                                        ? <Button variant="outline" asChild><Link href={`/control/${inicial.control_id}`}><Wallet /> Ver proyecto</Link></Button>
+                                        : <Button variant="outline" disabled={pendiente} onClick={() => accion(() => crearControlDesdePropuestaAccion(inicial.id), (d) => router.push(`/control/${d as string}`))}><Wallet /> Crear proyecto</Button>}
                                 </div>
                                 {(b.facturas?.length || b.fijos?.length) ? (
                                     <ul className="space-y-1 text-xs text-muted-foreground">
