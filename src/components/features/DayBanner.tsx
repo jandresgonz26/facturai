@@ -40,7 +40,12 @@ const SCENES: Record<DayBlock, { label: string; left: string; right: string; tex
     },
 }
 
-export function DayBanner({ block, children }: { block: DayBlock; children?: React.ReactNode }) {
+/**
+ * `compacto`: una franja baja con saludo, fecha y hora en una línea y la
+ * acción del asistente al lado. Es la que usa Tareas: el paisaje sigue dando
+ * la hora del día de un vistazo sin comerse media pantalla.
+ */
+export function DayBanner({ block, children, compacto = false }: { block: DayBlock; children?: React.ReactNode; compacto?: boolean }) {
     const scene = SCENES[block]
     const [now, setNow] = useState<Date | null>(null)
 
@@ -68,6 +73,29 @@ export function DayBanner({ block, children }: { block: DayBlock; children?: Rea
     // primera letra, no cada palabra.
     const fechaRaw = now?.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' }) ?? ''
     const fecha = fechaRaw ? fechaRaw.charAt(0).toUpperCase() + fechaRaw.slice(1) : ''
+
+    if (compacto) {
+        return (
+            <section className="relative mb-5 overflow-hidden rounded-2xl shadow-sm">
+                <DayScene block={block} />
+                <div className={`absolute inset-y-0 left-0 w-[60%] bg-gradient-to-r ${scene.left}`} aria-hidden />
+                <div className={`absolute inset-y-0 right-0 w-[45%] bg-gradient-to-l ${scene.right}`} aria-hidden />
+                <div className={`relative flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4 sm:px-6 ${scene.text}`}>
+                    <div className="min-w-0">
+                        <h1 className="font-display text-2xl font-semibold leading-tight tracking-[-0.02em] sm:text-[1.75rem]">
+                            {scene.label}
+                            <span className="ml-3 align-middle font-display text-lg font-bold tabular-nums opacity-90 sm:text-xl">
+                                {h12}:{minutos}
+                                <span className={`ml-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${scene.sub} opacity-80`}>{meridiano}</span>
+                            </span>
+                        </h1>
+                        <p className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${scene.sub} opacity-80`}>{fecha}</p>
+                    </div>
+                    {children}
+                </div>
+            </section>
+        )
+    }
 
     return (
         <section className="relative overflow-hidden rounded-2xl mb-6 min-h-[190px] shadow-sm">

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { Log, Task, TaskRecurrence, TaskStatus } from '@/types'
+import { Log, Task, TaskConsequence, TaskRecurrence, TaskStatus } from '@/types'
 import { getClient } from './clients'
 import { getPipeline } from './crm'
 import { addLog } from './logs'
@@ -242,6 +242,18 @@ export async function planTask(id: string, date: string | null): Promise<Task> {
 
     const { data, error } = await supabase.from('tasks').update(patch).eq('id', id).select(TASK_SELECT).single()
     if (error) throw new ActionError(`No se pudo planificar la tarea: ${error.message}`)
+    return data as Task
+}
+
+/**
+ * Cambia solo la respuesta "¿qué pasa si no se hace?" de una tarea, que es lo
+ * que mueve su prioridad. Existe para cambiarla con un clic desde la lista o el
+ * tablero sin reenviar el formulario completo (updateTask lo pisa todo).
+ */
+export async function setTaskConsequence(id: string, consequence: TaskConsequence | null): Promise<Task> {
+    const value = parseInput(z.enum(['none', 'client_waiting', 'payment_delayed', 'client_at_risk']).nullable(), consequence)
+    const { data, error } = await supabase.from('tasks').update({ consequence: value }).eq('id', id).select(TASK_SELECT).single()
+    if (error) throw new ActionError(`No se pudo cambiar la prioridad: ${error.message}`)
     return data as Task
 }
 

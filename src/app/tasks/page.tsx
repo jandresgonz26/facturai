@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, CalendarCheck, Clock, Pencil, Plus, ReceiptText, RotateCcw, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CalendarCheck, ChevronRight, Clock, Columns3, List, Pencil, Plus, ReceiptText, RotateCcw, Search, Sparkles, Sun, Trash2, TrendingUp, X } from 'lucide-react'
 import { Client, Task, TaskClarity, TaskConsequence, TaskStatus, TaskSubtask } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,7 @@ import {
     getAvailability,
     planTask,
     registerTaskAsLog,
+    setTaskConsequence,
     updateTask,
     type TaskInput,
 } from '@/lib/actions'
@@ -50,6 +51,28 @@ import {
 } from '@/lib/task-priority'
 import { emitDataChanged, useDataChanged } from '@/lib/events'
 import { nowMinutesIn, type Window } from '@/lib/schedule'
+import { CirculoHecha, SelectorPrioridad, prioridadDe } from './prioridad'
+import { ListaTareas, type Agrupar } from './ListaTareas'
+
+type Vista = 'tablero' | 'lista'
+const VISTA_KEY = 'tareas.vista'
+const AGRUPAR_KEY = 'tareas.agrupar'
+/** Lo que el navegador recuerda puede no estar (ventana privada, datos borrados): nunca debe romper la página. */
+const leerPreferencia = <T extends string>(clave: string, validos: readonly T[], porDefecto: T): T => {
+    try {
+        const v = window.localStorage.getItem(clave)
+        return v && (validos as readonly string[]).includes(v) ? (v as T) : porDefecto
+    } catch {
+        return porDefecto
+    }
+}
+const guardarPreferencia = (clave: string, valor: string) => {
+    try {
+        window.localStorage.setItem(clave, valor)
+    } catch {
+        /* sin almacenamiento: se queda solo para esta visita */
+    }
+}
 
 const fmt = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '')
 const todayStr = () => new Date().toISOString().split('T')[0]
@@ -176,6 +199,27 @@ export default function TasksPage() {
     const [quickTitle, setQuickTitle] = useState('')
     const [quickWorking, setQuickWorking] = useState(false)
     const { openWith } = useAgent()
+    /** Tablero (columnas con arrastre) o lista (una línea por tarea). Se recuerda en este navegador. */
+    const [vista, setVista] = useState<Vista>('tablero')
+    const [agrupar, setAgrupar] = useState<Agrupar>('estado')
+    const [busqueda, setBusqueda] = useState('')
+    useEffect(() => {
+        // Se lee después de montar para no descuadrar la hidratación; el primer
+        // valor llega en el siguiente tick para no encadenar renders.
+        const id = setTimeout(() => {
+            setVista(leerPreferencia<Vista>(VISTA_KEY, ['tablero', 'lista'], 'tablero'))
+            setAgrupar(leerPreferencia<Agrupar>(AGRUPAR_KEY, ['estado', 'prioridad', 'cliente'], 'estado'))
+        }, 0)
+        return () => clearTimeout(id)
+    }, [])
+    const cambiarVista = (v: Vista) => {
+        setVista(v)
+        guardarPreferencia(VISTA_KEY, v)
+    }
+    const cambiarAgrupar = (a: Agrupar) => {
+        setAgrupar(a)
+        guardarPreferencia(AGRUPAR_KEY, a)
+    }
 
     const toggleColumn = (id: TaskStatus) =>
         setExpandedColumns((prev) => {
@@ -208,18 +252,27 @@ export default function TasksPage() {
     }, [])
     useDataChanged(load)
 
+    /** Lo que se ve en el tablero o la lista: todo, o lo que coincida con la búsqueda (título, cliente o notas). */
+    const filtered = useMemo(() => {
+        const q = busqueda.trim().toLowerCase()
+        if (!q) return tasks
+        return tasks.filter((t) => [t.title, t.clients?.name, t.notes].some((x) => x?.toLowerCase().includes(q)))
+    }, [tasks, busqueda])
+
     const byColumn = useMemo(() => {
         const map: Record<TaskStatus, Task[]> = { todo: [], doing: [], done: [] }
-        for (const t of tasks) map[t.status]?.push(t)
+        for (const t of filtered) map[t.status]?.push(t)
         // El orden dentro de cada columna es manual (arrastrar y soltar entre
         // tarjetas): la prioridad calculada sigue coloreando la tarjeta, pero
         // ya no decide el orden por su cuenta.
         const byPosition = (a: Task, b: Task) => Number(a.position) - Number(b.position)
         map.todo.sort(byPosition)
         map.doing.sort(byPosition)
-        map.done.sort(byPosition)
+        // Las hechas, de la más reciente a la más vieja: lo que interesa es lo
+        // que cerraste estos días, no el archivo entero.
+        map.done.sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
         return map
-    }, [tasks])
+    }, [filtered])
 
     const block = currentBlock()
     const suggestions = useMemo(() => suggestNow(tasks, signals), [tasks, signals])
@@ -495,6 +548,22 @@ export default function TasksPage() {
         }
     }
 
+    /** Prioridad a un clic: cambia la respuesta "¿qué pasa si no se hace?", que es la que la mueve. */
+    const changePriority = async (task: Task, consequence: TaskConsequence | null) => {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, consequence } : t)))
+        try {
+            const updated = await setTaskConsequence(task.id, consequence)
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+            toast.success(`Prioridad: ${prioridadDe(updated).label}`)
+        } catch (e) {
+            setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)))
+            toast.error(errorMessage(e))
+        }
+    }
+
+    const toggleDone = (task: Task) => applyMove(task, task.status === 'done' ? 'todo' : 'done')
+    const toggleToday = (task: Task) => togglePlan(task, task.planned_for === today ? null : today)
+
     const optionalFields = (v: FormValues, set: (next: FormValues) => void) => (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div className="sm:col-span-2 space-y-1">
@@ -561,9 +630,9 @@ export default function TasksPage() {
 
     return (
         <div className="max-w-6xl mx-auto">
-            <DayBanner block={block}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm opacity-90">{agentIntro.title}</p>
+            <DayBanner block={block} compacto>
+                <div className="flex items-center gap-3">
+                    <p className="hidden text-sm opacity-90 md:block">{agentIntro.title}</p>
                     <Button
                         size="sm"
                         className="shrink-0 bg-white/85 text-slate-900 hover:bg-white dark:bg-slate-100/90 dark:hover:bg-white backdrop-blur-sm shadow-sm"
@@ -574,29 +643,14 @@ export default function TasksPage() {
                 </div>
             </DayBanner>
 
-            {/* Horario y foco del día, lado a lado: son las dos lecturas del mismo
-                plan (cuándo y qué), y apiladas obligaban a bajar media pantalla
-                antes de llegar al tablero. */}
+            {/* Hoy: a la izquierda lo que vas a hacer (captura rápida, plan y
+                arrastradas), a la derecha cuándo (el horario). Es lo primero que
+                se mira cada día; el resto de la página es el archivo. */}
             {!loading && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                    <div>
-                        <DaySchedule
-                            tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
-                            windows={windows}
-                            signals={signals}
-                            nowMinutes={nowMinutesIn(Intl.DateTimeFormat().resolvedOptions().timeZone)}
-                            usingDefaults={windows.length === 0}
-                            onAskAssistant={() =>
-                                openWith(
-                                    'Ayúdame a ajustar mi horario de hoy. Te digo desde cuándo estoy disponible y me repartes las tareas del plan.'
-                                )
-                            }
-                        />
-                    </div>
-
                 {/* Plan del día: la captura rápida siempre está a mano aquí arriba,
                     aunque todavía no haya nada que planificar. */}
-                <section className="rounded-xl border bg-card p-4 h-full">
+                <section className="rounded-xl border bg-card p-4 h-full lg:order-first">
                     <form onSubmit={handleQuickAdd} className="flex gap-2 mb-3 pb-3 border-b">
                         <Input
                             value={quickTitle}
@@ -644,16 +698,12 @@ export default function TasksPage() {
                                         const p = scoreTask(task, signals)
                                         return (
                                             <li key={task.id} className="flex items-center gap-2 rounded-lg bg-card/80 border px-3 py-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => applyMove(task, 'done')}
-                                                    title="Marcar como hecha"
-                                                    className="w-4 h-4 rounded border-2 border-muted-foreground/40 hover:border-emerald-500 hover:bg-emerald-500/10 shrink-0"
-                                                />
-                                                <span className="flex-1 text-sm truncate">{task.title}</span>
-                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${LABEL_META[p.label].className}`}>
-                                                    {LABEL_META[p.label].emoji}
-                                                </span>
+                                                <CirculoHecha hecha={false} onClick={() => applyMove(task, 'done')} />
+                                                <button type="button" onClick={() => openEdit(task)} className="flex-1 min-w-0 text-left text-sm truncate" title={p.reason}>
+                                                    <span className="mr-1.5" aria-label={LABEL_META[p.label].text}>{LABEL_META[p.label].emoji}</span>
+                                                    {task.title}
+                                                </button>
+                                                <SelectorPrioridad task={task} compacto onCambiar={(c) => changePriority(task, c)} />
                                                 {task.estimated_minutes != null && (
                                                     <span className="text-[10px] text-muted-foreground shrink-0">{fmtMinutes(task.estimated_minutes)}</span>
                                                 )}
@@ -726,39 +776,104 @@ export default function TasksPage() {
                         </>
                     )}
                 </section>
+                    <div>
+                        <DaySchedule
+                            tasks={plan.planned.length > 0 ? [...plan.planned, ...plan.carried] : suggestions.map((s) => s.task)}
+                            windows={windows}
+                            signals={signals}
+                            nowMinutes={nowMinutesIn(Intl.DateTimeFormat().resolvedOptions().timeZone)}
+                            usingDefaults={windows.length === 0}
+                            onAskAssistant={() =>
+                                openWith(
+                                    'Ayúdame a ajustar mi horario de hoy. Te digo desde cuándo estoy disponible y me repartes las tareas del plan.'
+                                )
+                            }
+                        />
+                    </div>
+
                 </div>
             )}
 
-            {/* Cómo va tu cálculo de tiempos */}
-            {drift.length > 0 && (
-                <section className="rounded-xl border bg-card shadow-sm p-4 mb-6">
-                    <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-violet-600" />
-                        <h2 className="text-sm font-bold">Cómo va tu cálculo de tiempos</h2>
+            {/* Todas las tareas: barra con la vista (tablero o lista), cómo agrupar y buscar. */}
+            {!loading && (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <h2 className="mr-auto text-base font-semibold">Todas tus tareas</h2>
+                    <label className="relative">
+                        <span className="sr-only">Buscar tareas</span>
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            id="tareas-buscar"
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Escape' && setBusqueda('')}
+                            placeholder="Buscar tarea o cliente"
+                            className="h-8 w-48 pl-8 pr-7 text-sm sm:w-56"
+                        />
+                        {busqueda && (
+                            <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground">
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </label>
+                    {vista === 'lista' && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <label htmlFor="tareas-agrupar">Agrupar por</label>
+                            <select
+                                id="tareas-agrupar"
+                                value={agrupar}
+                                onChange={(e) => cambiarAgrupar(e.target.value as Agrupar)}
+                                className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
+                            >
+                                <option value="estado">Estado</option>
+                                <option value="prioridad">Prioridad</option>
+                                <option value="cliente">Cliente</option>
+                            </select>
+                        </div>
+                    )}
+                    <div role="group" aria-label="Vista" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+                        {([
+                            { id: 'tablero', label: 'Tablero', icon: Columns3 },
+                            { id: 'lista', label: 'Lista', icon: List },
+                        ] as const).map((v) => (
+                            <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => cambiarVista(v.id)}
+                                aria-pressed={vista === v.id}
+                                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition ${
+                                    vista === v.id ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                <v.icon className="h-3.5 w-3.5" /> {v.label}
+                            </button>
+                        ))}
                     </div>
-                    <ul className="space-y-1.5">
-                        {drift.map((d) => {
-                            const clarity = CLARITY_OPTIONS.find((c) => c.id === d.clarity)!
-                            const off = Math.abs(d.ratio - 1) < 0.15
-                            return (
-                                <li key={d.clarity} className="text-sm flex items-baseline gap-2">
-                                    <span className="text-muted-foreground">Cuando dices &quot;{clarity.short.toLowerCase()}&quot;:</span>
-                                    <strong className={off ? 'text-emerald-600' : d.ratio > 1 ? 'text-red-600' : 'text-sky-600'}>
-                                        {off ? 'tu cálculo da' : d.ratio > 1 ? `te toma ${d.ratio}× lo previsto` : `te toma ${d.ratio}× lo previsto`}
-                                    </strong>
-                                    <span className="text-xs text-muted-foreground">({d.samples} tareas medidas)</span>
-                                </li>
-                            )
-                        })}
-                    </ul>
-                </section>
+                </div>
             )}
 
-            {/* Tablero */}
             {loading ? (
                 <p className="p-8 text-center text-sm text-muted-foreground">Cargando…</p>
+            ) : vista === 'lista' ? (
+                <div className="pb-6">
+                    <ListaTareas
+                        tareas={filtered}
+                        signals={signals}
+                        agrupar={agrupar}
+                        hoy={today}
+                        working={working}
+                        canRegister={canRegister}
+                        onHecha={toggleDone}
+                        onEstado={(t, st) => applyMove(t, st)}
+                        onPrioridad={changePriority}
+                        onPlan={toggleToday}
+                        onPosponer={postponeTomorrow}
+                        onEditar={openEdit}
+                        onBorrar={setToDelete}
+                        onFacturar={handleRegister}
+                    />
+                </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-6">
                     {TASK_COLUMNS.map((col) => {
                         const items = byColumn[col.id]
                         const isOver = dragOver === col.id
@@ -834,11 +949,13 @@ export default function TasksPage() {
                                                     e.stopPropagation()
                                                     const rect = e.currentTarget.getBoundingClientRect()
                                                     const side = e.clientY - rect.top > rect.height / 2 ? 'after' : 'before'
-                                                    handleReorderDrop(col.id, e.dataTransfer.getData('text/plain'), task.id, side)
+                                                    // Las hechas van por fecha de cierre, no a mano: soltar ahí solo la da por hecha.
+                                                    if (col.id === 'done') handleDrop('done', e.dataTransfer.getData('text/plain'))
+                                                    else handleReorderDrop(col.id, e.dataTransfer.getData('text/plain'), task.id, side)
                                                 }}
                                                 onDoubleClick={() => openEdit(task)}
                                                 title={priority.reason}
-                                                className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${style.card} ${style.on}`}
+                                                className={`group relative rounded-xl border px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${style.card} ${style.on}`}
                                             >
                                                 <div className="flex items-center gap-2">
                                                     <span
@@ -852,9 +969,23 @@ export default function TasksPage() {
                                                     )}
                                                 </div>
 
-                                                <p className={`mt-1.5 text-sm font-medium leading-5 ${task.status === 'done' ? 'line-through' : ''}`}>
-                                                    {task.title}
-                                                </p>
+                                                <div className="mt-1.5 flex items-start gap-2">
+                                                    <span className="mt-0.5"><CirculoHecha hecha={task.status === 'done'} sobreColor onClick={() => toggleDone(task)} /></span>
+                                                    <p className={`min-w-0 flex-1 text-sm font-medium leading-5 ${task.status === 'done' ? 'line-through' : ''}`}>
+                                                        {task.title}
+                                                    </p>
+                                                </div>
+
+                                                {task.status !== 'done' && (
+                                                    <div className="mt-2 flex items-center gap-1.5 pl-7">
+                                                        <SelectorPrioridad task={task} sobreColor onCambiar={(c) => changePriority(task, c)} />
+                                                        {task.planned_for === today && (
+                                                            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium text-white ring-1 ring-white/30">
+                                                                <CalendarCheck className="h-3 w-3" /> Hoy
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* Las acciones solo aparecen al pasar por encima. */}
                                                 <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-md bg-black/15 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -941,6 +1072,35 @@ export default function TasksPage() {
                     })}
                 </div>
             )}
+
+            {/* Cómo va tu cálculo de tiempos: útil de vez en cuando, no cada día. Plegado al final. */}
+            {!loading && drift.length > 0 && (
+                <details className="group rounded-xl border bg-card px-4 py-3">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                        <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-90" />
+                        <TrendingUp className="w-4 h-4 text-violet-600" />
+                        Cómo va tu cálculo de tiempos
+                    </summary>
+                    <ul className="mt-2 space-y-1.5 pl-6">
+                        {drift.map((d) => {
+                            const clarity = CLARITY_OPTIONS.find((c) => c.id === d.clarity)!
+                            const off = Math.abs(d.ratio - 1) < 0.15
+                            return (
+                                <li key={d.clarity} className="text-sm flex flex-wrap items-baseline gap-x-2">
+                                    <span className="text-muted-foreground">Cuando dices &quot;{clarity.short.toLowerCase()}&quot;:</span>
+                                    <strong className={off ? 'text-emerald-600' : d.ratio > 1 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'}>
+                                        {off ? 'tu cálculo da' : `te toma ${d.ratio}× lo previsto`}
+                                    </strong>
+                                    <span className="text-xs text-muted-foreground">({d.samples} tareas medidas)</span>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </details>
+            )}
+
+            {/* Aire al final para que el botón flotante no tape la última tarea. */}
+            <div className="h-24" aria-hidden />
 
             {/* Botón flotante de alta. Siempre a mano, incluso con el tablero
                 desplegado; en móvil sube para no pisar el lanzador del asistente. */}
