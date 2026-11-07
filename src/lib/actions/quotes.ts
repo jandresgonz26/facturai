@@ -123,9 +123,9 @@ export async function getQuote(id: string): Promise<Quote> {
 }
 
 export const QUOTE_STATUSES: { id: QuoteStatus; label: string; hint: string }[] = [
-    { id: 'pending', label: 'Pendiente', hint: 'Enviada o en curso, sin respuesta todavía' },
-    { id: 'approved', label: 'Aprobada', hint: 'El cliente la aceptó' },
-    { id: 'rejected', label: 'Rechazada', hint: 'El cliente dijo que no o se perdió' },
+    { id: 'pending', label: 'Abierta', hint: 'Enviada o solo de registro, todavía sin respuesta' },
+    { id: 'approved', label: 'Aceptada', hint: 'Dijeron que sí (el cliente o el intermediario)' },
+    { id: 'rejected', label: 'Descartada', hint: 'Dijeron que no, se perdió o ya no aplica' },
 ]
 
 /**

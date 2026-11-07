@@ -3,6 +3,7 @@ import { listClients } from '@/lib/actions/clients'
 import { ESTADOS, estadoDe, listarPropuestas, vencida, type EstadoPropuesta } from '@/lib/propuestas/datos'
 import { dinero } from '@/lib/propuestas/precios'
 import { NuevaPropuesta } from './NuevaPropuesta'
+import { PESTANAS_PROPUESTAS, SeccionTabs } from '@/components/layout/SeccionTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,12 +20,13 @@ export default async function PaginaPropuestas({ searchParams }: { searchParams:
 
     return (
         <div className="mx-auto max-w-5xl space-y-6">
-            <header className="flex flex-wrap items-end justify-between gap-4">
-                <div>
+            <header className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                     <h1 className="font-display text-2xl font-bold">Propuestas</h1>
-                    <p className="mt-1 max-w-prose text-sm text-muted-foreground">Escribe la propuesta aquí, compártela con un enlace y sigue qué pasó: si la abrió, si pidió cambios o si la aceptó.</p>
+                    <NuevaPropuesta clientes={clientes.map((c) => ({ id: c.id, name: c.name, stage: c.stage ?? 'active' }))} clienteInicial={sp.cliente} />
                 </div>
-                <NuevaPropuesta clientes={clientes.map((c) => ({ id: c.id, name: c.name, stage: c.stage ?? 'active' }))} clienteInicial={sp.cliente} />
+                <SeccionTabs pestanas={PESTANAS_PROPUESTAS} label="Tipos de propuesta" />
+                <p className="max-w-prose text-sm text-muted-foreground">Compártela con un enlace y sigue qué pasó: si la abrió, si pidió cambios o si la aceptó.</p>
             </header>
 
             {abiertas.length > 0 && !estado && (

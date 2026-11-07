@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
     ChevronDown,
-    ClipboardList,
     FileSignature,
     Wallet,
     ExternalLink,
@@ -26,23 +25,23 @@ import {
     SquareKanban,
     Users,
     X,
-    type LucideIcon, Package } from 'lucide-react'
+    type LucideIcon,
+} from 'lucide-react'
 import { BRAND } from '@/lib/brand'
 import { supabase } from '@/lib/supabase'
 
-const navLinks: { href: string; label: string; icon: LucideIcon }[] = [
+/** `tambien`: otras rutas de la misma sección (sus pestañas), para marcar la entrada como activa. */
+const navLinks: { href: string; label: string; icon: LucideIcon; tambien?: string[] }[] = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/oficina', label: 'Oficina', icon: Building2 },
     { href: '/tasks', label: 'Tareas', icon: ListTodo },
     { href: '/clients', label: 'Clientes', icon: Users },
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
     { href: '/month-end', label: 'Facturación', icon: ReceiptText },
-    { href: '/quotes', label: 'Cotizaciones', icon: ClipboardList },
-    { href: '/propuestas', label: 'Propuestas', icon: FileSignature },
+    { href: '/propuestas', label: 'Propuestas', icon: FileSignature, tambien: ['/quotes'] },
     { href: '/control', label: 'Control interno', icon: Wallet },
-    { href: '/servicios', label: 'Servicios', icon: Package },
     { href: '/invoices', label: 'Facturas', icon: FileText },
-    { href: '/settings', label: 'Ajustes', icon: Settings },
+    { href: '/settings', label: 'Ajustes', icon: Settings, tambien: ['/servicios'] },
 ]
 
 /** Otras herramientas de JAM Tech: se abren en su propia pestaña, agrupadas para no llenar el menú. */
@@ -132,7 +131,7 @@ export function Sidebar() {
                 {/* Navegación: el activo es una pastilla blanca sobre el azul, no un borde tímido. */}
                 <nav className="flex-1 w-full min-h-0 overflow-y-auto px-4 space-y-1">
                     {navLinks.map((link) => {
-                        const isActive = pathname === link.href || (link.href !== '/' && pathname?.startsWith(`${link.href}/`))
+                        const isActive = [link.href, ...(link.tambien ?? [])].some((h) => pathname === h || (h !== '/' && pathname?.startsWith(`${h}/`)))
                         const Icon = link.icon
                         return (
                             <Link

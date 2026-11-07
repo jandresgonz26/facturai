@@ -11,6 +11,7 @@ import { EmailDialog } from '@/components/features/EmailDialog'
 import { ClientForm } from '@/components/features/ClientForm'
 import { getEmailStatusByQuote } from '@/lib/actions/email'
 import { QUOTE_STATUSES, convertQuoteToInvoice, setQuoteStatus } from '@/lib/actions/quotes'
+import { PESTANAS_PROPUESTAS, SeccionTabs } from '@/components/layout/SeccionTabs'
 import { getClient, listClients, updateClient, type ClientInput } from '@/lib/actions/clients'
 import { ActionError, errorMessage } from '@/lib/actions/validation'
 import { saveBlobToFile } from '@/lib/invoice-download'
@@ -33,13 +34,13 @@ type StatusFilter = 'all' | QuoteStatus | 'invoiced'
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
     { id: 'all', label: 'Todas' },
-    { id: 'pending', label: 'Pendientes' },
-    { id: 'approved', label: 'Aprobadas' },
+    { id: 'pending', label: 'Abiertas' },
+    { id: 'approved', label: 'Aceptadas' },
     { id: 'invoiced', label: 'Facturadas' },
-    { id: 'rejected', label: 'Rechazadas' },
+    { id: 'rejected', label: 'Descartadas' },
 ]
 
-/** Estado visible de la cotización: facturada manda sobre aprobada. */
+/** Estado visible de la cotización: facturada manda sobre aceptada. */
 function quoteState(quote: Quote, invoiced: boolean) {
     if (invoiced) {
         return {
@@ -51,7 +52,7 @@ function quoteState(quote: Quote, invoiced: boolean) {
     }
     if (quote.status === 'approved') {
         return {
-            label: 'Aprobada',
+            label: 'Aceptada',
             dot: 'bg-emerald-500',
             className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
             border: 'border-l-emerald-500',
@@ -59,14 +60,14 @@ function quoteState(quote: Quote, invoiced: boolean) {
     }
     if (quote.status === 'rejected') {
         return {
-            label: 'Rechazada',
+            label: 'Descartada',
             dot: 'bg-gray-400',
             className: 'bg-muted text-muted-foreground',
             border: 'border-l-gray-300 dark:border-l-gray-600',
         }
     }
     return {
-        label: 'Pendiente',
+        label: 'Abierta',
         dot: 'bg-amber-500',
         className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
         border: 'border-l-amber-500',
@@ -246,7 +247,7 @@ export default function QuotesPage() {
         try {
             const updated = await setQuoteStatus(quote.id, status)
             setQuotes((prev) => prev.map((q) => (q.id === quote.id ? { ...q, status: updated.status, decided_at: updated.decided_at } : q)))
-            toast.success(status === 'approved' ? 'Marcada como aprobada' : status === 'rejected' ? 'Marcada como rechazada' : 'Vuelve a quedar pendiente')
+            toast.success(status === 'approved' ? 'Marcada como aceptada' : status === 'rejected' ? 'Marcada como descartada' : 'Vuelve a quedar abierta')
         } catch (e) {
             console.error(e)
             toast.error(errorMessage(e))
@@ -283,7 +284,9 @@ export default function QuotesPage() {
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             <div ref={formRef} className="scroll-mt-4">
-                <h1 className="text-2xl font-bold mb-6">Cotizaciones</h1>
+                <h1 className="font-display text-2xl font-bold mb-3">Propuestas</h1>
+                <div className="mb-3"><SeccionTabs pestanas={PESTANAS_PROPUESTAS} label="Tipos de propuesta" /></div>
+                <p className="mb-6 max-w-prose text-sm text-muted-foreground">Un PDF con precios para enviar o para tu registro, también cuando negocias con un intermediario (plantilla de Asiri). Nadie tiene que aceptarla aquí: cuando sepas la respuesta, ábrela y márcala como aceptada o descartada.</p>
                 <QuoteForm
                     onSaved={handleSaved}
                     quoteToEdit={quoteToEdit}
@@ -296,7 +299,7 @@ export default function QuotesPage() {
                     <div>
                         <h2 className="text-lg font-semibold">Historial de Cotizaciones</h2>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                            {counts.pending} pendiente{counts.pending === 1 ? '' : 's'} · {counts.approved} aprobada{counts.approved === 1 ? '' : 's'} · {counts.rejected} rechazada{counts.rejected === 1 ? '' : 's'}
+                            {counts.pending} abierta{counts.pending === 1 ? '' : 's'} · {counts.approved} aceptada{counts.approved === 1 ? '' : 's'} · {counts.rejected} descartada{counts.rejected === 1 ? '' : 's'}
                             {counts.pendingAmount > 0 && <> · <span className="text-amber-600 dark:text-amber-400">${counts.pendingAmount.toFixed(2)} en juego</span></>}
                         </p>
                     </div>
@@ -399,7 +402,7 @@ export default function QuotesPage() {
                                                     className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
                                                     onClick={() => setQuoteToConvert(quote)}
                                                     disabled={invoiced}
-                                                    title={invoiced ? `Ya convertida en la factura #${invoiceNumbers[quote.id]}` : 'Convertir en factura (cotización aprobada)'}
+                                                    title={invoiced ? `Ya convertida en la factura #${invoiceNumbers[quote.id]}` : 'Convertir en factura (cotización aceptada)'}
                                                 >
                                                     <Receipt className="w-4 h-4" />
                                                 </Button>
@@ -465,7 +468,7 @@ export default function QuotesPage() {
 
                                         {!invoiced && (
                                             <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-                                                <span className="text-xs text-muted-foreground">¿Qué respondió el cliente?</span>
+                                                <span className="text-xs text-muted-foreground">¿Qué respondieron?</span>
                                                 {QUOTE_STATUSES.map((s) => (
                                                     <button
                                                         key={s.id}

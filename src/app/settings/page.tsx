@@ -12,6 +12,7 @@ import Image from 'next/image'
 import { ServiceCategoryManager } from '@/components/features/ServiceCategoryManager'
 import { SecuritySettings } from '@/components/features/SecuritySettings'
 import { EffectsToggle } from '@/components/features/EffectsToggle'
+import { PESTANAS_AJUSTES, SeccionTabs } from '@/components/layout/SeccionTabs'
 
 export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
@@ -116,8 +117,10 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Configuración</h1>
+        <div className="max-w-5xl mx-auto">
+            <h1 className="font-display text-2xl font-bold mb-3">Ajustes</h1>
+            <div className="mb-6"><SeccionTabs pestanas={PESTANAS_AJUSTES} label="Secciones de Ajustes" /></div>
+            <div className="max-w-2xl">
 
             <Card>
                 <CardHeader>
@@ -270,6 +273,7 @@ export default function SettingsPage() {
             </Card>
 
             <SecuritySettings />
+            </div>
         </div>
     )
 }

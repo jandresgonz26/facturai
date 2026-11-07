@@ -1,5 +1,6 @@
 import { listarCatalogo } from '@/lib/servicios/datos'
 import { Catalogo } from './Catalogo'
+import { PESTANAS_AJUSTES, SeccionTabs } from '@/components/layout/SeccionTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,9 +15,10 @@ export default async function PaginaServicios() {
     }
     return (
         <div className="mx-auto max-w-5xl space-y-6">
-            <header>
-                <h1 className="font-display text-2xl font-bold">Servicios</h1>
-                <p className="mt-1 max-w-prose text-sm text-muted-foreground">Mi lista de precios por área y categoría. Los destacados (★) son los paquetes; todo se puede elegir al armar una cotización o una propuesta.</p>
+            <header className="space-y-3">
+                <h1 className="font-display text-2xl font-bold">Ajustes</h1>
+                <SeccionTabs pestanas={PESTANAS_AJUSTES} label="Secciones de Ajustes" />
+                <p className="max-w-prose text-sm text-muted-foreground">Mi lista de precios por área y categoría. Los destacados (★) son los paquetes; todo se puede elegir al armar una cotización o una propuesta.</p>
             </header>
             {error ? (
                 <div className="rounded-xl border border-dashed p-8 text-center text-sm">
