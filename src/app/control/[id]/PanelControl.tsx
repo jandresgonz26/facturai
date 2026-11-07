@@ -6,12 +6,12 @@
 import { useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, Paperclip, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, Paperclip, Pencil, Plus, Receipt, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { dinero, type Acuerdo, type CuentaProveedor, type CuotaCalculada, type Movimiento } from '@/lib/control/calculo'
-import type { ControlCompleto, PropuestaEnlazable } from '@/lib/control/datos'
-import { actualizarAcuerdoAccion, actualizarControlAccion, actualizarCuotaAccion, actualizarMovimientoAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarExtraAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion, enlazarPropuestaAccion } from '../acciones'
+import type { ControlCompleto, FacturaCuota, PropuestaEnlazable } from '@/lib/control/datos'
+import { actualizarAcuerdoAccion, actualizarControlAccion, actualizarCuotaAccion, actualizarMovimientoAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarExtraAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion, enlazarFacturaAccion, enlazarPropuestaAccion, facturarCuotaAccion } from '../acciones'
 
 const campo = 'h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30'
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -84,7 +84,8 @@ export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; pr
                     </div>
                     <ol className="divide-y border-y">
                         {r.cuotas.map((c) => (
-                            <FilaCuota key={c.id} c={c} numero={c.extra ? null : r.cuotas.filter((x) => !x.extra && x.orden <= c.orden).length} m={m} pendiente={pendiente} borrar={borrar} onGuardar={(x, listo) => correr(() => actualizarCuotaAccion(p.id, c.id, x), listo)} />
+                            <FilaCuota key={c.id} c={c} numero={c.extra ? null : r.cuotas.filter((x) => !x.extra && x.orden <= c.orden).length} m={m} pendiente={pendiente} borrar={borrar} onGuardar={(x, listo) => correr(() => actualizarCuotaAccion(p.id, c.id, x), listo)}
+                                puente={datos.facturas ? { factura: datos.facturas[c.id] ?? null, sueltas: datos.facturasSueltas, puedeFacturar: !!p.client_id, onFacturar: () => correr(() => facturarCuotaAccion(p.id, c.id)), onEnlazar: (inv) => correr(() => enlazarFacturaAccion(p.id, c.id, inv)) } : null} />
                         ))}
                         {r.cuotas.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Aún no hay plan de cuotas.</li>}
                     </ol>
@@ -98,7 +99,8 @@ export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; pr
                             ))}
                             {r.abonos.length === 0 && <li className="text-sm text-muted-foreground">Ninguno todavía.</li>}
                         </ul>
-                        <FormPago id="abono" texto="Registrar abono del cliente" pendiente={pendiente} onGuardar={(x, limpiar) => correr(() => agregarMovimientoAccion(p.id, { lado: 'cliente', ...x }), limpiar)} />
+                        <FormPago id="abono" texto="Registrar abono del cliente" pendiente={pendiente} marcarFacturas={!!datos.facturas && Object.keys(datos.facturas).length > 0} onGuardar={(x, limpiar, marcar) => correr(() => agregarMovimientoAccion(p.id, { lado: 'cliente', ...x }, marcar), limpiar)} />
+                        {!datos.facturas && <p className="text-xs text-muted-foreground">Para enlazar las cuotas con sus facturas, ejecuta schema_update_proyectos_facturas.sql en el SQL Editor de Supabase.</p>}
                     </div>
                 </section>
 
@@ -189,17 +191,19 @@ function Desplegable({ texto, children }: { texto: string; children: (cerrar: ()
     return <div className="rounded-lg border bg-muted/30 p-3">{children(() => setAbierto(false))}</div>
 }
 
-function FormPago({ id, texto, sugerido, pendiente, onGuardar }: { id: string; texto: string; sugerido?: number; pendiente: boolean; onGuardar: (x: { fecha: string; monto: string; metodo: string; nota: string }, limpiar: () => void) => void }) {
+function FormPago({ id, texto, sugerido, pendiente, marcarFacturas, onGuardar }: { id: string; texto: string; sugerido?: number; pendiente: boolean; marcarFacturas?: boolean; onGuardar: (x: { fecha: string; monto: string; metodo: string; nota: string }, limpiar: () => void, marcar: boolean) => void }) {
     const [f, setF] = useState({ fecha: hoy(), monto: '', metodo: '', nota: '' })
+    const [marcar, setMarcar] = useState(true)
     const idf = id.replace(/\W+/g, '-')
     return (
         <Desplegable texto={texto}>
             {(cerrar) => (
-                <form className="grid gap-2 sm:grid-cols-[9rem_7rem_1fr]" onSubmit={(e) => { e.preventDefault(); onGuardar(f, () => { setF({ fecha: hoy(), monto: '', metodo: '', nota: '' }); cerrar() }) }}>
+                <form className="grid gap-2 sm:grid-cols-[9rem_7rem_1fr]" onSubmit={(e) => { e.preventDefault(); onGuardar(f, () => { setF({ fecha: hoy(), monto: '', metodo: '', nota: '' }); cerrar() }, marcarFacturas ? marcar : false) }}>
                     <label className="space-y-1"><span className="text-xs text-muted-foreground">Fecha</span><input id={`${idf}-fecha`} type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} className={campo} /></label>
                     <label className="space-y-1"><span className="text-xs text-muted-foreground">Monto</span><input id={`${idf}-monto`} inputMode="decimal" required value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} placeholder={sugerido ? String(sugerido) : '0'} className={`${campo} tabular-nums`} /></label>
                     <label className="space-y-1"><span className="text-xs text-muted-foreground">Método</span><input id={`${idf}-metodo`} value={f.metodo} onChange={(e) => setF({ ...f, metodo: e.target.value })} placeholder="USDT, transferencia, Zelle…" className={campo} /></label>
                     <label className="space-y-1 sm:col-span-3"><span className="text-xs text-muted-foreground">Nota (opcional)</span><input id={`${idf}-nota`} value={f.nota} onChange={(e) => setF({ ...f, nota: e.target.value })} className={campo} /></label>
+                    {marcarFacturas && <label className="flex items-center gap-2 text-sm sm:col-span-3"><input id={`${idf}-marcar`} type="checkbox" checked={marcar} onChange={(e) => setMarcar(e.target.checked)} /> Marcar como pagadas las facturas de las cuotas que este abono completa</label>}
                     <div className="flex gap-2 sm:col-span-3">
                         <Button type="submit" size="sm" disabled={pendiente || !f.monto}>Guardar</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={cerrar}>Cancelar</Button>
@@ -302,7 +306,51 @@ function Cabecera({ nombre, notas, cliente, cerrado, pendiente, onGuardar }: { n
     )
 }
 
-function FilaCuota({ c, numero, m, pendiente, borrar, onGuardar }: { c: CuotaCalculada; numero: number | null; m: (n: number) => string; pendiente: boolean; borrar: Borrar; onGuardar: (x: { concepto: string; monto: string; vence: string | null; detalle: string | null; extra: boolean }, listo: () => void) => void }) {
+type Puente = { factura: FacturaCuota | null; sueltas: FacturaCuota[]; puedeFacturar: boolean; onFacturar: () => void; onEnlazar: (invoiceId: string | null) => void }
+
+const ESTADO_FACTURA: Record<FacturaCuota['status'], { label: string; tono: string }> = {
+    draft: { label: 'borrador', tono: 'text-muted-foreground' },
+    sent: { label: 'enviada', tono: 'text-sky-700 dark:text-sky-400' },
+    paid: { label: 'pagada', tono: 'text-emerald-700 dark:text-emerald-400' },
+}
+
+/** Debajo de cada cuota: su factura en Facturación, o cómo hacerla / enlazar una ya hecha. */
+function FacturaDeCuota({ c, puente, m, pendiente }: { c: CuotaCalculada; puente: Puente; m: (n: number) => string; pendiente: boolean }) {
+    const [enlazando, setEnlazando] = useState(false)
+    const f = puente.factura
+    if (f) {
+        const e = ESTADO_FACTURA[f.status]
+        return (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                <Link href="/invoices" className="flex items-center gap-1 font-medium hover:underline"><Receipt className="size-3.5" /> Factura {f.invoice_number}</Link>
+                <span className={e.tono}>· {e.label}</span>
+                {Math.abs(f.total_amount - c.monto) > 0.01 && <span className="text-amber-700 dark:text-amber-400">· por {m(f.total_amount)}</span>}
+                <button type="button" disabled={pendiente} onClick={() => { if (confirm(`¿Quitar el enlace con la factura ${f.invoice_number}? La factura no se borra.`)) puente.onEnlazar(null) }} className="text-muted-foreground hover:text-foreground">Desenlazar</button>
+            </div>
+        )
+    }
+    if (enlazando) {
+        return (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                <label htmlFor={`enlazar-${c.id}`} className="sr-only">Factura a enlazar</label>
+                <select id={`enlazar-${c.id}`} defaultValue="" disabled={pendiente} onChange={(e) => e.target.value && puente.onEnlazar(e.target.value)} className="h-7 max-w-60 rounded-md border bg-background px-2 text-xs">
+                    <option value="">Elige la factura…</option>
+                    {puente.sueltas.map((s) => <option key={s.id} value={s.id}>{s.invoice_number} · {m(s.total_amount)} · {ESTADO_FACTURA[s.status].label}</option>)}
+                </select>
+                <button type="button" onClick={() => setEnlazando(false)} className="text-muted-foreground hover:text-foreground">Cancelar</button>
+            </div>
+        )
+    }
+    return (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
+            <span className="text-muted-foreground">Sin factura</span>
+            {puente.puedeFacturar && <button type="button" disabled={pendiente} onClick={() => { if (confirm(`¿Crear la factura de «${c.concepto}» por ${m(c.monto)}?${c.estado === 'pagada' ? ' El cliente ya la pagó: quedará como pagada.' : ' Queda en borrador hasta que la envíes.'}`)) puente.onFacturar() }} className="flex items-center gap-1 font-medium text-primary hover:underline"><Receipt className="size-3.5" /> Facturar</button>}
+            {puente.sueltas.length > 0 && <button type="button" onClick={() => setEnlazando(true)} className="text-muted-foreground hover:text-foreground">Enlazar una ya hecha</button>}
+        </div>
+    )
+}
+
+function FilaCuota({ c, numero, m, pendiente, borrar, onGuardar, puente }: { c: CuotaCalculada; numero: number | null; m: (n: number) => string; pendiente: boolean; borrar: Borrar; onGuardar: (x: { concepto: string; monto: string; vence: string | null; detalle: string | null; extra: boolean }, listo: () => void) => void; puente: Puente | null }) {
     const [editando, setEditando] = useState(false)
     const inicial = { concepto: c.concepto, monto: String(c.monto), vence: c.vence ?? '', detalle: c.detalle ?? '', extra: c.extra }
     const [f, setF] = useState(inicial)
@@ -331,6 +379,7 @@ function FilaCuota({ c, numero, m, pendiente, borrar, onGuardar }: { c: CuotaCal
                 <div className="text-xs text-muted-foreground">
                     {c.estado === 'pagada' ? (c.pagadaEl ? `Completada el ${fecha(c.pagadaEl)}` : 'Completada') : c.estado === 'parcial' ? `Abonado ${m(c.aplicado)} · faltan ${m(c.falta)}` : c.vence ? `Vence ${fecha(c.vence)}` : ''}
                 </div>
+                {puente && <FacturaDeCuota c={c} puente={puente} m={m} pendiente={pendiente} />}
             </div>
             <div className="text-right">
                 <div className="font-medium tabular-nums">{m(c.monto)}</div>

@@ -257,10 +257,10 @@ export default function MonthEndPage() {
                                     {pendingCount > 0 ? (
                                         <>
                                             <p className="font-mono font-semibold text-amber-600 dark:text-amber-400">{usd(pendingTotalC)}</p>
-                                            <p className="text-muted-foreground">{pendingCount} pendiente{pendingCount === 1 ? '' : 's'}</p>
+                                            <p className="text-muted-foreground">{pendingCount} por facturar</p>
                                         </>
                                     ) : (
-                                        <p className="text-muted-foreground">Sin pendientes</p>
+                                        <p className="text-muted-foreground">Nada por facturar</p>
                                     )}
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
