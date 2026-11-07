@@ -49,7 +49,7 @@ const RUTINAS: Record<Departamento, Rutina> = {
     ventas: {
         herramientas: ['list_pipeline', 'get_client_timeline', 'list_quotes', 'list_client_notes', 'leads_web', 'list_tasks'],
         encargo: `Revisa el pipeline comercial:
-- Leads y cotizados con next_action vencida o sin próxima acción.
+- Leads y cotizados cuya próxima tarea (next_task) está vencida o que no tienen ninguna tarea abierta.
 - Cotizaciones pendientes de respuesta desde hace más de 5 días.
 - Leads nuevos que llegaron por la web (leads_web) y todavía no tienen seguimiento.
 Para cada caso propone UNA acción concreta (un mensaje de seguimiento listo para enviar por WhatsApp, pasar a inactivo, etc.). Máximo 5 puntos.`,

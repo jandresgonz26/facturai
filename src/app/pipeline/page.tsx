@@ -104,7 +104,7 @@ export default function PipelinePage() {
                                 {!board && <p className="text-xs text-muted-foreground p-2">Cargando…</p>}
                                 {board && cards.length === 0 && <p className="text-xs text-muted-foreground p-2 text-center">{stage.hint}</p>}
                                 {cards.map((c) => {
-                                    const due = c.client.next_action_at && c.client.next_action_at <= today()
+                                    const due = c.next_task?.due_date && c.next_task.due_date <= today()
                                     return (
                                         <article
                                             key={c.client.id}
@@ -137,10 +137,10 @@ export default function PipelinePage() {
                                                 {c.unpaid_total > 0 && <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300">Por cobrar {usd(c.unpaid_total)}</span>}
                                                 {c.pending_total > 0 && <span className="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300">Sin facturar {usd(c.pending_total)}</span>}
                                             </div>
-                                            {c.client.next_action && (
+                                            {c.next_task && (
                                                 <p className={`text-[11px] flex items-center gap-1 ${due ? 'text-red-600 dark:text-red-400 font-medium' : 'text-muted-foreground'}`}>
-                                                    <CalendarClock className="w-3 h-3" /> {c.client.next_action}
-                                                    {c.client.next_action_at ? ` · ${c.client.next_action_at.split('-').reverse().join('/')}` : ''}
+                                                    <CalendarClock className="w-3 h-3" /> {c.next_task.title}
+                                                    {c.next_task.due_date ? ` · ${c.next_task.due_date.split('-').reverse().join('/')}` : ''}
                                                 </p>
                                             )}
                                             <p className="text-[10px] text-muted-foreground">

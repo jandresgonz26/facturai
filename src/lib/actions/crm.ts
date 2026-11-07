@@ -233,17 +233,25 @@ export interface PipelineCard {
     last_activity_at: string | null
     days_since_activity: number | null
     last_activity_label: string | null
+    /** La próxima tarea abierta del cliente (la de fecha más cercana). Sustituye a clients.next_action, que ya no se usa. */
+    next_task: { title: string; due_date: string | null } | null
 }
 
 export async function getPipeline(): Promise<Record<ClientStage, PipelineCard[]>> {
     const clients = (await listClients()).filter((c) => c.billing_modality !== 'hour_bag')
-    const [quotes, invoices, logs, emails, notes] = await Promise.all([
+    const [quotes, invoices, logs, emails, notes, tasks] = await Promise.all([
         supabase.from('quotes').select('client_id, total_amount, created_at'),
         supabase.from('invoices').select('client_id, total_amount, status, issue_date, paid_at'),
         supabase.from('logs').select('client_id, value, status, created_at'),
         supabase.from('email_log').select('client_id, sent_at, kind'),
         supabase.from('client_notes').select('client_id, created_at'),
+        supabase.from('tasks').select('client_id, title, due_date, created_at').neq('status', 'done').not('client_id', 'is', null),
     ])
+    // Próxima tarea por cliente: primero las que tienen fecha (la más cercana), luego las demás por antigüedad.
+    const nextTask = new Map<string, { title: string; due_date: string | null }>()
+    const abiertas = ((tasks.data || []) as { client_id: string; title: string; due_date: string | null; created_at: string }[])
+        .sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.created_at.localeCompare(b.created_at))
+    for (const t of abiertas) if (!nextTask.has(t.client_id)) nextTask.set(t.client_id, { title: t.title, due_date: t.due_date })
     const today = new Date()
     const cards: PipelineCard[] = clients.map((client) => {
         let quoted = 0, quotesCount = 0, unpaid = 0, pending = 0
@@ -279,6 +287,7 @@ export async function getPipeline(): Promise<Record<ClientStage, PipelineCard[]>
             last_activity_at: l?.at ?? null,
             days_since_activity: l ? Math.floor((today.getTime() - new Date(l.at).getTime()) / 86400000) : null,
             last_activity_label: l?.label ?? null,
+            next_task: nextTask.get(client.id) ?? null,
         }
     })
     const grouped: Record<ClientStage, PipelineCard[]> = { lead: [], quoted: [], active: [], inactive: [] }

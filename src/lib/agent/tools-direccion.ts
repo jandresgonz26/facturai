@@ -46,19 +46,19 @@ export async function panoramaEmpresa(desdeMes?: string) {
     const meses = desdeMes && desdeMes <= hoy.slice(0, 7) ? todos.filter((m) => m >= desdeMes) : todos.slice(-6)
     const desde = `${meses[0]}-01`
     type Inv = { client_id: string; issue_date: string; total_amount: number; status: string; paid_at: string | null; due_date: string | null; clients: { name: string } | null }
-    type Cli = { id: string; name: string; stage: string | null; source: string | null; created_at: string; next_action_at: string | null }
+    type Cli = { id: string; name: string; stage: string | null; source: string | null; created_at: string }
     type Rec = { client_id: string; amount: number; interval_months: number | null; clients: { name: string } | null }
     type Quote = { status: string; total_amount: number; issue_date: string; client_name: string | null }
-    type Task = { status: string; due_date: string | null; postponed_count: number | null; estimated_minutes: number | null }
+    type Task = { status: string; due_date: string | null; postponed_count: number | null; estimated_minutes: number | null; client_id: string | null }
     type Log = { value: number; status: string; invoice_id: string | null }
     type Ev = { departamento: string; created_at: string }
 
     const [invoices, clientes, recurrentes, cotizaciones, tareas, logs, ajustes, eventos] = await Promise.all([
         q<Inv>(supabase.from('invoices').select('client_id, issue_date, total_amount, status, paid_at, due_date, clients(name)').gte('issue_date', desde)),
-        q<Cli>(supabase.from('clients').select('id, name, stage, source, created_at, next_action_at')),
+        q<Cli>(supabase.from('clients').select('id, name, stage, source, created_at')),
         q<Rec>(supabase.from('recurring_services').select('client_id, amount, interval_months, clients(name)').eq('is_active', true)),
         q<Quote>(supabase.from('quotes').select('status, total_amount, issue_date, client_name').gte('issue_date', desde)),
-        q<Task>(supabase.from('tasks').select('status, due_date, postponed_count, estimated_minutes').neq('status', 'done')),
+        q<Task>(supabase.from('tasks').select('status, due_date, postponed_count, estimated_minutes, client_id').neq('status', 'done')),
         q<Log>(supabase.from('logs').select('value, status, invoice_id').is('invoice_id', null)),
         q<{ monthly_goal: number | null }>(supabase.from('company_settings').select('monthly_goal').limit(1)),
         q<Ev>(supabase.from('agent_events').select('departamento, created_at').gte('created_at', new Date(Date.now() - 7 * 86_400_000).toISOString())),
@@ -115,7 +115,7 @@ export async function panoramaEmpresa(desdeMes?: string) {
             porEtapa: etapas,
             nuevosUltimos90Dias: nuevos.length,
             origenDeLosNuevos: nuevos.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.source ?? 'sin origen']: (acc[c.source ?? 'sin origen'] ?? 0) + 1 }), {}),
-            leadsSinProximaAccion: clientes.filter((c) => (c.stage === 'lead' || c.stage === 'quoted') && !c.next_action_at).map((c) => c.name),
+            leadsSinProximaAccion: clientes.filter((c) => (c.stage === 'lead' || c.stage === 'quoted') && !tareas.some((t) => t.client_id === c.id)).map((c) => c.name),
         },
         cotizaciones: {
             pendientes: pendientesCot.length,
