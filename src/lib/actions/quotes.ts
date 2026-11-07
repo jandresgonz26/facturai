@@ -149,6 +149,11 @@ export const convertQuoteSchema = z.object({
     quote_id: uuidSchema,
     /** Cliente al que facturar; si se omite se usa el enlazado a la cotización o se busca/crea por nombre. */
     client_id: uuidSchema.optional(),
+    /**
+     * A quién va la factura si no es el propio cliente: su cliente padre (p. ej. Asiri cuando el cliente final es
+     * de Asiri). Si se omite y el cliente es subcliente, se factura a su padre.
+     */
+    bill_to_client_id: uuidSchema.optional(),
     issue_date: dateSchema.optional(),
     due_date: dateSchema.optional(),
 })
@@ -193,10 +198,36 @@ export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ i
     if (client.billing_modality === 'hour_bag') {
         throw new ActionError(`${client.name} se factura por bolsa de horas: no se puede convertir una cotización en factura para este cliente.`)
     }
+
+    // A quién se factura: al cliente, o a su cliente padre cuando el trabajo llega por un intermediario
+    // (clientes de Asiri: el trabajo queda a nombre del cliente final y la factura va a Asiri).
+    const billToId = input.bill_to_client_id ?? client.parent_client_id ?? client.id
+    const viaPadre = billToId !== client.id
+    let billTo = client
+    if (viaPadre) {
+        billTo = await getClient(billToId)
+        if (billTo.parent_client_id) throw new ActionError(`${billTo.name} es a su vez subcliente de otro: elige el cliente principal al que facturar.`)
+        if (billTo.billing_modality === 'hour_bag') throw new ActionError(`${billTo.name} se factura por bolsa de horas: no se le puede facturar una cotización.`)
+        if (client.parent_client_id && client.parent_client_id !== billTo.id) {
+            throw new ActionError(`${client.name} es subcliente de otro cliente, no de ${billTo.name}. Cámbialo en su ficha si ahora va por ${billTo.name}.`)
+        }
+        if (billTo.stage === 'lead' || billTo.stage === 'quoted') {
+            throw new ActionError(`${billTo.name} todavía no tiene ficha de cliente completa. Revísala en Clientes antes de facturarle.`)
+        }
+        // El cliente final queda como subcliente de quien paga (así sale dentro de él en Facturación) y como
+        // cliente activo: ya hay trabajo facturado. Su ficha no hace falta completarla, porque la factura no es suya.
+        const cambios: Record<string, unknown> = {}
+        if (!client.parent_client_id) cambios.parent_client_id = billTo.id
+        if (client.stage === 'lead' || client.stage === 'quoted') cambios.stage = 'active'
+        if (Object.keys(cambios).length) {
+            const { error } = await supabase.from('clients').update(cambios).eq('id', client.id)
+            if (error) throw new ActionError(`No se pudo dejar a ${client.name} como subcliente de ${billTo.name}: ${error.message}`)
+        }
+    }
     // El cliente viene de una cotización (o de un nombre escrito a mano) y todavía no se
     // revisó como cliente real: exigimos completar su ficha antes de emitirle una factura,
     // para no arrastrar un nombre mal escrito o datos a medias a un documento formal.
-    if (client.stage === 'lead' || client.stage === 'quoted') {
+    if (!viaPadre && (client.stage === 'lead' || client.stage === 'quoted')) {
         throw new ActionError(
             `${client.name} todavía no tiene ficha de cliente completa (está como "${client.stage === 'lead' ? 'lead' : 'cotizado'}"). Revisa y guarda sus datos antes de convertir la cotización en factura.`,
             'CLIENT_NEEDS_REVIEW'
@@ -211,7 +242,9 @@ export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ i
     for (const it of quote.items) {
         const amount = round2((Number(it.quantity) || 1) * (Number(it.unit_price) || 0))
         const qty = Number(it.quantity) || 1
-        const description = qty > 1 ? `${it.description} (x${qty})` : it.description
+        const base = qty > 1 ? `${it.description} (x${qty})` : it.description
+        // Facturado al padre: cada línea dice de qué cliente final es, para que se vea en la factura.
+        const description = viaPadre ? `${client.name} · ${base}` : base
         const category_id = it.service ? await resolveCategoryId(it.service).catch(() => defaultCategory) : defaultCategory
         rows.push({
             client_id: client.id,
@@ -236,7 +269,7 @@ export async function convertQuoteToInvoice(raw: ConvertQuoteInput): Promise<{ i
     let result: { invoice: Invoice; items: Log[] }
     try {
         result = await createInvoice({
-            client_id: client.id,
+            client_id: billTo.id,
             log_ids: logIds,
             issue_date: input.issue_date,
             due_date: input.due_date,

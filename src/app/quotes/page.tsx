@@ -92,6 +92,9 @@ export default function QuotesPage() {
     const [invoiceNumbers, setInvoiceNumbers] = useState<Record<string, string>>({})
     const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null)
     const [isConverting, setIsConverting] = useState(false)
+    // A quién va la factura al convertir: el propio cliente o su cliente padre (p. ej. Asiri).
+    const [billTo, setBillTo] = useState<string>('')
+    const [billToOptions, setBillToOptions] = useState<{ id: string; label: string }[]>([])
     // Cuando convertir se topa con un cliente sin ficha completa (lead/cotizado), se le pide
     // completarla aquí y, al guardar, se reintenta la conversión de esta cotización pendiente.
     const [clientToComplete, setClientToComplete] = useState<Client | null>(null)
@@ -197,7 +200,7 @@ export default function QuotesPage() {
     const runConvert = async (quote: Quote) => {
         setIsConverting(true)
         try {
-            const r = await convertQuoteToInvoice({ quote_id: quote.id })
+            const r = await convertQuoteToInvoice({ quote_id: quote.id, bill_to_client_id: billTo || undefined })
             toast.success(`Factura #${r.invoice.invoice_number} creada en borrador desde ${quote.quote_number}`)
             setQuoteToConvert(null)
             await fetchQuotes()
@@ -223,6 +226,30 @@ export default function QuotesPage() {
     }
 
     const executeConvert = () => quoteToConvert && runConvert(quoteToConvert)
+    const billToParent = !!billTo && billTo !== quoteToConvert?.client_id
+    const billToName = billToOptions.find((o) => o.id === billTo)?.label.split(' (')[0]
+
+    /**
+     * Abre el diálogo de convertir y propone a quién facturar: si el cliente es subcliente, a su padre; si la
+     * cotización salió con la plantilla de Asiri, a Asiri; si no, al propio cliente.
+     */
+    const openConvert = async (quote: Quote) => {
+        setQuoteToConvert(quote)
+        setBillTo('')
+        setBillToOptions([])
+        const list = await listClients().catch(() => [] as Client[])
+        const own = quote.client_id ? list.find((c) => c.id === quote.client_id) ?? null : null
+        const parent = own?.parent_client_id ? list.find((c) => c.id === own.parent_client_id) ?? null : null
+        const asiri = quote.template === 'asiri' ? list.find((c) => !c.parent_client_id && c.billing_modality !== 'hour_bag' && /asiri/i.test(c.name)) ?? null : null
+        const padre = parent ?? (asiri && asiri.id !== own?.id ? asiri : null)
+        if (!padre) return
+        const nombre = own?.name ?? quote.client_name
+        setBillToOptions([
+            { id: padre.id, label: `${padre.name} (el trabajo queda a nombre de ${nombre})` },
+            { id: own?.id ?? '', label: `${nombre} directamente` },
+        ])
+        setBillTo(padre.id)
+    }
 
     const handleCompleteClient = async (values: ClientInput) => {
         if (!clientToComplete) return
@@ -400,7 +427,7 @@ export default function QuotesPage() {
                                                     variant="outline"
                                                     size="icon"
                                                     className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
-                                                    onClick={() => setQuoteToConvert(quote)}
+                                                    onClick={() => openConvert(quote)}
                                                     disabled={invoiced}
                                                     title={invoiced ? `Ya convertida en la factura #${invoiceNumbers[quote.id]}` : 'Convertir en factura (cotización aceptada)'}
                                                 >
@@ -517,7 +544,7 @@ export default function QuotesPage() {
                             {quoteToConvert ? (
                                 <>
                                     Se creará una factura <strong>en borrador</strong> para{' '}
-                                    <strong>{quoteToConvert.client_name}</strong> con los {quoteToConvert.items?.length ?? 0} ítems de la
+                                    <strong>{billToParent ? billToName : quoteToConvert.client_name}</strong> con los {quoteToConvert.items?.length ?? 0} ítems de la
                                     cotización <strong>{quoteToConvert.quote_number}</strong> por un total de{' '}
                                     <strong>
                                         {quoteToConvert.currency === 'EUR' ? '€' : '$'}
@@ -530,6 +557,19 @@ export default function QuotesPage() {
                             )}
                         </DialogDescription>
                     </DialogHeader>
+                    {billToOptions.length > 0 && (
+                        <div className="space-y-1.5">
+                            <label htmlFor="convert-bill-to" className="text-sm font-medium">Facturar a</label>
+                            <select id="convert-bill-to" value={billTo} onChange={(e) => setBillTo(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+                                {billToOptions.map((o) => <option key={o.id || 'propio'} value={o.id}>{o.label}</option>)}
+                            </select>
+                            {billToParent && (
+                                <p className="text-xs text-muted-foreground">
+                                    Cada línea dirá de qué cliente es y {quoteToConvert?.client_name} queda como subcliente de {billToName}, así aparece dentro de él en Facturación.
+                                </p>
+                            )}
+                        </div>
+                    )}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setQuoteToConvert(null)} disabled={isConverting}>
                             Cancelar
