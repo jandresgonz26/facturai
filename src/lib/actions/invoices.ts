@@ -219,6 +219,28 @@ export async function revertInvoiceToDraft(id: string): Promise<Invoice> {
 }
 
 /** Elimina la factura y devuelve sus ítems a pendientes. */
+/**
+ * Añade ítems pendientes a una factura ya creada (p. ej. el anticipo de la siguiente cuota cuando el cliente
+ * pagó de más) y recalcula su total. Si la factura es en bolívares, recalcula el total en Bs con su tasa fijada.
+ */
+export async function appendItemsToInvoice(invoiceId: string, logIds: string[]): Promise<Invoice> {
+    const invoice = await getInvoice(invoiceId)
+    const allowedIds = await getBillableClientIds(invoice.client_id)
+    const logs = await getLogsByIds(logIds)
+    if (logs.length !== logIds.length) throw new ActionError('Alguno de los ítems indicados ya no existe.')
+    const invalid = logs.filter((l) => l.status !== 'pending' || !allowedIds.includes(l.client_id))
+    if (invalid.length) throw new ActionError(`Hay ítems que no están pendientes o no son de este cliente: ${invalid.map((l) => l.description).join(', ')}`)
+    const { error: logsError } = await supabase.from('logs').update({ invoice_id: invoiceId, status: 'billed' }).in('id', logIds)
+    if (logsError) throw new ActionError(`No se pudieron añadir los ítems a la factura: ${logsError.message}`)
+    const { data: todos } = await supabase.from('logs').select('value').eq('invoice_id', invoiceId)
+    const total_amount = round2((todos ?? []).reduce((s, l) => s + Number(l.value || 0), 0))
+    const row: Record<string, unknown> = { total_amount }
+    if (invoice.ves_rate && invoice.ves_total != null) row.ves_total = round2(total_amount * Number(invoice.ves_rate))
+    const { data, error } = await supabase.from('invoices').update(row).eq('id', invoiceId).select('*').single()
+    if (error) throw new ActionError(`No se pudo actualizar el total de la factura: ${error.message}`)
+    return data as Invoice
+}
+
 export async function deleteInvoice(id: string): Promise<void> {
     await getInvoice(id)
     const { error: logsError } = await supabase

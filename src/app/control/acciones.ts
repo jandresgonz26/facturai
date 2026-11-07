@@ -41,16 +41,39 @@ export const actualizarControlAccion = async (id: string, c: { nombre?: string; 
 export const borrarControlAccion = async (id: string) => hacer(null, () => d.borrarControl(id), 'Proyecto borrado.')
 export const agregarCuotaAccion = async (pid: string, c: { concepto: string; monto: string; vence?: string | null; detalle?: string; extra?: boolean }) => hacer(pid, () => d.agregarCuota(pid, c), c.extra ? 'Cobro añadido.' : 'Cuota añadida.')
 export const actualizarCuotaAccion = async (pid: string, id: string, c: { concepto?: string; monto?: string; vence?: string | null; detalle?: string | null; extra?: boolean }) => hacer(pid, () => d.actualizarCuota(id, c), 'Cuota actualizada.')
-export const agregarMovimientoAccion = async (pid: string, m: { lado: 'cliente' | 'proveedor'; proveedor?: string; fecha?: string; monto: string; metodo?: string; nota?: string }, marcarFacturas = true) => {
+/**
+ * Abono del cliente con `facturar`: las facturas que cubre quedan pagadas y, si pagó más de lo facturado, lo que
+ * sobra se factura (factura nueva, ya pagada) repartido por las cuotas: así cada pago tiene su factura por lo que pagó.
+ */
+export const agregarMovimientoAccion = async (pid: string, m: { lado: 'cliente' | 'proveedor'; proveedor?: string; fecha?: string; monto: string; metodo?: string; nota?: string }, facturar = true) => {
     const r = await hacer(pid, async () => {
         await d.agregarMovimiento(pid, m)
-        // Abono del cliente: las facturas de las cuotas que quedan completas pasan a pagadas.
-        return m.lado === 'cliente' && marcarFacturas ? d.sincronizarPagos(pid).catch(() => 0) : 0
+        if (m.lado !== 'cliente' || !facturar) return { pagadas: 0, nueva: null as string | null, aviso: null as string | null }
+        const pagadas = await d.sincronizarPagos(pid).catch(() => 0)
+        const c = await d.leerControl(pid)
+        if (!c.puente || c.puente.cobradoSinFacturar <= 0.005) return { pagadas, nueva: null, aviso: null }
+        try {
+            const f = await d.facturarCobrado(pid, 'nueva')
+            return { pagadas, nueva: f.invoice_number, aviso: null }
+        } catch (e) {
+            return { pagadas, nueva: null, aviso: e instanceof Error ? e.message : 'No se pudo facturar lo cobrado.' }
+        }
     }, '')
     if (!r.ok) return r
     revalidatePath('/invoices')
-    const n = r.data ?? 0
-    return { ok: true as const, mensaje: m.lado === 'proveedor' ? 'Pago registrado.' : n ? `Abono registrado y ${n === 1 ? 'su factura quedó pagada' : `${n} facturas quedaron pagadas`}.` : 'Abono registrado.' }
+    if (m.lado === 'proveedor') return { ok: true as const, mensaje: 'Pago registrado.' }
+    const { pagadas, nueva, aviso } = r.data!
+    const partes = ['Abono registrado']
+    if (pagadas) partes.push(pagadas === 1 ? 'una factura quedó pagada' : `${pagadas} facturas quedaron pagadas`)
+    if (nueva) partes.push(`factura ${nueva} creada por lo cobrado, ya pagada`)
+    return { ok: true as const, mensaje: `${partes.join(', ')}.${aviso ? ` Ojo: ${aviso}` : ''}` }
+}
+export const facturarCobradoAccion = async (pid: string, destino: 'nueva' | string) => {
+    const r = await hacer(pid, () => d.facturarCobrado(pid, destino), '')
+    if (!r.ok) return r
+    revalidatePath('/invoices')
+    const { invoice_number, lineas } = r.data!
+    return { ok: true as const, mensaje: destino === 'nueva' ? `Factura ${invoice_number} creada por lo cobrado (${lineas} ${lineas === 1 ? 'línea' : 'líneas'}).` : `Añadido a la factura ${invoice_number}: ahora refleja lo que pagó el cliente.` }
 }
 export const facturarCuotaAccion = async (pid: string, cuotaId: string) => {
     const r = await hacer(pid, () => d.facturarCuota(pid, cuotaId), '')
@@ -59,8 +82,8 @@ export const facturarCuotaAccion = async (pid: string, cuotaId: string) => {
     const { invoice_number, pagada, reutilizado } = r.data!
     return { ok: true as const, mensaje: `Factura ${invoice_number} creada${pagada ? ' y marcada como pagada (el cliente ya pagó esta cuota)' : ' en borrador: envíasela desde Facturas'}.${reutilizado ? ' Usé el ítem que ya estaba pendiente en Facturación.' : ''}` }
 }
-export const enlazarFacturaAccion = async (pid: string, cuotaId: string, invoiceId: string | null) => {
-    const r = await hacer(pid, () => d.enlazarFactura(pid, cuotaId, invoiceId), invoiceId ? 'Factura enlazada.' : 'Factura desenlazada.')
+export const enlazarFacturaAccion = async (pid: string, cuotaId: string, invoiceId: string, enlazar: boolean) => {
+    const r = await hacer(pid, () => d.enlazarFactura(pid, cuotaId, invoiceId, enlazar), enlazar ? 'Factura enlazada.' : 'Factura desenlazada.')
     revalidatePath('/invoices')
     return r
 }

@@ -280,7 +280,9 @@ export function EditorPropuesta({ inicial, eventos }: { inicial: DatosEditor; ev
                                 </div>
                                 {/* Los textos largos (el concepto de la cuota) parten en varias líneas en vez de salirse de la tarjeta. */}
                                 <div className="grid grid-cols-[minmax(0,1fr)] gap-2 [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-9 [&_[data-slot=button]]:py-2 [&_[data-slot=button]]:text-center [&_[data-slot=button]]:whitespace-normal">
-                                    {puedeFacturar && (
+                                    {/* Con proyecto, las cuotas se facturan desde allí (anticipos, saldos y pagos van enlazados). */}
+                                    {puedeFacturar && inicial.control_id && <p className="text-xs text-muted-foreground">Las cuotas se facturan desde el proyecto, que lleva los abonos y los anticipos.</p>}
+                                    {puedeFacturar && !inicial.control_id && (
                                         <Button disabled={pendiente} onClick={() => accion(() => facturarPropuestaAccion(inicial.id, cuotasPendientes[0]?.cuota.id))}>
                                             <Receipt /> {a.totales.cuotas.length ? `Facturar «${cuotasPendientes[0].cuota.concepto || 'cuota'}» (${dinero(cuotasPendientes[0].monto, inicial.currency)})` : 'Crear la factura'}
                                         </Button>

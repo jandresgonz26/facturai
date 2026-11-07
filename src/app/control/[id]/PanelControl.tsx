@@ -10,8 +10,8 @@ import { ArrowLeft, FileText, Paperclip, Pencil, Plus, Receipt, Sparkles, Trash2
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { dinero, type Acuerdo, type CuentaProveedor, type CuotaCalculada, type Movimiento } from '@/lib/control/calculo'
-import type { ControlCompleto, FacturaCuota, PropuestaEnlazable } from '@/lib/control/datos'
-import { actualizarAcuerdoAccion, actualizarControlAccion, actualizarCuotaAccion, actualizarMovimientoAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarExtraAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion, enlazarFacturaAccion, enlazarPropuestaAccion, facturarCuotaAccion } from '../acciones'
+import type { ControlCompleto, FacturaCuota, PropuestaEnlazable, Puente as PuenteDatos } from '@/lib/control/datos'
+import { actualizarAcuerdoAccion, actualizarControlAccion, actualizarCuotaAccion, actualizarMovimientoAccion, agregarAcuerdoAccion, agregarCuotaAccion, agregarExtraAccion, agregarMovimientoAccion, borrarControlAccion, borrarFilaAccion, enlazarFacturaAccion, enlazarPropuestaAccion, facturarCobradoAccion, facturarCuotaAccion } from '../acciones'
 
 const campo = 'h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30'
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -82,10 +82,13 @@ export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; pr
                         <h2 className="font-semibold">Lo que cobras al cliente</h2>
                         {r.proximaCuota && <p className="text-sm text-muted-foreground">Próxima: {r.proximaCuota.concepto} · faltan {m(r.proximaCuota.falta)}{r.proximaCuota.vence ? ` · vence ${fecha(r.proximaCuota.vence)}` : ''}</p>}
                     </div>
+                    {datos.puente && datos.puente.cobradoSinFacturar > 0.005 && p.client_id && (
+                        <CobradoSinFactura puente={datos.puente} m={m} pendiente={pendiente} onFacturar={(destino) => correr(() => facturarCobradoAccion(p.id, destino))} />
+                    )}
                     <ol className="divide-y border-y">
                         {r.cuotas.map((c) => (
                             <FilaCuota key={c.id} c={c} numero={c.extra ? null : r.cuotas.filter((x) => !x.extra && x.orden <= c.orden).length} m={m} pendiente={pendiente} borrar={borrar} onGuardar={(x, listo) => correr(() => actualizarCuotaAccion(p.id, c.id, x), listo)}
-                                puente={datos.facturas ? { factura: datos.facturas[c.id] ?? null, sueltas: datos.facturasSueltas, puedeFacturar: !!p.client_id, onFacturar: () => correr(() => facturarCuotaAccion(p.id, c.id)), onEnlazar: (inv) => correr(() => enlazarFacturaAccion(p.id, c.id, inv)) } : null} />
+                                puente={datos.puente ? { pc: datos.puente.porCuota[c.id] ?? null, sueltas: datos.puente.facturasSueltas, puedeFacturar: !!p.client_id, onFacturar: () => correr(() => facturarCuotaAccion(p.id, c.id)), onEnlazar: (inv, si) => correr(() => enlazarFacturaAccion(p.id, c.id, inv, si)) } : null} />
                         ))}
                         {r.cuotas.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Aún no hay plan de cuotas.</li>}
                     </ol>
@@ -99,8 +102,8 @@ export function PanelControl({ datos, propuestas }: { datos: ControlCompleto; pr
                             ))}
                             {r.abonos.length === 0 && <li className="text-sm text-muted-foreground">Ninguno todavía.</li>}
                         </ul>
-                        <FormPago id="abono" texto="Registrar abono del cliente" pendiente={pendiente} marcarFacturas={!!datos.facturas && Object.keys(datos.facturas).length > 0} onGuardar={(x, limpiar, marcar) => correr(() => agregarMovimientoAccion(p.id, { lado: 'cliente', ...x }, marcar), limpiar)} />
-                        {!datos.facturas && <p className="text-xs text-muted-foreground">Para enlazar las cuotas con sus facturas, ejecuta schema_update_proyectos_facturas.sql en el SQL Editor de Supabase.</p>}
+                        <FormPago id="abono" texto="Registrar abono del cliente" pendiente={pendiente} marcarFacturas={!!datos.puente && !!p.client_id} onGuardar={(x, limpiar, marcar) => correr(() => agregarMovimientoAccion(p.id, { lado: 'cliente', ...x }, marcar), limpiar)} />
+                        {!datos.puente && <p className="text-xs text-muted-foreground">Para enlazar las cuotas con sus facturas, ejecuta schema_update_proyectos_anticipos.sql en el SQL Editor de Supabase.</p>}
                     </div>
                 </section>
 
@@ -203,7 +206,7 @@ function FormPago({ id, texto, sugerido, pendiente, marcarFacturas, onGuardar }:
                     <label className="space-y-1"><span className="text-xs text-muted-foreground">Monto</span><input id={`${idf}-monto`} inputMode="decimal" required value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} placeholder={sugerido ? String(sugerido) : '0'} className={`${campo} tabular-nums`} /></label>
                     <label className="space-y-1"><span className="text-xs text-muted-foreground">Método</span><input id={`${idf}-metodo`} value={f.metodo} onChange={(e) => setF({ ...f, metodo: e.target.value })} placeholder="USDT, transferencia, Zelle…" className={campo} /></label>
                     <label className="space-y-1 sm:col-span-3"><span className="text-xs text-muted-foreground">Nota (opcional)</span><input id={`${idf}-nota`} value={f.nota} onChange={(e) => setF({ ...f, nota: e.target.value })} className={campo} /></label>
-                    {marcarFacturas && <label className="flex items-center gap-2 text-sm sm:col-span-3"><input id={`${idf}-marcar`} type="checkbox" checked={marcar} onChange={(e) => setMarcar(e.target.checked)} /> Marcar como pagadas las facturas de las cuotas que este abono completa</label>}
+                    {marcarFacturas && <label className="flex items-center gap-2 text-sm sm:col-span-3"><input id={`${idf}-marcar`} type="checkbox" checked={marcar} onChange={(e) => setMarcar(e.target.checked)} /> Facturar este abono: marca como pagadas las facturas que cubre y factura lo que pague de más</label>}
                     <div className="flex gap-2 sm:col-span-3">
                         <Button type="submit" size="sm" disabled={pendiente || !f.monto}>Guardar</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={cerrar}>Cancelar</Button>
@@ -306,7 +309,7 @@ function Cabecera({ nombre, notas, cliente, cerrado, pendiente, onGuardar }: { n
     )
 }
 
-type Puente = { factura: FacturaCuota | null; sueltas: FacturaCuota[]; puedeFacturar: boolean; onFacturar: () => void; onEnlazar: (invoiceId: string | null) => void }
+type Puente = { pc: PuenteDatos['porCuota'][string] | null; sueltas: FacturaCuota[]; puedeFacturar: boolean; onFacturar: () => void; onEnlazar: (invoiceId: string, enlazar: boolean) => void }
 
 const ESTADO_FACTURA: Record<FacturaCuota['status'], { label: string; tono: string }> = {
     draft: { label: 'borrador', tono: 'text-muted-foreground' },
@@ -314,26 +317,31 @@ const ESTADO_FACTURA: Record<FacturaCuota['status'], { label: string; tono: stri
     paid: { label: 'pagada', tono: 'text-emerald-700 dark:text-emerald-400' },
 }
 
-/** Debajo de cada cuota: su factura en Facturación, o cómo hacerla / enlazar una ya hecha. */
+/** Lo que el cliente pagó y todavía no tiene factura: se factura para que cada pago tenga su factura por lo que pagó. */
+function CobradoSinFactura({ puente, m, pendiente, onFacturar }: { puente: PuenteDatos; m: (n: number) => string; pendiente: boolean; onFacturar: (destino: 'nueva' | string) => void }) {
+    const ultima = puente.facturas.at(-1)
+    return (
+        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <p><span className="font-medium">El cliente pagó {m(puente.cobradoSinFacturar)} que todavía no tienen factura.</span> Factúralos para que cada pago tenga su factura por lo que pagó; se reparten por las cuotas en orden (lo que no complete una cuota va como anticipo).</p>
+            <div className="flex flex-wrap gap-2">
+                {ultima && <Button size="sm" disabled={pendiente} onClick={() => onFacturar(ultima.id)}><Receipt /> Añadirlo a la factura {ultima.invoice_number}</Button>}
+                <Button size="sm" variant={ultima ? 'outline' : 'default'} disabled={pendiente} onClick={() => onFacturar('nueva')}><Receipt /> {ultima ? 'Factura aparte' : 'Facturarlo'}</Button>
+            </div>
+            {ultima && <p className="text-xs text-muted-foreground">Si es del mismo pago que la {ultima.invoice_number}, añádelo ahí: así esa factura queda por lo que pagó.</p>}
+        </div>
+    )
+}
+
+/** Debajo de cada cuota: sus facturas en Facturación (puede ir en partes), y facturar lo que falte o enlazar una ya hecha. */
 function FacturaDeCuota({ c, puente, m, pendiente }: { c: CuotaCalculada; puente: Puente; m: (n: number) => string; pendiente: boolean }) {
     const [enlazando, setEnlazando] = useState(false)
-    const f = puente.factura
-    if (f) {
-        const e = ESTADO_FACTURA[f.status]
-        return (
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
-                <Link href="/invoices" className="flex items-center gap-1 font-medium hover:underline"><Receipt className="size-3.5" /> Factura {f.invoice_number}</Link>
-                <span className={e.tono}>· {e.label}</span>
-                {Math.abs(f.total_amount - c.monto) > 0.01 && <span className="text-amber-700 dark:text-amber-400">· por {m(f.total_amount)}</span>}
-                <button type="button" disabled={pendiente} onClick={() => { if (confirm(`¿Quitar el enlace con la factura ${f.invoice_number}? La factura no se borra.`)) puente.onEnlazar(null) }} className="text-muted-foreground hover:text-foreground">Desenlazar</button>
-            </div>
-        )
-    }
+    const facturado = puente.pc?.facturado ?? 0
+    const falta = Math.round((c.monto - facturado) * 100) / 100
     if (enlazando) {
         return (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                 <label htmlFor={`enlazar-${c.id}`} className="sr-only">Factura a enlazar</label>
-                <select id={`enlazar-${c.id}`} defaultValue="" disabled={pendiente} onChange={(e) => e.target.value && puente.onEnlazar(e.target.value)} className="h-7 max-w-60 rounded-md border bg-background px-2 text-xs">
+                <select id={`enlazar-${c.id}`} defaultValue="" disabled={pendiente} onChange={(e) => { if (e.target.value) { puente.onEnlazar(e.target.value, true); setEnlazando(false) } }} className="h-7 max-w-60 rounded-md border bg-background px-2 text-xs">
                     <option value="">Elige la factura…</option>
                     {puente.sueltas.map((s) => <option key={s.id} value={s.id}>{s.invoice_number} · {m(s.total_amount)} · {ESTADO_FACTURA[s.status].label}</option>)}
                 </select>
@@ -342,10 +350,26 @@ function FacturaDeCuota({ c, puente, m, pendiente }: { c: CuotaCalculada; puente
         )
     }
     return (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
-            <span className="text-muted-foreground">Sin factura</span>
-            {puente.puedeFacturar && <button type="button" disabled={pendiente} onClick={() => { if (confirm(`¿Crear la factura de «${c.concepto}» por ${m(c.monto)}?${c.estado === 'pagada' ? ' El cliente ya la pagó: quedará como pagada.' : ' Queda en borrador hasta que la envíes.'}`)) puente.onFacturar() }} className="flex items-center gap-1 font-medium text-primary hover:underline"><Receipt className="size-3.5" /> Facturar</button>}
-            {puente.sueltas.length > 0 && <button type="button" onClick={() => setEnlazando(true)} className="text-muted-foreground hover:text-foreground">Enlazar una ya hecha</button>}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+            {puente.pc?.facturas.map((f) => (
+                <span key={f.id} className="flex items-center gap-1">
+                    <Link href="/invoices" className="flex items-center gap-1 font-medium hover:underline"><Receipt className="size-3.5" /> Factura {f.invoice_number}</Link>
+                    <span className={ESTADO_FACTURA[f.status].tono}>· {ESTADO_FACTURA[f.status].label}</span>
+                    {Math.abs(f.monto - c.monto) > 0.01 && <span className="text-muted-foreground">· {m(f.monto)}{facturado < c.monto - 0.005 ? ' de anticipo' : ''}</span>}
+                    <button type="button" disabled={pendiente} title="Quitar el enlace (la factura no se borra)" onClick={() => { if (confirm(`¿Quitar el enlace con la factura ${f.invoice_number}? La factura no se borra.`)) puente.onEnlazar(f.id, false) }} className="ml-1 text-muted-foreground hover:text-foreground">Desenlazar</button>
+                </span>
+            ))}
+            {falta > 0.005 && (
+                <>
+                    {facturado <= 0.005 && <span className="text-muted-foreground">Sin factura</span>}
+                    {puente.puedeFacturar && (
+                        <button type="button" disabled={pendiente} onClick={() => { if (confirm(`¿Crear la factura ${facturado > 0.005 ? `del saldo de «${c.concepto}»` : `de «${c.concepto}»`} por ${m(falta)}?${c.estado === 'pagada' ? ' El cliente ya la pagó: quedará como pagada.' : ' Queda en borrador hasta que la envíes.'}`)) puente.onFacturar() }} className="flex items-center gap-1 font-medium text-primary hover:underline">
+                            <Receipt className="size-3.5" /> {facturado > 0.005 ? `Facturar saldo (${m(falta)})` : 'Facturar'}
+                        </button>
+                    )}
+                    {facturado <= 0.005 && puente.sueltas.length > 0 && <button type="button" onClick={() => setEnlazando(true)} className="text-muted-foreground hover:text-foreground">Enlazar una ya hecha</button>}
+                </>
+            )}
         </div>
     )
 }

@@ -353,7 +353,7 @@ export async function facturarDesdePropuesta(id: string, cuotaId?: string): Prom
 
 /**
  * Apunta en la propuesta que una de sus cuotas (por su posición en el plan) ya tiene factura, cuando se factura
- * desde Proyectos. Si la cuota figuraba con una factura que ya no existe (se borró), la sustituye.
+ * desde Proyectos (entera, su anticipo o su saldo). Las facturas borradas desaparecen de la lista.
  */
 export async function registrarFacturaDeCuota(propuestaId: string, posicion: number, invoice: { id: string; invoice_number: string }): Promise<void> {
     const p = await leerPropuesta(propuestaId).catch(() => null)
@@ -370,7 +370,7 @@ export async function registrarFacturaDeCuota(propuestaId: string, posicion: num
     const billing: Facturacion = {
         ...b,
         cuotas_facturadas: [...new Set([...(b.cuotas_facturadas ?? []), c.cuota.id])],
-        facturas: [...previas.filter((f) => existen.has(f.invoice_id) && !(f.concepto === concepto && f.invoice_id !== invoice.id)), { invoice_id: invoice.id, invoice_number: invoice.invoice_number, concepto }],
+        facturas: [...previas.filter((f) => existen.has(f.invoice_id) && !(f.concepto === concepto && f.invoice_id === invoice.id)), { invoice_id: invoice.id, invoice_number: invoice.invoice_number, concepto }],
     }
     await supabase.from('proposals').update({ billing }).eq('id', propuestaId)
     await evento(propuestaId, 'invoiced', { factura: invoice.invoice_number, concepto })

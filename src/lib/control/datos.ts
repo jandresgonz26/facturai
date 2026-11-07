@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { ActionError } from '@/lib/actions/validation'
 import { leerPropuesta, type Propuesta } from '@/lib/propuestas/datos'
 import { calcular as calcularPropuesta, dinero as dineroPropuesta, frecuencia } from '@/lib/propuestas/precios'
-import { calcular, type Acuerdo, type Cuota, type Movimiento, type Resumen } from './calculo'
+import { calcular, dinero, type Acuerdo, type Cuota, type Movimiento, type Resumen } from './calculo'
 
 export type ProyectoControl = {
     id: string
@@ -22,8 +22,23 @@ export type ProyectoControl = {
     proposals?: { number: string; title: string } | null
 }
 
-/** La factura de una cuota, tal como está en Facturación. */
-export type FacturaCuota = { id: string; invoice_number: string; status: 'draft' | 'sent' | 'paid'; paid_at: string | null; total_amount: number }
+/** Una factura vista desde el proyecto. */
+export type FacturaCuota = { id: string; invoice_number: string; status: 'draft' | 'sent' | 'paid'; paid_at: string | null; total_amount: number; issue_date: string }
+/** Factura del proyecto con lo que tiene de este proyecto (`monto`, en la moneda del proyecto). */
+export type FacturaProyecto = FacturaCuota & { monto: number }
+
+/** Puente con Facturación (null si falta ejecutar schema_update_proyectos_anticipos.sql). */
+export type Puente = {
+    /** Las facturas del proyecto, en orden de emisión. */
+    facturas: FacturaProyecto[]
+    /** Por cuota: cuánto lleva facturado y en qué facturas (una cuota puede ir en partes). */
+    porCuota: Record<string, { facturado: number; facturas: { id: string; invoice_number: string; status: FacturaCuota['status']; monto: number }[] }>
+    facturado: number
+    /** Lo que el cliente pagó y todavía no tiene factura. */
+    cobradoSinFacturar: number
+    /** Facturas del cliente que no están enlazadas a ninguna cuota (para enlazar una ya hecha). */
+    facturasSueltas: FacturaCuota[]
+}
 
 export type ControlCompleto = {
     proyecto: ProyectoControl
@@ -31,11 +46,10 @@ export type ControlCompleto = {
     acuerdos: Acuerdo[]
     movimientos: Movimiento[]
     resumen: Resumen
-    /** Puente con Facturación: factura de cada cuota (por id de cuota). `null` si falta ejecutar schema_update_proyectos_facturas.sql. */
-    facturas: Record<string, FacturaCuota> | null
-    /** Facturas del cliente que todavía no están enlazadas a ninguna cuota (para enlazar una ya hecha). */
-    facturasSueltas: FacturaCuota[]
+    puente: Puente | null
 }
+
+const r2 = (n: number) => Math.round(n * 100) / 100
 
 const num = (rows: Record<string, unknown>[] | null) => (rows ?? []).map((r) => ({ ...r, proyecto_id: String(r.proyecto_id ?? ""), monto: Number(r.monto) }))
 
@@ -65,134 +79,247 @@ export async function leerControl(id: string): Promise<ControlCompleto> {
     const cuotas = num(cs) as unknown as Cuota[]
     const acuerdos = num(as) as unknown as Acuerdo[]
     const movimientos = num(ms) as unknown as Movimiento[]
-    const { facturas, facturasSueltas } = await facturasDeCuotas(id, (p as ProyectoControl).client_id, (cs ?? []) as Record<string, unknown>[])
-    return { proyecto: p as ProyectoControl, cuotas, acuerdos, movimientos, resumen: calcular(cuotas, acuerdos, movimientos), facturas, facturasSueltas }
+    const puente = await cargarPuente(p as ProyectoControl, cuotas, movimientos)
+    return { proyecto: p as ProyectoControl, cuotas, acuerdos, movimientos, resumen: calcular(cuotas, acuerdos, movimientos), puente }
 }
 
 // ─── Puente con Facturación ──────────────────────────────────────────────────
+//
+// Cada línea de factura (logs) puede decir de qué cuota es (logs.control_cuota_id). Así:
+// - lo facturado de una cuota es la suma de sus líneas ya facturadas, y una cuota puede ir en partes
+//   (un anticipo en una factura y el saldo en otra);
+// - «facturar lo cobrado»: cuando el cliente paga más de lo facturado, la diferencia se factura repartida
+//   por las cuotas en orden («Cuota 1» completa + «Anticipo de la Cuota 2»);
+// - las facturas del proyecto, en orden, quedan pagadas a medida que los abonos las cubren.
 
-const CAMPOS_FACTURA = 'id, invoice_number, status, paid_at, total_amount'
-const aFactura = (f: Record<string, unknown>): FacturaCuota => ({ id: String(f.id), invoice_number: String(f.invoice_number), status: f.status as FacturaCuota['status'], paid_at: (f.paid_at as string | null) ?? null, total_amount: Number(f.total_amount) })
+const CAMPOS_FACTURA = 'id, invoice_number, status, paid_at, total_amount, issue_date'
+type FilaFactura = { id: string; invoice_number: string; status: 'draft' | 'sent' | 'paid'; paid_at: string | null; total_amount: number; issue_date: string }
+const aFactura = (f: Record<string, unknown>): FilaFactura => ({ id: String(f.id), invoice_number: String(f.invoice_number), status: f.status as FilaFactura['status'], paid_at: (f.paid_at as string | null) ?? null, total_amount: Number(f.total_amount), issue_date: String(f.issue_date) })
 
-async function facturasDeCuotas(proyectoId: string, clientId: string | null, filas: Record<string, unknown>[]): Promise<{ facturas: Record<string, FacturaCuota> | null; facturasSueltas: FacturaCuota[] }> {
-    // Sin la columna (SQL sin ejecutar) el proyecto se ve igual que antes, sin el puente.
-    if (filas.length && !('invoice_id' in filas[0])) return { facturas: null, facturasSueltas: [] }
-    if (!filas.length) {
-        const prueba = await supabase.from('control_cuotas').select('invoice_id').eq('proyecto_id', proyectoId).limit(1)
-        if (prueba.error) return { facturas: null, facturasSueltas: [] }
+type LineaCuota = { id: string; invoice_id: string | null; control_cuota_id: string; original_amount: number | null; value: number | null; currency: string | null; status: string }
+
+async function cargarPuente(proyecto: ProyectoControl, cuotas: Cuota[], movimientos: Movimiento[]): Promise<Puente | null> {
+    const ids = cuotas.map((c) => c.id)
+    const r = ids.length
+        ? await supabase.from('logs').select('id, invoice_id, control_cuota_id, original_amount, value, currency, status').in('control_cuota_id', ids)
+        : await supabase.from('logs').select('control_cuota_id').limit(1)
+    if (r.error) return null // falta schema_update_proyectos_anticipos.sql: el proyecto se ve como antes
+    const lineas = (ids.length ? r.data ?? [] : []) as LineaCuota[]
+    const montoDe = (l: LineaCuota) => Number((l.currency ?? 'USD') === proyecto.moneda && l.original_amount != null ? l.original_amount : l.value ?? 0)
+
+    const facturadas = lineas.filter((l) => l.invoice_id)
+    const invoiceIds = [...new Set(facturadas.map((l) => l.invoice_id!))]
+    const { data: invs } = invoiceIds.length ? await supabase.from('invoices').select(CAMPOS_FACTURA).in('id', invoiceIds) : { data: [] }
+    const porId = new Map((invs ?? []).map((f) => [String(f.id), aFactura(f)]))
+
+    const porCuota: Puente['porCuota'] = {}
+    const facturas = new Map<string, FacturaProyecto>()
+    for (const l of facturadas) {
+        const f = porId.get(l.invoice_id!)
+        if (!f) continue
+        const monto = r2(montoDe(l))
+        const pc = (porCuota[l.control_cuota_id] ??= { facturado: 0, facturas: [] })
+        pc.facturado = r2(pc.facturado + monto)
+        const ya = pc.facturas.find((x) => x.id === f.id)
+        if (ya) ya.monto = r2(ya.monto + monto)
+        else pc.facturas.push({ id: f.id, invoice_number: f.invoice_number, status: f.status, monto })
+        const fp = facturas.get(f.id) ?? { ...f, monto: 0 }
+        fp.monto = r2(fp.monto + monto)
+        facturas.set(f.id, fp)
     }
-    const ids = filas.map((c) => c.invoice_id as string | null).filter((x): x is string => !!x)
-    const facturas: Record<string, FacturaCuota> = {}
-    if (ids.length) {
-        const { data } = await supabase.from('invoices').select(CAMPOS_FACTURA).in('id', ids)
-        const porId = new Map((data ?? []).map((f) => [String(f.id), aFactura(f)]))
-        for (const c of filas) if (c.invoice_id && porId.has(c.invoice_id as string)) facturas[String(c.id)] = porId.get(c.invoice_id as string)!
-    }
+    const lista = [...facturas.values()].sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.invoice_number.localeCompare(b.invoice_number))
+    const facturado = r2(lista.reduce((s, f) => s + f.monto, 0))
+    const cobrado = r2(movimientos.filter((m) => m.lado === 'cliente').reduce((s, m) => s + Number(m.monto), 0))
+
     let facturasSueltas: FacturaCuota[] = []
-    if (clientId) {
-        const [{ data: delCliente }, { data: enlazadas }] = await Promise.all([
-            supabase.from('invoices').select(CAMPOS_FACTURA).eq('client_id', clientId).order('issue_date', { ascending: false }).limit(30),
-            supabase.from('control_cuotas').select('invoice_id').not('invoice_id', 'is', null),
-        ])
+    if (proyecto.client_id) {
+        const { data: delCliente } = await supabase.from('invoices').select(CAMPOS_FACTURA).eq('client_id', proyecto.client_id).order('issue_date', { ascending: false }).limit(30)
+        const { data: enlazadas } = await supabase.from('logs').select('invoice_id').not('control_cuota_id', 'is', null).not('invoice_id', 'is', null)
         const usadas = new Set((enlazadas ?? []).map((x) => x.invoice_id as string))
         facturasSueltas = (delCliente ?? []).map(aFactura).filter((f) => !usadas.has(f.id))
     }
-    return { facturas, facturasSueltas }
+    return { facturas: lista, porCuota, facturado, cobradoSinFacturar: r2(Math.max(0, cobrado - facturado)), facturasSueltas }
 }
+
+const ordenadas = (cuotas: Cuota[]) => [...cuotas].sort((a, b) => a.orden - b.orden || a.concepto.localeCompare(b.concepto))
 
 /** Posición de una cuota del plan (sin contar los cobros sueltos), que es la que tiene en la propuesta. */
 const posicionEnPlan = (cuotas: { id: string; orden: number; extra: boolean }[], cuotaId: string) =>
     [...cuotas].filter((c) => !c.extra).sort((a, b) => a.orden - b.orden).findIndex((c) => c.id === cuotaId)
 
+const nombreLinea = (p: ProyectoControl) => `${p.proposals?.number ? `${p.proposals.number} · ` : ''}${p.nombre}`
+
+/** Reparte un monto entre las cuotas por facturar, en orden: lo que completa una cuota y, si no llega, su anticipo. */
+function lineasPara(control: ControlCompleto, puente: Puente, monto: number, soloCuota?: string): { cuota: Cuota; monto: number; descripcion: string }[] {
+    const p = control.proyecto
+    const m = (n: number) => dinero(n, p.moneda)
+    const out: { cuota: Cuota; monto: number; descripcion: string }[] = []
+    let queda = r2(monto)
+    for (const c of ordenadas(control.cuotas)) {
+        if (queda <= 0.005) break
+        if (soloCuota && c.id !== soloCuota) continue
+        const pc = puente.porCuota[c.id]
+        const yaFacturado = pc?.facturado ?? 0
+        const falta = r2(c.monto - yaFacturado)
+        if (falta <= 0.005) continue
+        const t = r2(Math.min(falta, queda))
+        queda = r2(queda - t)
+        const base = `${nombreLinea(p)} — `
+        const descripcion = t < falta - 0.005
+            ? `${base}Anticipo de ${c.concepto}`
+            : yaFacturado > 0
+              ? `${base}${c.concepto} · saldo (anticipo de ${m(yaFacturado)} facturado en la ${pc!.facturas.map((f) => f.invoice_number).join(', ')})`
+              : `${base}${c.concepto}`
+        out.push({ cuota: c, monto: t, descripcion: descripcion.slice(0, 300) })
+    }
+    return out
+}
+
+/** Crea las líneas de factura (pendientes) de esas cuotas. */
+async function crearLineas(control: ControlCompleto, lineas: { cuota: Cuota; monto: number; descripcion: string }[]): Promise<string[]> {
+    const p = control.proyecto
+    const { resolveCategoryId } = await import('@/lib/actions/categories')
+    const rate = p.moneda === 'EUR' ? await (await import('@/lib/currency')).getEurToUsdRate() : 1
+    const category_id = await resolveCategoryId()
+    const r = await supabase.from('logs').insert(lineas.map((l) => ({
+        client_id: p.client_id, description: l.descripcion, original_amount: l.monto, value: r2(l.monto * rate), currency: p.moneda, category_id, status: 'pending', control_cuota_id: l.cuota.id,
+    }))).select('id')
+    return (revisar(r, 'preparar los ítems de la factura') ?? []).map((x) => x.id as string)
+}
+
+/** La propuesta enlazada apunta que esas cuotas ya tienen factura (para no ofrecer facturarlas otra vez). */
+async function anotarEnPropuesta(control: ControlCompleto, cuotas: Cuota[], invoice: { id: string; invoice_number: string }): Promise<void> {
+    const pid = control.proyecto.propuesta_id
+    if (!pid) return
+    const { registrarFacturaDeCuota } = await import('@/lib/propuestas/datos')
+    for (const c of cuotas.filter((x) => !x.extra)) {
+        await registrarFacturaDeCuota(pid, posicionEnPlan(control.cuotas, c.id), invoice).catch((e) => console.warn('[control] no se pudo anotar la factura en la propuesta', e))
+    }
+}
+
+async function exigirPuente(proyectoId: string): Promise<{ control: ControlCompleto; puente: Puente }> {
+    const control = await leerControl(proyectoId)
+    if (!control.puente) throw new ActionError('Falta ejecutar schema_update_proyectos_anticipos.sql en el SQL Editor de Supabase.')
+    if (!control.proyecto.client_id) throw new ActionError('Este proyecto no tiene cliente: asígnale uno para poder facturar.')
+    return { control, puente: control.puente }
+}
+
 /**
- * Factura una cuota del proyecto al cliente. Si en Facturación ya hay un ítem suelto sin facturar que es esta
- * cuota (mismo cliente y monto, y menciona la propuesta o el concepto), lo usa en vez de duplicarlo.
- * Si el cliente ya la pagó, la factura queda pagada con la fecha en que se completó.
+ * Factura lo que falta de una cuota (toda, o su saldo si ya se facturó un anticipo). Si en Facturación ya hay un
+ * ítem suelto que es esta cuota (mismo cliente y monto, y menciona la propuesta o el concepto), lo usa.
+ * Si el cliente ya la pagó, la factura queda pagada.
  */
 export async function facturarCuota(proyectoId: string, cuotaId: string): Promise<{ invoice_number: string; pagada: boolean; reutilizado: boolean }> {
-    const control = await leerControl(proyectoId)
-    if (!control.facturas) throw new ActionError('Falta ejecutar schema_update_proyectos_facturas.sql en el SQL Editor de Supabase.')
+    const { control, puente } = await exigirPuente(proyectoId)
     const p = control.proyecto
-    if (!p.client_id) throw new ActionError('Este proyecto no tiene cliente: asígnale uno para poder facturar.')
     const cuota = control.cuotas.find((c) => c.id === cuotaId)
     if (!cuota) throw new ActionError('Esa cuota ya no existe.')
-    if (control.facturas[cuotaId]) throw new ActionError(`Esta cuota ya tiene la factura ${control.facturas[cuotaId].invoice_number}.`)
-
-    const { getClient } = await import('@/lib/actions/clients')
-    const client = await getClient(p.client_id)
-    const moneda = p.moneda
-    const rate = moneda === 'EUR' ? await (await import('@/lib/currency')).getEurToUsdRate() : 1
+    const [linea] = lineasPara(control, puente, cuota.monto, cuotaId)
+    if (!linea) throw new ActionError('Esta cuota ya está facturada entera.')
 
     // ¿Ya hay un ítem suelto que es esta cuota? (p. ej. el de una factura que se borró)
     const claves = [p.proposals?.number, cuota.concepto.replace(/^Cuota \d+\s*·\s*/i, '').trim()].filter((x): x is string => !!x && x.length > 3).map((x) => x.toLowerCase())
-    const { data: sueltos } = await supabase.from('logs').select('id, description, value, original_amount').eq('client_id', client.id).eq('status', 'pending').is('invoice_id', null)
-    const igual = (sueltos ?? []).find((l) => Math.abs(Number(l.original_amount ?? l.value) - cuota.monto) < 0.01 && claves.some((k) => String(l.description).toLowerCase().includes(k)))
+    const { data: sueltos } = await supabase.from('logs').select('id, description, value, original_amount, control_cuota_id').eq('client_id', p.client_id!).eq('status', 'pending').is('invoice_id', null)
+    const igual = (sueltos ?? []).find((l) => (l.control_cuota_id === cuotaId || !l.control_cuota_id) && Math.abs(Number(l.original_amount ?? l.value) - linea.monto) < 0.01 && (l.control_cuota_id === cuotaId || claves.some((k) => String(l.description).toLowerCase().includes(k))))
 
     let logIds: string[]
     let creados: string[] = []
-    if (igual) logIds = [igual.id as string]
-    else {
-        const { resolveCategoryId } = await import('@/lib/actions/categories')
-        const descripcion = `${p.proposals?.number ? `${p.proposals.number} · ` : ''}${p.nombre} — ${cuota.concepto}`.slice(0, 300)
-        const r = await supabase.from('logs').insert({ client_id: client.id, description: descripcion, original_amount: cuota.monto, value: Math.round(cuota.monto * rate * 100) / 100, currency: moneda, category_id: await resolveCategoryId(), status: 'pending' }).select('id').single()
-        creados = [revisar(r, 'preparar el ítem de la factura').id as string]
+    if (igual) {
+        logIds = [igual.id as string]
+        if (!igual.control_cuota_id) await supabase.from('logs').update({ control_cuota_id: cuotaId }).eq('id', igual.id)
+    } else {
+        creados = await crearLineas(control, [linea])
         logIds = creados
     }
     const { createInvoice } = await import('@/lib/actions/invoices')
     let invoice
     try {
-        ;({ invoice } = await createInvoice({ client_id: client.id, log_ids: logIds }))
+        ;({ invoice } = await createInvoice({ client_id: p.client_id!, log_ids: logIds }))
     } catch (e) {
         if (creados.length) await supabase.from('logs').delete().in('id', creados)
         throw e
     }
-    revisar(await supabase.from('control_cuotas').update({ invoice_id: invoice.id }).eq('id', cuotaId), 'enlazar la factura con la cuota')
-    if (p.propuesta_id && !cuota.extra) {
-        const { registrarFacturaDeCuota } = await import('@/lib/propuestas/datos')
-        await registrarFacturaDeCuota(p.propuesta_id, posicionEnPlan(control.cuotas, cuotaId), invoice).catch((e) => console.warn('[control] no se pudo anotar la factura en la propuesta', e))
-    }
+    await anotarEnPropuesta(control, [cuota], invoice)
     const pagadas = await sincronizarPagos(proyectoId)
     return { invoice_number: invoice.invoice_number, pagada: pagadas > 0, reutilizado: !!igual }
 }
 
-/** Enlaza (o desenlaza, con null) una factura ya hecha a una cuota. */
-export async function enlazarFactura(proyectoId: string, cuotaId: string, invoiceId: string | null): Promise<void> {
-    if (invoiceId) {
-        const { data: ya } = await supabase.from('control_cuotas').select('id').eq('invoice_id', invoiceId).neq('id', cuotaId).limit(1)
-        if (ya?.length) throw new ActionError('Esa factura ya está enlazada a otra cuota.')
+/**
+ * Factura lo cobrado que todavía no tiene factura, repartido por las cuotas en orden: en una factura nueva
+ * (que queda pagada) o añadido a una factura del proyecto que ya existe (p. ej. la del mismo pago).
+ */
+export async function facturarCobrado(proyectoId: string, destino: 'nueva' | string): Promise<{ invoice_number: string; monto: number; lineas: number }> {
+    const { control, puente } = await exigirPuente(proyectoId)
+    const monto = puente.cobradoSinFacturar
+    if (monto <= 0.005) throw new ActionError('No hay nada cobrado sin factura.')
+    const lineas = lineasPara(control, puente, monto)
+    if (!lineas.length) throw new ActionError('El cliente ya pagó más que todas las cuotas: añade la cuota o el cobro suelto que corresponda antes de facturarlo.')
+    const logIds = await crearLineas(control, lineas)
+    let invoice: { id: string; invoice_number: string }
+    try {
+        if (destino === 'nueva') {
+            const { createInvoice } = await import('@/lib/actions/invoices')
+            ;({ invoice } = await createInvoice({ client_id: control.proyecto.client_id!, log_ids: logIds }))
+        } else {
+            if (!puente.facturas.some((f) => f.id === destino)) throw new ActionError('Esa factura no es de este proyecto.')
+            const { appendItemsToInvoice } = await import('@/lib/actions/invoices')
+            invoice = await appendItemsToInvoice(destino, logIds)
+        }
+    } catch (e) {
+        await supabase.from('logs').delete().in('id', logIds)
+        throw e
     }
-    revisar(await supabase.from('control_cuotas').update({ invoice_id: invoiceId }).eq('id', cuotaId).eq('proyecto_id', proyectoId), 'enlazar la factura')
-    if (invoiceId) await sincronizarPagos(proyectoId)
+    await anotarEnPropuesta(control, lineas.map((l) => l.cuota), invoice)
+    await sincronizarPagos(proyectoId)
+    return { invoice_number: invoice.invoice_number, monto: r2(lineas.reduce((s, l) => s + l.monto, 0)), lineas: lineas.length }
 }
 
-/** Lo llama la propuesta al facturar una cuota: la cuota del proyecto (misma posición en el plan) queda con esa factura. */
+/** Enlaza una factura ya hecha a una cuota (sus líneas pasan a contar como de esa cuota), o la desenlaza. */
+export async function enlazarFactura(proyectoId: string, cuotaId: string, invoiceId: string, enlazar: boolean): Promise<void> {
+    if (enlazar) {
+        const { data: ya } = await supabase.from('logs').select('control_cuota_id').eq('invoice_id', invoiceId).not('control_cuota_id', 'is', null).neq('control_cuota_id', cuotaId).limit(1)
+        if (ya?.length) throw new ActionError('Esa factura ya está enlazada a otra cuota.')
+        revisar(await supabase.from('logs').update({ control_cuota_id: cuotaId }).eq('invoice_id', invoiceId), 'enlazar la factura')
+        await sincronizarPagos(proyectoId)
+    } else {
+        revisar(await supabase.from('logs').update({ control_cuota_id: null }).eq('invoice_id', invoiceId).eq('control_cuota_id', cuotaId), 'desenlazar la factura')
+    }
+}
+
+/** Lo llama la propuesta al facturar una cuota: las líneas de esa factura cuentan como de la cuota del proyecto en esa posición. */
 export async function enlazarFacturaDePropuesta(propuestaId: string, posicion: number, invoiceId: string): Promise<void> {
     const proyectoId = await controlDePropuesta(propuestaId)
     if (!proyectoId || posicion < 0) return
-    const { data, error } = await supabase.from('control_cuotas').select('id, orden, extra, invoice_id').eq('proyecto_id', proyectoId)
+    const { data, error } = await supabase.from('control_cuotas').select('id, orden, extra').eq('proyecto_id', proyectoId)
     if (error || !data) return
-    const plan = (data as { id: string; orden: number; extra: boolean; invoice_id: string | null }[]).filter((c) => !c.extra).sort((a, b) => a.orden - b.orden)
+    const plan = (data as { id: string; orden: number; extra: boolean }[]).filter((c) => !c.extra).sort((a, b) => a.orden - b.orden)
     const cuota = plan[posicion]
-    if (!cuota || cuota.invoice_id) return
-    await supabase.from('control_cuotas').update({ invoice_id: invoiceId }).eq('id', cuota.id)
+    if (!cuota) return
+    const r = await supabase.from('logs').update({ control_cuota_id: cuota.id }).eq('invoice_id', invoiceId).is('control_cuota_id', null)
+    if (r.error) return
     await sincronizarPagos(proyectoId)
 }
 
 /**
- * Las facturas de cuotas que el cliente ya completó con sus abonos quedan pagadas, con la fecha en que se
- * completaron. No revierte nada: si se borra un abono, la factura sigue como esté. Devuelve cuántas marcó.
+ * Las facturas del proyecto, en orden, quedan pagadas cuando los abonos del cliente las cubren (con la fecha en
+ * que se cubrieron). No revierte nada: si se borra un abono, la factura sigue como esté. Devuelve cuántas marcó.
  */
 export async function sincronizarPagos(proyectoId: string): Promise<number> {
     const control = await leerControl(proyectoId)
-    if (!control.facturas) return 0
+    const puente = control.puente
+    if (!puente) return 0
     const { markInvoicePaid } = await import('@/lib/actions/invoices')
     const hoy = new Date().toISOString().slice(0, 10)
+    const abonos = control.resumen.abonos
+    let acumulado = 0
     let n = 0
-    for (const c of control.resumen.cuotas) {
-        const f = control.facturas[c.id]
-        if (!f || f.status === 'paid' || c.estado !== 'pagada') continue
-        const fechaPago = c.pagadaEl && c.pagadaEl <= hoy ? c.pagadaEl : hoy
-        await markInvoicePaid(f.id, fechaPago)
+    for (const f of puente.facturas) {
+        acumulado = r2(acumulado + f.monto)
+        if (f.status === 'paid') continue
+        let suma = 0
+        const cubre = abonos.find((a) => (suma = r2(suma + Number(a.monto))) >= acumulado - 0.005)
+        if (!cubre) break
+        await markInvoicePaid(f.id, cubre.fecha <= hoy ? cubre.fecha : hoy)
         n++
     }
     return n
