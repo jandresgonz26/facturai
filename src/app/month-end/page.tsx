@@ -1,5 +1,6 @@
 'use client'
 
+import { PESTANAS_FACTURACION, SeccionTabs } from '@/components/layout/SeccionTabs'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, ChevronLeft, ChevronRight, CircleCheck, Download, FileText, LoaderCircle, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
@@ -196,11 +197,12 @@ export default function MonthEndPage() {
     const isEur = client?.preferred_input_currency === 'EUR'
 
     return (
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
+            <h1 className="font-display text-2xl font-bold mb-3">Facturación</h1>
+            <div className="mb-5"><SeccionTabs pestanas={PESTANAS_FACTURACION} label="Secciones de Facturación" /></div>
             <div className="flex items-end justify-between gap-4 mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold">Facturación</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Cierre de {periodLabel(period)} paso a paso</p>
+                    <p className="text-sm text-muted-foreground">Cierre de {periodLabel(period)} paso a paso</p>
                 </div>
                 {clientId && !done && (
                     <Button variant="ghost" size="sm" onClick={reset}>Cambiar cliente</Button>

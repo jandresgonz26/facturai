@@ -1,7 +1,7 @@
 'use client'
 /**
  * Pestañas de una sección que vive en varias rutas (Ajustes → General / Servicios; Propuestas → Con enlace /
- * Cotizaciones rápidas). Así el menú lateral tiene una sola entrada por sección y las rutas de siempre siguen.
+ * Cotizaciones rápidas; Facturación → Cierre del mes / Facturas). Así el menú lateral tiene una sola entrada por sección y las rutas de siempre siguen.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -11,6 +11,11 @@ export type Pestana = { href: string; label: string }
 export const PESTANAS_AJUSTES: Pestana[] = [
     { href: '/settings', label: 'General' },
     { href: '/servicios', label: 'Servicios y precios' },
+]
+
+export const PESTANAS_FACTURACION: Pestana[] = [
+    { href: '/month-end', label: 'Cierre del mes' },
+    { href: '/invoices', label: 'Facturas' },
 ]
 
 export const PESTANAS_PROPUESTAS: Pestana[] = [

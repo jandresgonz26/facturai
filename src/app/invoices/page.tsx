@@ -1,5 +1,6 @@
 'use client'
 
+import { PESTANAS_FACTURACION, SeccionTabs } from '@/components/layout/SeccionTabs'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Banknote, CalendarDays, CheckCircle, Download, FileDown, FileText, HeartHandshake, Mail, Pencil, RotateCcw, Send, StickyNote, Trash2 } from 'lucide-react'
@@ -256,10 +257,11 @@ export default function InvoicesPage() {
 
     return (
         <div className="max-w-4xl mx-auto">
+            <h1 className="font-display text-2xl font-bold mb-3">Facturación</h1>
+            <div className="mb-5"><SeccionTabs pestanas={PESTANAS_FACTURACION} label="Secciones de Facturación" /></div>
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
                 <div>
-                    <h1 className="text-2xl font-bold">Facturas</h1>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground">
                         {filtered.length} factura{filtered.length === 1 ? '' : 's'} · {usd(sumFiltered)}
                         {sumUnpaid > 0 && <> · <span className="text-amber-600 dark:text-amber-400">por cobrar {usd(sumUnpaid)}</span></>}
                     </p>

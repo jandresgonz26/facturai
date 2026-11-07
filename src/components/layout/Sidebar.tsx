@@ -14,7 +14,6 @@ import {
     QrCode,
     Video,
     Wrench,
-    FileText,
     LayoutDashboard,
     Building2,
     ListTodo,
@@ -37,10 +36,9 @@ const navLinks: { href: string; label: string; icon: LucideIcon; tambien?: strin
     { href: '/tasks', label: 'Tareas', icon: ListTodo },
     { href: '/clients', label: 'Clientes', icon: Users },
     { href: '/pipeline', label: 'Pipeline', icon: SquareKanban },
-    { href: '/month-end', label: 'Facturación', icon: ReceiptText },
+    { href: '/month-end', label: 'Facturación', icon: ReceiptText, tambien: ['/invoices'] },
     { href: '/propuestas', label: 'Propuestas', icon: FileSignature, tambien: ['/quotes'] },
     { href: '/control', label: 'Control interno', icon: Wallet },
-    { href: '/invoices', label: 'Facturas', icon: FileText },
     { href: '/settings', label: 'Ajustes', icon: Settings, tambien: ['/servicios'] },
 ]
 
